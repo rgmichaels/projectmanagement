@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Board</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">Projects</a>
+    <span class="crumb" id="crumb"></span>
+  </header>
+
+  <main class="page board-page">
+    <section class="toolbar">
+      <h1 id="project-title">Board</h1>
+      <span class="badge" id="project-status"></span>
+      <span class="badge archived" id="archived-badge" hidden>Archived (read-only)</span>
+      <label class="group-by">Group by <select id="group-by"></select></label>
+      <button type="button" id="create-item" class="primary" hidden>Create work item</button>
+    </section>
+
+    <div id="message" class="message" role="alert" hidden></div>
+
+    <div id="board" class="board"></div>
+  </main>
+
+  <dialog id="detail">
+    <form id="detail-form" method="dialog" novalidate>
+      <h2 id="detail-title">Work item</h2>
+      <label>Title <input name="title" maxlength="200" required></label>
+      <div class="form-row">
+        <label>Type <select name="type"></select></label>
+        <label id="status-field">Status <select name="status"></select></label>
+        <label>Priority <select name="priority"></select></label>
+      </div>
+      <div class="form-row">
+        <label>Assignee <select name="assignee_id"></select></label>
+        <label id="epic-field"><span id="epic-label"></span> <select name="epic_id"></select></label>
+      </div>
+      <label>Description <textarea name="description" rows="5"></textarea></label>
+      <p class="error" id="detail-error" role="alert"></p>
+      <div class="actions">
+        <button type="submit" value="save" id="detail-save" class="primary">Save</button>
+        <button type="button" id="detail-delete" class="danger">Delete</button>
+        <button type="button" id="detail-close">Close</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="js/api.js"></script>
+  <script src="js/board.js"></script>
+</body>
+</html>

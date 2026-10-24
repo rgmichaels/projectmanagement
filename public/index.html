@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Projects</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">Projects</a>
+  </header>
+
+  <main class="page">
+    <section class="toolbar">
+      <h1>Projects</h1>
+      <label class="toggle">
+        <input type="checkbox" id="show-archived"> Show archived
+      </label>
+      <button type="button" id="open-create" class="primary">Create project</button>
+    </section>
+
+    <form id="create-form" class="panel" hidden novalidate>
+      <h2>Create project</h2>
+      <div class="form-row">
+        <label>Name <input name="name" maxlength="80" required></label>
+        <label>Key <input name="key" maxlength="10" placeholder="PROJ" required></label>
+        <label>Status <select name="status"></select></label>
+      </div>
+      <p class="error" id="create-error" role="alert"></p>
+      <div class="actions">
+        <button type="submit" class="primary">Create</button>
+        <button type="button" id="cancel-create">Cancel</button>
+      </div>
+    </form>
+
+    <p class="error" id="list-error" role="alert"></p>
+
+    <div id="empty-state" class="empty" hidden>
+      <p>No projects yet.</p>
+      <button type="button" id="empty-create" class="primary">Create project</button>
+    </div>
+
+    <table id="project-table" class="projects" hidden>
+      <thead>
+        <tr><th>Name</th><th>Key</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </main>
+
+  <script src="js/api.js"></script>
+  <script src="js/projects.js"></script>
+</body>
+</html>
