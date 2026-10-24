@@ -52,6 +52,33 @@ test('SQL appears only in the data-access layer', () => {
   assert.deepEqual(offenders, []);
 });
 
+test('comment SQL appears only in the data-access layer (ticket-discussion AC 32)', () => {
+  const allowed = new Set(['server/db.js', 'server/data/comments.js', 'server/data/issues.js']);
+  const pattern = /\b(FROM\s+comments|INSERT\s+INTO\s+comments|UPDATE\s+comments|JOIN\s+comments)\b/i;
+  const offenders = sourceFiles
+    .filter((f) => !allowed.has(rel(f)))
+    .filter((f) => pattern.test(fs.readFileSync(f, 'utf8')))
+    .map(rel);
+  assert.deepEqual(offenders, []);
+  assert.match(fs.readFileSync(path.join(root, 'server/data/comments.js'), 'utf8'), pattern);
+});
+
+test('Discussion buttons cannot submit the method="dialog" form (ticket-discussion AC 4)', () => {
+  const html = fs.readFileSync(path.join(root, 'public/board.html'), 'utf8');
+  const section = html.slice(html.indexOf('<section id="discussion"'), html.indexOf('</section>', html.indexOf('<section id="discussion"')));
+  assert.ok(section.length > 0);
+  assert.doesNotMatch(section, /<form\b/i, 'no nested form');
+  const buttons = section.match(/<button\b[^>]*>/gi) || [];
+  assert.ok(buttons.some((b) => /id="comment-post"/.test(b)));
+  for (const b of buttons) assert.match(b, /type="button"/, b);
+  // Buttons built in script for Edit, Delete, Save and Cancel are type="button" too.
+  const js = fs.readFileSync(path.join(root, 'public/js/board.js'), 'utf8');
+  const discussionJs = js.slice(js.indexOf('// ---------- discussion ----------'));
+  for (const call of discussionJs.match(/el\(\s*'button',\s*\{[^}]*\}/g) || []) {
+    assert.match(call, /type: 'button'/, call);
+  }
+});
+
 test('schema has no CHECK constraint on status or type (AC 27)', () => {
   const db = openDb(tempDbPath());
   const { sql } = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'issues'").get();
@@ -64,7 +91,7 @@ test('a fresh database file gets the schema and seed users (AC 38)', () => {
   assert.ok(!fs.existsSync(dbPath));
   const db = openDb(dbPath);
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name);
-  assert.deepEqual(tables.sort(), ['issues', 'projects', 'users']);
+  assert.deepEqual(tables.sort(), ['comments', 'issues', 'projects', 'users']);
   const users = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
   db.close();
   assert.ok(users >= 3);

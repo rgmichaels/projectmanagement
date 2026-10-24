@@ -164,3 +164,28 @@ table.projects tr.is-archived td { color: var(--muted); background: #fafbfc; }
 dialog { border: none; border-radius: 4px; padding: 20px; width: min(560px, 95vw); box-shadow: 0 8px 24px rgba(9, 30, 66, 0.3); }
 dialog label { color: var(--muted); }
 dialog input, dialog textarea { width: 100%; }
+
+/* Comment count chip on cards (shown for 0 too). */
+.comment-count { display: inline-flex; align-items: center; gap: 2px; }
+.comment-icon { font-size: 11px; }
+
+/* Discussion section in the detail dialog. */
+.discussion { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 10px; }
+.discussion[hidden], .comment-form[hidden], .thread-empty[hidden] { display: none; }
+.discussion h3 { font-size: 14px; margin: 0 0 8px; }
+.comment-form { margin-bottom: 8px; }
+.posting-as { flex-direction: row; align-items: center; gap: 6px; flex-wrap: wrap; }
+.posting-as .hint { font-style: italic; }
+.thread-empty { color: var(--muted); margin: 4px 0; }
+/* The thread scrolls inside the dialog so the form above stays in reach. */
+.thread { list-style: none; margin: 0; padding: 0; max-height: 40vh; overflow-y: auto; }
+.thread-item { border-top: 1px solid var(--border); padding: 8px 0; }
+.thread-item:first-child { border-top: none; }
+.message-head { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; font-size: 12px; color: var(--muted); }
+.message-author { font-weight: 600; color: var(--text); }
+.message-edited { font-style: italic; }
+.message-body { white-space: pre-wrap; word-break: break-word; margin-top: 4px; }
+.message-editor { margin-top: 4px; }
+.message-actions { margin-top: 4px; }
+button.link { border: none; background: none; padding: 0; color: var(--primary); font-size: 12px; }
+button.link.danger { color: var(--danger); }

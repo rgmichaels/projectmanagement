@@ -43,6 +43,21 @@ CREATE TABLE IF NOT EXISTS issues (
 );
 
 CREATE INDEX IF NOT EXISTS idx_issues_project ON issues(project_id);
+
+-- Discussion messages on a work item. body_format is always 'text' for now;
+-- it is reserved so a later rich-text/image format can coexist with old rows.
+-- Future images go in a separate table keyed by comment_id.
+CREATE TABLE IF NOT EXISTS comments (
+  id INTEGER PRIMARY KEY,
+  issue_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+  author_id INTEGER NOT NULL REFERENCES users(id),
+  body TEXT NOT NULL,
+  body_format TEXT NOT NULL DEFAULT 'text',
+  created_at TEXT NOT NULL,
+  updated_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_comments_issue ON comments(issue_id);
 `;
 
 // Seed data: a small fixed list of placeholder people (no user management in the UI).

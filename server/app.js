@@ -5,13 +5,14 @@ const express = require('express');
 const projectRoutes = require('./routes/projects');
 const issueRoutes = require('./routes/issues');
 const metaRoutes = require('./routes/meta');
+const commentRoutes = require('./routes/comments');
 
 function createApp(db) {
   const app = express();
   app.use(express.json());
   app.use(express.static(path.join(__dirname, '..', 'public')));
 
-  app.use('/api', metaRoutes(db), projectRoutes(db), issueRoutes(db));
+  app.use('/api', metaRoutes(db), projectRoutes(db), issueRoutes(db), commentRoutes(db));
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
   // Express 5 forwards thrown errors (sync and async) here.

@@ -1,4 +1,4 @@
-// Request validation for projects and work items. Allowed values come from the
+// Request validation for projects, work items and discussion messages. Allowed values come from the
 // single-source lists; nothing here names a specific status or type.
 const { isValidStatus } = require('./statuses');
 const { isValidType, isEpicType } = require('./types');
@@ -105,8 +105,31 @@ function checkIssueFields(db, project, body, existing) {
   return out;
 }
 
+const COMMENT_MAX_LENGTH = 2000;
+
+// A discussion message: plain text, trimmed (inner line breaks kept), 1-2000 chars.
+function checkCommentBody(body) {
+  const text = typeof body === 'string' ? body.trim() : '';
+  if (text.length < 1 || text.length > COMMENT_MAX_LENGTH) {
+    throw new ValidationError(`Message is required and must be 1-${COMMENT_MAX_LENGTH} characters.`);
+  }
+  return text;
+}
+
+// The author of a new message: an existing user's integer id. Identity is not
+// enforced (no auth yet); anyone may post as any seeded user.
+function checkCommentAuthor(db, authorId) {
+  if (!Number.isInteger(authorId) || authorId <= 0 || !users.getUser(db, authorId)) {
+    throw new ValidationError('author_id must be the id of an existing user.');
+  }
+  return authorId;
+}
+
 module.exports = {
   ValidationError,
+  COMMENT_MAX_LENGTH,
+  checkCommentBody,
+  checkCommentAuthor,
   checkProjectName,
   checkProjectKey,
   checkProjectStatus,

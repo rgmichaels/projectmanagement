@@ -1,6 +1,7 @@
 // Shared route guards: loading records by id and the archived read-only rule.
 const projects = require('../data/projects');
 const issues = require('../data/issues');
+const comments = require('../data/comments');
 const { ValidationError } = require('../validation');
 
 function parseId(raw) {
@@ -22,6 +23,13 @@ function loadIssue(db, rawId) {
   return issue;
 }
 
+function loadComment(db, rawId) {
+  const id = parseId(rawId);
+  const comment = id && comments.getComment(db, id);
+  if (!comment) throw new ValidationError('Message not found.', 404);
+  return comment;
+}
+
 // Work items of an archived project are read-only.
 function assertWritable(project) {
   if (project.archived) {
@@ -29,4 +37,4 @@ function assertWritable(project) {
   }
 }
 
-module.exports = { loadProject, loadIssue, assertWritable };
+module.exports = { loadProject, loadIssue, loadComment, assertWritable };

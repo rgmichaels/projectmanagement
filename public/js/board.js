@@ -1,8 +1,12 @@
 // Board page: columns from the status list, cards styled from the type list,
-// swimlanes (assignee / epic / priority), drag-and-drop and the detail view.
+// swimlanes (assignee / epic / priority), drag-and-drop and the detail view
+// with its Discussion thread.
 // Status, type and priority names all come from the API; none are named here.
 (() => {
   const GROUP_BY_STORAGE_KEY = 'pm.groupBy';
+  const POSTING_AS_STORAGE_KEY = 'pm.postingAs';
+  const COMMENT_MAX_LENGTH = 2000;
+  const RELATIVE_REFRESH_MS = 60 * 1000;
   const RANK_STEP = 1000;
 
   const projectId = new URLSearchParams(location.search).get('project');
@@ -39,6 +43,15 @@
     saveBtn: document.getElementById('detail-save'),
     deleteBtn: document.getElementById('detail-delete'),
     closeBtn: document.getElementById('detail-close'),
+    discussion: document.getElementById('discussion'),
+    discussionHeading: document.getElementById('discussion-heading'),
+    commentForm: document.getElementById('comment-form'),
+    postingAs: document.getElementById('posting-as'),
+    commentBody: document.getElementById('comment-body'),
+    commentError: document.getElementById('comment-error'),
+    commentPost: document.getElementById('comment-post'),
+    thread: document.getElementById('thread'),
+    threadEmpty: document.getElementById('thread-empty'),
   };
 
   // ---------- helpers ----------
@@ -166,6 +179,7 @@
         el('span', { class: 'card-key' }, item.key),
         epic ? el('span', { class: 'epic-chip', title: epic.title }, epic.key) : null,
         el('span', { class: 'priority', title: `Priority: ${item.priority}` }, item.priority),
+        commentChip(item.comment_count || 0),
         el(
           'span',
           { class: `avatar${user ? '' : ' unassigned'}`, title: user ? user.name : 'Unassigned' },
@@ -189,6 +203,15 @@
       });
     }
     return card;
+  }
+
+  function commentChip(n) {
+    return el(
+      'span',
+      { class: 'comment-count', title: `${n} message${n === 1 ? '' : 's'}` },
+      el('span', { class: 'comment-icon', 'aria-hidden': 'true' }, '\u{1F4AC}'),
+      String(n)
+    );
   }
 
   function renderColumn(status, lane, laneIndex) {
@@ -386,6 +409,7 @@
     els.saveBtn.hidden = ro;
     els.saveBtn.textContent = item ? 'Save' : 'Create';
     els.deleteBtn.hidden = ro || !item;
+    openDiscussion(item);
     els.dialog.showModal();
   }
 
@@ -438,6 +462,236 @@
   });
 
   els.closeBtn.addEventListener('click', () => els.dialog.close());
+
+  // ---------- discussion ----------
+  // Messages on the open work item. Kept apart from the work item form: none
+  // of these handlers submit, save or close it, and its Save never posts.
+
+  const discussion = {
+    issueId: null, // work item whose thread is shown, or null
+    comments: [], // newest first
+    editingId: null, // message in edit mode, or null
+    editDraft: '',
+    posting: false,
+    timer: null,
+    loadSeq: 0,
+  };
+
+  const postingAsId = () => Number(els.postingAs.value);
+
+  // Selected user: the one remembered in this browser if it still exists,
+  // otherwise the first user in the list.
+  function fillPostingAs() {
+    const stored = localStorage.getItem(POSTING_AS_STORAGE_KEY);
+    const selected = state.users.some((u) => String(u.id) === stored) ? stored : state.users[0] && String(state.users[0].id);
+    fillSelect(els.postingAs, state.users.map((u) => ({ value: String(u.id), label: u.name })), selected || '');
+  }
+
+  // Client-side copy of the server rule: trimmed, 1-2000 characters.
+  function commentTextError(text) {
+    if (text.length < 1) return 'Message is required.';
+    if (text.length > COMMENT_MAX_LENGTH) {
+      return `Message must be at most ${COMMENT_MAX_LENGTH} characters (currently ${text.length}).`;
+    }
+    return null;
+  }
+
+  // `2026-10-24 14:05 (2 hours ago)`; only the relative part is refreshed.
+  function timeText(iso) {
+    return el(
+      'span',
+      { class: 'message-time', title: iso },
+      `${timeFormat.localDateTime(iso)} (`,
+      el('span', { class: 'relative-time', 'data-time': iso }, timeFormat.relativeTime(iso)),
+      ')'
+    );
+  }
+
+  function refreshRelativeTimes() {
+    for (const span of els.thread.querySelectorAll('.relative-time')) {
+      span.textContent = timeFormat.relativeTime(span.dataset.time);
+    }
+  }
+
+  function renderMessage(comment) {
+    const ro = readOnly();
+    const own = !ro && comment.author_id === postingAsId();
+    const head = el(
+      'div',
+      { class: 'message-head' },
+      el('span', { class: 'message-author' }, comment.author_name),
+      timeText(comment.created_at),
+      comment.updated_at ? el('span', { class: 'message-edited' }, 'edited ', timeText(comment.updated_at)) : null
+    );
+    const li = el('li', { class: 'thread-item', 'data-id': comment.id }, head);
+
+    if (own && discussion.editingId === comment.id) {
+      const editor = el('textarea', { class: 'message-editor', rows: '3', 'aria-label': 'Edit message' });
+      editor.value = discussion.editDraft;
+      editor.addEventListener('input', () => { discussion.editDraft = editor.value; });
+      const error = el('p', { class: 'error', role: 'alert' });
+      const saveBtn = el('button', { type: 'button', class: 'primary' }, 'Save');
+      const cancelBtn = el('button', { type: 'button' }, 'Cancel');
+      saveBtn.addEventListener('click', () => saveEdit(comment, editor, error, saveBtn));
+      cancelBtn.addEventListener('click', () => {
+        discussion.editingId = null;
+        renderThread();
+      });
+      li.append(editor, error, el('div', { class: 'actions message-actions' }, saveBtn, cancelBtn));
+      return li;
+    }
+
+    li.append(el('div', { class: 'message-body' }, comment.body)); // textContent: never parsed as HTML
+    if (own) {
+      const editBtn = el('button', { type: 'button', class: 'link' }, 'Edit');
+      const deleteBtn = el('button', { type: 'button', class: 'link danger' }, 'Delete');
+      editBtn.addEventListener('click', () => {
+        discussion.editingId = comment.id;
+        discussion.editDraft = comment.body;
+        renderThread();
+        const editor = els.thread.querySelector('.message-editor');
+        if (editor) editor.focus();
+      });
+      deleteBtn.addEventListener('click', () => deleteMessage(comment));
+      li.append(el('div', { class: 'actions message-actions' }, editBtn, deleteBtn));
+    }
+    return li;
+  }
+
+  function renderThread() {
+    const n = discussion.comments.length;
+    els.discussionHeading.textContent = `Discussion (${n})`;
+    els.threadEmpty.hidden = n > 0;
+    els.thread.replaceChildren(...discussion.comments.map(renderMessage));
+  }
+
+  // Shows the section for an existing work item (not when creating) and
+  // loads its thread.
+  function openDiscussion(item) {
+    discussion.issueId = item ? item.id : null;
+    discussion.comments = [];
+    discussion.editingId = null;
+    els.discussion.hidden = !item;
+    if (!item) return;
+
+    els.commentForm.hidden = readOnly();
+    els.commentBody.value = '';
+    els.commentError.textContent = '';
+    els.commentPost.disabled = false;
+    discussion.posting = false;
+    fillPostingAs();
+    renderThread();
+    loadThread(item.id);
+
+    clearInterval(discussion.timer);
+    discussion.timer = setInterval(refreshRelativeTimes, RELATIVE_REFRESH_MS);
+  }
+
+  async function loadThread(issueId) {
+    const seq = ++discussion.loadSeq;
+    try {
+      const comments = await api.get(`/api/issues/${issueId}/comments`);
+      if (seq !== discussion.loadSeq || discussion.issueId !== issueId) return; // a newer dialog is open
+      discussion.comments = comments;
+      renderThread();
+    } catch (err) {
+      if (discussion.issueId === issueId) els.commentError.textContent = `Could not load messages: ${err.message}`;
+    }
+  }
+
+  // The card's count lives in the board's work item list; refresh it without
+  // touching the open dialog's fields (reloadItems only re-renders the board).
+  async function refreshCards() {
+    try {
+      await reloadItems();
+    } catch (err) {
+      showMessage(err.message);
+    }
+  }
+
+  els.commentPost.addEventListener('click', async () => {
+    if (discussion.posting || readOnly() || discussion.issueId === null) return;
+    const issueId = discussion.issueId;
+    const text = els.commentBody.value.trim();
+    const problem = commentTextError(text);
+    els.commentError.textContent = problem || '';
+    if (problem) return;
+
+    discussion.posting = true;
+    els.commentPost.disabled = true;
+    try {
+      const created = await api.post(`/api/issues/${issueId}/comments`, { author_id: postingAsId(), body: text });
+      if (discussion.issueId === issueId) {
+        discussion.comments.unshift(created);
+        els.commentBody.value = '';
+        renderThread();
+        els.thread.scrollTop = 0;
+      }
+      await refreshCards();
+    } catch (err) {
+      if (discussion.issueId === issueId) els.commentError.textContent = `Could not post: ${err.message}`;
+    } finally {
+      discussion.posting = false;
+      els.commentPost.disabled = false;
+    }
+  });
+
+  async function saveEdit(comment, editor, error, saveBtn) {
+    if (readOnly()) return;
+    const text = editor.value.trim();
+    const problem = commentTextError(text);
+    error.textContent = problem || '';
+    if (problem) return;
+    if (text === comment.body) {
+      // Unchanged: nothing to save and no "edited" marker.
+      discussion.editingId = null;
+      renderThread();
+      return;
+    }
+    saveBtn.disabled = true;
+    try {
+      const updated = await api.patch(`/api/comments/${comment.id}`, { body: text });
+      const idx = discussion.comments.findIndex((c) => c.id === comment.id);
+      if (idx !== -1) discussion.comments[idx] = updated; // position unchanged
+      if (discussion.editingId === comment.id) discussion.editingId = null;
+      renderThread();
+    } catch (err) {
+      error.textContent = `Could not save: ${err.message}`;
+      saveBtn.disabled = false;
+    }
+  }
+
+  async function deleteMessage(comment) {
+    if (readOnly()) return;
+    if (!confirm('Delete this message? This cannot be undone.')) return;
+    els.commentError.textContent = '';
+    try {
+      await api.del(`/api/comments/${comment.id}`);
+      discussion.comments = discussion.comments.filter((c) => c.id !== comment.id);
+      if (discussion.editingId === comment.id) discussion.editingId = null;
+      renderThread();
+      await refreshCards();
+    } catch (err) {
+      els.commentError.textContent = `Could not delete: ${err.message}`;
+    }
+  }
+
+  // Changing the user only affects later posts; it also cancels an open edit
+  // and updates which messages offer Edit and Delete.
+  els.postingAs.addEventListener('change', () => {
+    localStorage.setItem(POSTING_AS_STORAGE_KEY, els.postingAs.value);
+    discussion.editingId = null;
+    renderThread();
+  });
+
+  // Covers Close, Save and Escape: stop the relative-time refresh and drop
+  // any open message edit.
+  els.dialog.addEventListener('close', () => {
+    clearInterval(discussion.timer);
+    discussion.timer = null;
+    discussion.issueId = null;
+    discussion.editingId = null;
+  });
 
   // ---------- loading ----------
 
