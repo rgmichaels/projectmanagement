@@ -115,7 +115,15 @@ test('a fresh database file gets the schema and seed users (AC 38)', () => {
   assert.ok(!fs.existsSync(dbPath));
   const db = openDb(dbPath);
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name);
-  assert.deepEqual(tables.sort(), ['comments', 'issues', 'projects', 'sessions', 'users']);
+  assert.deepEqual(tables.sort(), [
+    'comments',
+    'issue_history_changes',
+    'issue_history_events',
+    'issues',
+    'projects',
+    'sessions',
+    'users',
+  ]);
   const users = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
   db.close();
   assert.ok(users >= 3);
@@ -186,4 +194,77 @@ test('the "Posting as" control and its storage key are gone (login AC 17)', () =
   assert.doesNotMatch(html, /<select[^>]*id="posting-as"/);
   assert.doesNotMatch(js, /pm\.postingAs|POSTING_AS|localStorage\.(get|set)Item\(\s*POSTING/);
   assert.doesNotMatch(js, /author_id:/, 'the client never sends an author');
+});
+
+// ---------- ticket history (docs/specs/ticket-history.md AC 13, 22, 27) ----------
+
+const boardJs = () => read(path.join(root, 'public/js/board.js'));
+// The history part of board.js: from its section marker to the next one.
+function boardHistorySection() {
+  const js = boardJs();
+  const start = js.indexOf('// ---------- history ----------');
+  assert.ok(start !== -1, 'board.js has a history section');
+  const end = js.indexOf('// ----------', start + 10);
+  return js.slice(start, end === -1 ? undefined : end);
+}
+const HISTORY_FILES = ['server/historyFields.js', 'server/data/history.js', 'server/routes/history.js', 'public/js/historyFormat.js'];
+const historySources = () => [
+  ...HISTORY_FILES.map((f) => [f, read(path.join(root, f))]),
+  ['public/js/board.js (history section)', boardHistorySection()],
+];
+const quoted = (name) => new RegExp(`(['"\`]${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"\`])|(>\\s*${name}\\s*<)`);
+
+test('history code names no status, type, priority or resolution (AC 27)', () => {
+  const { STATUSES } = require('../server/statuses');
+  const { TYPES } = require('../server/types');
+  const { PRIORITIES } = require('../server/priorities');
+  const { RESOLUTIONS } = require('../server/resolutions');
+  const names = [...STATUSES, ...TYPES.flatMap((t) => [t.name, t.label]), ...PRIORITIES, ...RESOLUTIONS.map((r) => r.name)];
+  const offenders = [];
+  for (const [file, text] of historySources()) {
+    for (const name of new Set(names)) if (quoted(name).test(text)) offenders.push(`${file}: ${name}`);
+  }
+  assert.deepEqual(offenders, []);
+});
+
+test('only server/historyFields.js names the history fields (AC 27, 28)', () => {
+  const { HISTORY_FIELDS } = require('../server/historyFields');
+  const names = new Set(HISTORY_FIELDS.flatMap((f) => [f.key, f.column, f.label]));
+  const offenders = [];
+  for (const [file, text] of historySources()) {
+    if (file === 'server/historyFields.js') continue;
+    for (const name of names) if (quoted(name).test(text)) offenders.push(`${file}: ${name}`);
+  }
+  assert.deepEqual(offenders, []);
+});
+
+test('history SQL appears only in server/data/history.js and the schema', () => {
+  const pattern = /\bissue_history_(events|changes)\b/;
+  assert.deepEqual(offendersOf(pattern, new Set(['server/db.js', 'server/data/history.js'])), []);
+  assert.match(read(path.join(root, 'server/data/history.js')), /INSERT\s+INTO\s+issue_history_changes/);
+  // Routes reach history through the data layer only.
+  assert.match(read(path.join(root, 'server/routes/history.js')), /require\('\.\.\/data\/history'\)/);
+});
+
+test('the history route is read-only (AC 13)', () => {
+  const src = read(path.join(root, 'server/routes/history.js'));
+  assert.doesNotMatch(src, /router\.(post|put|patch|delete|all)\(/);
+  assert.doesNotMatch(src, /assertWritable\(/, 'readable on archived projects');
+});
+
+test('History renders text only and its buttons cannot submit the form (AC 22)', () => {
+  for (const [file, text] of historySources().filter(([f]) => f.startsWith('public/'))) {
+    assert.doesNotMatch(text, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/, file);
+  }
+  const html = read(path.join(root, 'public/board.html'));
+  const open = html.indexOf('<section id="history"');
+  const section = html.slice(open, html.indexOf('</section>', open));
+  assert.ok(section.length > 0);
+  const tabs = html.slice(html.indexOf('<div id="activity-tabs"'), html.indexOf('</div>', html.indexOf('<div id="activity-tabs"')));
+  for (const b of [...(section.match(/<button\b[^>]*>/gi) || []), ...(tabs.match(/<button\b[^>]*>/gi) || [])]) {
+    assert.match(b, /type="button"/, b);
+  }
+  for (const call of boardHistorySection().match(/el\(\s*'button',\s*\{[^}]*\}/g) || []) {
+    assert.match(call, /type: 'button'/, call);
+  }
 });

@@ -3,6 +3,7 @@
 const projects = require('../data/projects');
 const issues = require('../data/issues');
 const comments = require('../data/comments');
+const { UNKNOWN_ACTOR } = require('../data/history');
 const { ValidationError } = require('../validation');
 
 function parseId(raw) {
@@ -45,4 +46,10 @@ function assertOwnsComment(user, comment) {
   }
 }
 
-module.exports = { loadProject, loadIssue, loadComment, assertWritable, assertOwnsComment };
+// Who is acting, for history: always the signed-in user (never the request
+// body), or the Unknown actor when there is none.
+function actorFrom(req) {
+  return req.user ? { id: req.user.id, name: req.user.name } : UNKNOWN_ACTOR;
+}
+
+module.exports = { loadProject, loadIssue, loadComment, assertWritable, assertOwnsComment, actorFrom };

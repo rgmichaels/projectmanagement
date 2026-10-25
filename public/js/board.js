@@ -1,6 +1,6 @@
 // Board page: columns from the status list, cards styled from the type list,
 // swimlanes (assignee / epic / priority), drag-and-drop and the detail view
-// with its Discussion thread.
+// with its Discussion and History tabs.
 // Status, type, priority and resolution names all come from the API; none are
 // named here. The terminal status and the default resolution are the server's.
 (() => {
@@ -20,6 +20,7 @@
     priorities: [],
     defaultPriority: null,
     users: [],
+    historyFields: [], // [{ key, label, kind }] from the server, for the History filter
     me: null, // the signed-in user { id, name, username }
     items: [],
     groupBy: localStorage.getItem(GROUP_BY_STORAGE_KEY) || 'none',
@@ -57,6 +58,17 @@
     commentPost: document.getElementById('comment-post'),
     thread: document.getElementById('thread'),
     threadEmpty: document.getElementById('thread-empty'),
+    activityTabs: document.getElementById('activity-tabs'),
+    tabDiscussion: document.getElementById('tab-discussion'),
+    tabHistory: document.getElementById('tab-history'),
+    history: document.getElementById('history'),
+    historyField: document.getElementById('history-field'),
+    historyNote: document.getElementById('history-note'),
+    historyError: document.getElementById('history-error'),
+    historyErrorText: document.getElementById('history-error-text'),
+    historyRetry: document.getElementById('history-retry'),
+    historyList: document.getElementById('history-list'),
+    historyMore: document.getElementById('history-more'),
   };
 
   // ---------- helpers ----------
@@ -379,6 +391,7 @@
       // The server sets or clears the resolution; show its answer at once.
       Object.assign(item, await api.patch(`/api/issues/${item.id}`, patch));
       render();
+      historySaved(item.id);
     } catch (err) {
       Object.assign(item, snapshot);
       render();
@@ -457,10 +470,14 @@
     syncEpicField();
 
     for (const field of els.form.querySelectorAll('input, select, textarea')) field.disabled = ro;
+    els.historyField.disabled = false; // History stays usable when read-only
     els.saveBtn.hidden = ro;
     els.saveBtn.textContent = item ? 'Save' : 'Create';
     els.deleteBtn.hidden = ro || !item;
+    els.activityTabs.hidden = !item;
     openDiscussion(item);
+    openHistory(item);
+    selectTab('discussion'); // the default each time a dialog opens
     els.dialog.showModal();
   }
 
@@ -494,8 +511,12 @@
       return;
     }
     try {
-      if (editing) await api.patch(`/api/issues/${editing.id}`, values);
-      else await api.post(`/api/projects/${state.project.id}/issues`, values);
+      if (editing) {
+        await api.patch(`/api/issues/${editing.id}`, values);
+        historySaved(editing.id);
+      } else {
+        await api.post(`/api/projects/${state.project.id}/issues`, values);
+      }
       els.dialog.close();
       await reloadItems();
     } catch (err) {
@@ -551,8 +572,9 @@
     );
   }
 
+  // One pass for the whole dialog: Discussion and History share this timer.
   function refreshRelativeTimes() {
-    for (const span of els.thread.querySelectorAll('.relative-time')) {
+    for (const span of els.dialog.querySelectorAll('.relative-time')) {
       span.textContent = timeFormat.relativeTime(span.dataset.time);
     }
   }
@@ -723,12 +745,157 @@
   }
 
   // Covers Close, Save and Escape: stop the relative-time refresh and drop
-  // any open message edit.
+  // any open message edit. The event is queued, so if another work item was
+  // opened in the meantime the dialog is open again and its state is kept.
   els.dialog.addEventListener('close', () => {
+    if (els.dialog.open) return;
     clearInterval(discussion.timer);
     discussion.timer = null;
     discussion.issueId = null;
     discussion.editingId = null;
+    historyView.issueId = null;
+  });
+
+  // ---------- history ----------
+  // The open work item's change history, newest first, loaded page by page
+  // the first time the History tab is shown. Read-only, also on archived
+  // projects. Labels and values come from the server; none are named here.
+
+  const historyView = {
+    issueId: null, // work item whose history is shown, or null
+    events: [], // newest first
+    hasMore: false,
+    loaded: false, // the first page has been fetched for this dialog
+    loading: false,
+    loadSeq: 0, // ignores responses for an older dialog, filter or page
+    field: '', // '' = all fields
+    selected: false, // the History tab is the visible one
+  };
+
+  function selectTab(name) {
+    const showHistory = name === 'history';
+    historyView.selected = showHistory;
+    els.tabDiscussion.setAttribute('aria-selected', String(!showHistory));
+    els.tabHistory.setAttribute('aria-selected', String(showHistory));
+    els.tabDiscussion.classList.toggle('active', !showHistory);
+    els.tabHistory.classList.toggle('active', showHistory);
+    const hasItem = discussion.issueId !== null;
+    els.discussion.hidden = !hasItem || showHistory;
+    els.history.hidden = !hasItem || !showHistory;
+    if (showHistory && hasItem && !historyView.loaded && !historyView.loading) loadHistory(true);
+  }
+
+  els.tabDiscussion.addEventListener('click', () => selectTab('discussion'));
+  els.tabHistory.addEventListener('click', () => selectTab('history'));
+  // Arrow keys move between the two tabs (both are also in the Tab order).
+  els.activityTabs.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const target = historyView.selected ? els.tabDiscussion : els.tabHistory;
+    selectTab(target === els.tabHistory ? 'history' : 'discussion');
+    target.focus();
+  });
+
+  function fillHistoryFilter() {
+    els.historyField.replaceChildren(
+      el('option', { value: '' }, 'All fields'),
+      ...state.historyFields.map((f) => el('option', { value: f.key }, f.label))
+    );
+  }
+
+  function renderHistoryEvent(event) {
+    return el(
+      'li',
+      { class: 'history-item', 'data-id': event.id },
+      el(
+        'div',
+        { class: 'message-head' },
+        el('span', { class: 'message-author' }, event.actor_name), // text, never parsed as HTML
+        timeText(event.created_at)
+      ),
+      el('ul', { class: 'history-changes' }, ...historyFormat.eventLines(event).map((line) => el('li', {}, line)))
+    );
+  }
+
+  function renderHistory() {
+    const v = historyView;
+    els.historyList.replaceChildren(...v.events.map(renderHistoryEvent));
+    let note = '';
+    if (v.loading && v.events.length === 0) note = 'Loading...';
+    else if (v.loaded && v.events.length === 0 && els.historyError.hidden) note = 'No history recorded yet.';
+    els.historyNote.textContent = note;
+    els.historyNote.hidden = !note;
+    els.historyMore.hidden = !v.hasMore;
+    els.historyMore.disabled = v.loading;
+    els.historyMore.textContent = v.loading && v.events.length ? 'Loading...' : 'Show more';
+  }
+
+  // Resets the tab for a newly opened dialog; nothing is fetched until the
+  // History tab is selected.
+  function openHistory(item) {
+    Object.assign(historyView, {
+      issueId: item ? item.id : null,
+      events: [],
+      hasMore: false,
+      loaded: false,
+      loading: false,
+      field: '',
+    });
+    historyView.loadSeq += 1;
+    els.historyField.value = '';
+    els.historyError.hidden = true;
+    renderHistory();
+  }
+
+  // reset: fetch the first page (replacing the list); otherwise the page
+  // after the oldest event shown.
+  async function loadHistory(reset) {
+    const v = historyView;
+    const issueId = v.issueId;
+    if (issueId === null) return;
+    const seq = ++v.loadSeq;
+    const params = new URLSearchParams();
+    if (v.field) params.set('field', v.field);
+    if (!reset && v.events.length) params.set('before', String(v.events[v.events.length - 1].id));
+    if (reset) {
+      v.events = [];
+      v.hasMore = false;
+    }
+    v.loading = true;
+    els.historyError.hidden = true;
+    renderHistory();
+    const query = params.toString();
+    try {
+      const page = await api.get(`/api/issues/${issueId}/history${query ? `?${query}` : ''}`);
+      if (seq !== v.loadSeq || v.issueId !== issueId) return; // a newer dialog, filter or page
+      v.events = reset ? page.events : v.events.concat(page.events);
+      v.hasMore = page.has_more;
+      v.loaded = true;
+    } catch (err) {
+      if (seq !== v.loadSeq || v.issueId !== issueId) return;
+      els.historyErrorText.textContent = `Could not load history: ${err.message}`;
+      els.historyError.hidden = false;
+      els.historyRetry.onclick = () => loadHistory(reset);
+    } finally {
+      if (seq === v.loadSeq) v.loading = false;
+    }
+    if (seq === v.loadSeq) renderHistory();
+  }
+
+  // A save of `issueId` succeeded: if its history is on screen, fetch the
+  // first page again; if it was loaded but hidden, fetch it when next shown.
+  function historySaved(issueId) {
+    if (historyView.issueId !== issueId || !historyView.loaded) return;
+    if (historyView.selected) loadHistory(true);
+    else historyView.loaded = false;
+  }
+
+  els.historyField.addEventListener('change', () => {
+    historyView.field = els.historyField.value;
+    loadHistory(true);
+  });
+  els.historyMore.addEventListener('click', () => {
+    if (!historyView.loading) loadHistory(false);
   });
 
   // ---------- loading ----------
@@ -758,7 +925,7 @@
       return;
     }
     try {
-      const [project, statuses, terminal, resolutions, types, priorities, users] = await Promise.all([
+      const [project, statuses, terminal, resolutions, types, priorities, users, historyFields] = await Promise.all([
         api.get(`/api/projects/${encodeURIComponent(projectId)}`),
         api.get('/api/statuses'),
         api.get('/api/terminal-status'),
@@ -766,6 +933,7 @@
         api.get('/api/types'),
         api.get('/api/priorities'),
         api.get('/api/users'),
+        api.get('/api/history-fields'),
       ]);
       Object.assign(state, {
         project,
@@ -776,8 +944,10 @@
         priorities: priorities.priorities,
         defaultPriority: priorities.default,
         users,
+        historyFields,
       });
       renderHeader();
+      fillHistoryFilter();
       await reloadItems();
     } catch (err) {
       showMessage(err.message);

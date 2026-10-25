@@ -45,9 +45,13 @@
       </div>
       <label>Description <textarea name="description" rows="5"></textarea></label>
       <p class="reporter" id="reporter" hidden></p>
-      <!-- Discussion: not part of the work item's Save. Its buttons are
-           type="button" so they never submit the method="dialog" form. -->
-      <section id="discussion" class="discussion" hidden>
+      <!-- Discussion and History tabs: not part of the work item's Save. Their
+           buttons are type="button" so they never submit the method="dialog" form. -->
+      <div id="activity-tabs" class="tabs" role="tablist" aria-label="Activity" hidden>
+        <button type="button" role="tab" id="tab-discussion" class="tab" aria-controls="discussion" aria-selected="true">Discussion</button>
+        <button type="button" role="tab" id="tab-history" class="tab" aria-controls="history" aria-selected="false">History</button>
+      </div>
+      <section id="discussion" class="discussion" role="tabpanel" aria-labelledby="tab-discussion" hidden>
         <h3 id="discussion-heading">Discussion (0)</h3>
         <div id="comment-form" class="comment-form">
           <p class="posting-as" id="posting-as"></p>
@@ -57,6 +61,19 @@
         </div>
         <p class="thread-empty" id="thread-empty" hidden>No messages yet. Be the first to post.</p>
         <ul id="thread" class="thread"></ul>
+      </section>
+      <!-- History: read-only, newest first; also readable on archived projects. -->
+      <section id="history" class="history" role="tabpanel" aria-labelledby="tab-history" hidden>
+        <div class="history-toolbar">
+          <label class="history-filter">Show <select id="history-field" aria-label="Filter history by field"><option value="">All fields</option></select></label>
+        </div>
+        <p class="history-note" id="history-note" hidden></p>
+        <div class="history-error" id="history-error" hidden>
+          <p class="error" id="history-error-text" role="alert"></p>
+          <button type="button" id="history-retry">Retry</button>
+        </div>
+        <ul id="history-list" class="history-list"></ul>
+        <div class="actions"><button type="button" id="history-more" hidden>Show more</button></div>
       </section>
       <p class="error" id="detail-error" role="alert"></p>
       <div class="actions">
@@ -71,6 +88,7 @@
   <script src="js/api.js"></script>
   <script src="js/session.js"></script>
   <script src="js/time.js"></script>
+  <script src="js/historyFormat.js"></script>
   <script src="js/board.js"></script>
 </body>
 </html>

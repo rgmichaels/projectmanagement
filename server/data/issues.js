@@ -3,8 +3,11 @@
 // these functions assume their input is already valid. The resolution rule
 // (set the default on entering the terminal status, clear it on leaving) is
 // applied here so the status and resolution are always written together.
+// Every write records history (server/data/history.js) inside its own
+// transaction; `actor` is { id, name } from the route (guards.actorFrom).
 const { isTerminalStatus } = require('../statuses');
 const { defaultResolution } = require('../resolutions');
+const history = require('./history');
 
 const RANK_STEP = 1000;
 
@@ -72,8 +75,8 @@ function resolutionFor(status, supplied, current, entering) {
 
 // Creates a work item, allocating the next per-project number. Numbers are
 // never reused because next_issue_number only ever increases. fields.reporter_id
-// is the signed-in user, supplied by the route.
-function createIssue(db, project, fields) {
+// is the signed-in user, supplied by the route. Writes the `created` event.
+function createIssue(db, project, fields, actor) {
   return db.transaction(() => {
     const { next_issue_number: number } = db
       .prepare('SELECT next_issue_number FROM projects WHERE id = ?')
@@ -103,17 +106,29 @@ function createIssue(db, project, fields) {
         now
       );
     db.prepare('UPDATE projects SET next_issue_number = ? WHERE id = ?').run(number + 1, project.id);
+    history.recordCreated(db, info.lastInsertRowid, actor, now);
     return getIssue(db, info.lastInsertRowid);
   })();
 }
 
 const UPDATABLE = ['type', 'title', 'description', 'status', 'priority', 'assignee_id', 'epic_id', 'rank', 'resolution'];
 
-// Applies a partial update atomically.
+// Clears the epic of every child of `epicId`, recording an epic change on each.
+function releaseChildren(db, epicId, actor, when) {
+  const children = db.prepare(`${SELECT} ${FROM} WHERE i.epic_id = ?`).all(epicId);
+  for (const child of children) {
+    history.recordChanges(db, child.id, actor, child, { ...child, epic_id: null }, when);
+  }
+  db.prepare('UPDATE issues SET epic_id = NULL WHERE epic_id = ?').run(epicId);
+}
+
+// Applies a partial update atomically and records what actually changed
+// (the automatic resolution included) as one history event.
 // options.clearChildren: also clear epic_id on items pointing at this one
 // (used when an epic-type item changes to a non-epic type).
-function updateIssue(db, id, changes, options = {}) {
+function updateIssue(db, id, changes, actor, options = {}) {
   return db.transaction(() => {
+    const now = new Date().toISOString();
     const current = getIssue(db, id);
     const next = { ...changes };
     const statusChanged = next.status !== undefined && next.status !== current.status;
@@ -130,11 +145,10 @@ function updateIssue(db, id, changes, options = {}) {
       }
     }
     sets.push('updated_at = ?');
-    params.push(new Date().toISOString());
+    params.push(now);
     db.prepare(`UPDATE issues SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);
-    if (options.clearChildren) {
-      db.prepare('UPDATE issues SET epic_id = NULL WHERE epic_id = ?').run(id);
-    }
+    history.recordChanges(db, id, actor, current, getIssue(db, id), now);
+    if (options.clearChildren) releaseChildren(db, id, actor, now);
     if (changes.rank !== undefined) {
       rebalanceIfNeeded(db, current.project_id, next.status ?? current.status, id);
     }
@@ -142,12 +156,14 @@ function updateIssue(db, id, changes, options = {}) {
   })();
 }
 
-// Deletes a work item and its discussion messages. Children of a deleted epic
-// keep existing (with their own messages) with no epic. Messages are deleted
+// Deletes a work item with its discussion messages and history. Children of
+// a deleted epic keep existing (with their own messages) with no epic, and
+// each gets an epic change in its history. Messages and history are deleted
 // explicitly rather than relying on the foreign-key cascade alone.
-function deleteIssue(db, id) {
+function deleteIssue(db, id, actor) {
   db.transaction(() => {
-    db.prepare('UPDATE issues SET epic_id = NULL WHERE epic_id = ?').run(id);
+    releaseChildren(db, id, actor, new Date().toISOString());
+    history.deleteHistory(db, id);
     db.prepare('DELETE FROM comments WHERE issue_id = ?').run(id);
     db.prepare('DELETE FROM issues WHERE id = ?').run(id);
   })();
@@ -155,6 +171,7 @@ function deleteIssue(db, id) {
 
 module.exports = {
   RANK_STEP,
+  UPDATABLE,
   listIssues,
   getIssue,
   countChildren,

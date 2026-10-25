@@ -6,6 +6,7 @@ const projectRoutes = require('./routes/projects');
 const issueRoutes = require('./routes/issues');
 const metaRoutes = require('./routes/meta');
 const commentRoutes = require('./routes/comments');
+const historyRoutes = require('./routes/history');
 const authRoutes = require('./routes/auth');
 const auth = require('./auth');
 
@@ -23,7 +24,7 @@ function createApp(db) {
   app.use('/api/auth', express.json());
   app.use('/api', authRoutes(db));
   app.use('/api', auth.requireUser, express.json());
-  app.use('/api', metaRoutes(db), projectRoutes(db), issueRoutes(db), commentRoutes(db));
+  app.use('/api', metaRoutes(db), projectRoutes(db), issueRoutes(db), commentRoutes(db), historyRoutes(db));
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
   // Express 5 forwards thrown errors (sync and async) here.

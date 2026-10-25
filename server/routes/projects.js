@@ -13,7 +13,7 @@ const {
   checkProjectStatus,
   checkIssueFields,
 } = require('../validation');
-const { loadProject, assertWritable } = require('./guards');
+const { loadProject, assertWritable, actorFrom } = require('./guards');
 
 function projectRoutes(db) {
   const router = express.Router();
@@ -72,7 +72,7 @@ function projectRoutes(db) {
       ...fields,
       status: defaultStatus(),
       reporter_id: req.user.id, // never from the body
-    });
+    }, actorFrom(req));
     res.status(201).json(created);
   });
 

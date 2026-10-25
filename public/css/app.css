@@ -210,3 +210,23 @@ dialog input, dialog textarea { width: 100%; }
 .message-actions { margin-top: 4px; }
 button.link { border: none; background: none; padding: 0; color: var(--primary); font-size: 12px; }
 button.link.danger { color: var(--danger); }
+
+/* Discussion | History tabs in the detail dialog. */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-top: 6px; }
+.tabs[hidden] { display: none; }
+.tab { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 6px 10px; color: var(--muted); font-weight: 600; }
+.tab.active, .tab[aria-selected="true"] { color: var(--primary); border-bottom-color: var(--primary); }
+.tabs + .discussion { border-top: none; margin-top: 0; }
+
+/* History tab: read-only list, newest first, scrolling like the thread. */
+.history { padding-top: 10px; }
+.history[hidden], .history-note[hidden], .history-error[hidden] { display: none; }
+.history-toolbar { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+label.history-filter { flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 12px; }
+.history-note { color: var(--muted); margin: 4px 0; }
+.history-error { display: flex; align-items: center; gap: 8px; }
+.history-list { list-style: none; margin: 0; padding: 0; max-height: 40vh; overflow-y: auto; }
+.history-item { border-top: 1px solid var(--border); padding: 8px 0; }
+.history-item:first-child { border-top: none; }
+.history-changes { list-style: none; margin: 4px 0 0; padding: 0; word-break: break-word; }
+.history + .actions, .history .actions { margin-top: 6px; }

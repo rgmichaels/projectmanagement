@@ -5,7 +5,7 @@ const projects = require('../data/projects');
 const issues = require('../data/issues');
 const { isEpicType } = require('../types');
 const { checkIssueFields } = require('../validation');
-const { loadIssue, assertWritable } = require('./guards');
+const { loadIssue, assertWritable, actorFrom } = require('./guards');
 
 function issueRoutes(db) {
   const router = express.Router();
@@ -22,13 +22,13 @@ function issueRoutes(db) {
     // An epic that stops being an epic releases its children.
     const clearChildren =
       changes.type !== undefined && isEpicType(issue.type) && !isEpicType(changes.type);
-    res.json(issues.updateIssue(db, issue.id, changes, { clearChildren }));
+    res.json(issues.updateIssue(db, issue.id, changes, actorFrom(req), { clearChildren }));
   });
 
   router.delete('/issues/:id', (req, res) => {
     const issue = loadIssue(db, req.params.id);
     assertWritable(projects.getProject(db, issue.project_id));
-    issues.deleteIssue(db, issue.id);
+    issues.deleteIssue(db, issue.id, actorFrom(req));
     res.status(204).end();
   });
 

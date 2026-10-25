@@ -1,5 +1,7 @@
 // Opens the SQLite database (better-sqlite3), creates the schema, applies the
 // additive migrations and seeds the fixed user list on first start. This is the single schema/setup file.
+// New tables (comments, sessions, work item history) are created with
+// CREATE TABLE IF NOT EXISTS, so existing databases gain them on start.
 // Status, type and resolution columns deliberately have no CHECK constraints:
 // their valid values come from server/statuses.js, server/types.js and
 // server/resolutions.js.
@@ -77,6 +79,36 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+-- Work item history (server/data/history.js): one event per save, one change
+-- row per changed field (field keys from server/historyFields.js). actor_name,
+-- old_value and new_value are display snapshots; old_id/new_id are plain
+-- integers with no foreign key so a deleted epic or user leaves history as is.
+-- Existing databases gain these tables on start; existing items get no
+-- backfilled history.
+CREATE TABLE IF NOT EXISTS issue_history_events (
+  id INTEGER PRIMARY KEY,
+  issue_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  actor_id INTEGER REFERENCES users(id),
+  actor_name TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_history_events_issue ON issue_history_events(issue_id, id);
+
+CREATE TABLE IF NOT EXISTS issue_history_changes (
+  id INTEGER PRIMARY KEY,
+  event_id INTEGER NOT NULL REFERENCES issue_history_events(id) ON DELETE CASCADE,
+  field TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  old_id INTEGER,
+  new_id INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_history_changes_event ON issue_history_changes(event_id);
+CREATE INDEX IF NOT EXISTS idx_history_changes_field ON issue_history_changes(field);
 `;
 
 // Seed data: a small fixed list of placeholder people (no user management in
