@@ -144,6 +144,15 @@ table.projects tr.is-archived td { color: var(--muted); background: #fafbfc; }
 /* Neutral fallback for a type with no defined styling. */
 .type-badge.type-fallback { background: var(--neutral); }
 .epic-chip { background: #eae6ff; color: #403294; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
+.resolution-label {
+  --resolution-color: var(--neutral);
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--resolution-color);
+  color: #fff;
+  font-weight: 600;
+  font-size: 11px;
+}
 .priority { border: 1px solid var(--border); padding: 0 4px; border-radius: 3px; }
 .avatar {
   margin-left: auto;

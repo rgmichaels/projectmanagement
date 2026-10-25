@@ -1,7 +1,8 @@
 // Board page: columns from the status list, cards styled from the type list,
 // swimlanes (assignee / epic / priority), drag-and-drop and the detail view
 // with its Discussion thread.
-// Status, type and priority names all come from the API; none are named here.
+// Status, type, priority and resolution names all come from the API; none are
+// named here. The terminal status and the default resolution are the server's.
 (() => {
   const GROUP_BY_STORAGE_KEY = 'pm.groupBy';
   const POSTING_AS_STORAGE_KEY = 'pm.postingAs';
@@ -14,6 +15,8 @@
   const state = {
     project: null,
     statuses: [],
+    terminalStatus: null,
+    resolutions: [],
     types: [],
     priorities: [],
     defaultPriority: null,
@@ -37,6 +40,7 @@
     form: document.getElementById('detail-form'),
     detailTitle: document.getElementById('detail-title'),
     statusField: document.getElementById('status-field'),
+    resolutionField: document.getElementById('resolution-field'),
     epicField: document.getElementById('epic-field'),
     epicLabel: document.getElementById('epic-label'),
     detailError: document.getElementById('detail-error'),
@@ -77,6 +81,11 @@
   const userById = (id) => state.users.find((u) => u.id === id);
   const itemById = (id) => state.items.find((i) => i.id === id);
   const byRank = (a, b) => a.rank - b.rank || a.id - b.id;
+  const isTerminal = (status) => status === state.terminalStatus;
+  const defaultResolution = () => {
+    const r = state.resolutions.find((x) => x.isDefault) || state.resolutions[0];
+    return r ? r.name : '';
+  };
 
   function initials(name) {
     return name.split(/\s+/).filter(Boolean).map((p) => p[0].toUpperCase()).slice(0, 2).join('');
@@ -179,6 +188,7 @@
         el('span', { class: 'card-key' }, item.key),
         epic ? el('span', { class: 'epic-chip', title: epic.title }, epic.key) : null,
         el('span', { class: 'priority', title: `Priority: ${item.priority}` }, item.priority),
+        resolutionLabel(item),
         commentChip(item.comment_count || 0),
         el(
           'span',
@@ -203,6 +213,18 @@
       });
     }
     return card;
+  }
+
+  // Shown only in the terminal column, from the server's value.
+  function resolutionLabel(item) {
+    if (!isTerminal(item.status) || !item.resolution) return null;
+    const r = state.resolutions.find((x) => x.name === item.resolution);
+    const color = r && r.color;
+    return el(
+      'span',
+      { class: 'resolution-label', style: color ? `--resolution-color: ${color}` : undefined, title: `Resolution: ${item.resolution}` },
+      item.resolution
+    );
   }
 
   function commentChip(n) {
@@ -353,7 +375,9 @@
     Object.assign(item, patch);
     render();
     try {
-      await api.patch(`/api/issues/${item.id}`, patch);
+      // The server sets or clears the resolution; show its answer at once.
+      Object.assign(item, await api.patch(`/api/issues/${item.id}`, patch));
+      render();
       await reloadItems();
     } catch (err) {
       Object.assign(item, snapshot);
@@ -369,6 +393,20 @@
   function fillSelect(select, options, value) {
     select.replaceChildren(...options.map((o) => el('option', { value: o.value }, o.label)));
     select.value = value;
+  }
+
+  // The resolution control is shown only while the status field is the
+  // terminal status. Entering it from another status selects the default.
+  function syncResolutionField() {
+    const f = els.form.elements;
+    const show = Boolean(editing) && isTerminal(f.status.value);
+    if (show && els.resolutionField.hidden) {
+      const current = editing && isTerminal(editing.status) ? editing.resolution : null;
+      const names = state.resolutions.map((r) => r.name);
+      if (current && !names.includes(current)) names.push(current); // a value since removed from the list
+      fillSelect(f.resolution, names.map((n) => ({ value: n, label: n })), current || defaultResolution());
+    }
+    els.resolutionField.hidden = !show;
   }
 
   function syncEpicField() {
@@ -403,6 +441,8 @@
       item && item.epic_id ? String(item.epic_id) : ''
     );
     els.statusField.hidden = !item;
+    els.resolutionField.hidden = true;
+    syncResolutionField();
     syncEpicField();
 
     for (const field of els.form.querySelectorAll('input, select, textarea')) field.disabled = ro;
@@ -425,10 +465,13 @@
       description: f.description.value,
     };
     if (editing) values.status = f.status.value;
+    // Left out for other statuses: the server clears it.
+    if (editing && isTerminal(values.status)) values.resolution = f.resolution.value;
     return values;
   }
 
   els.form.elements.type.addEventListener('change', syncEpicField);
+  els.form.elements.status.addEventListener('change', syncResolutionField);
 
   els.form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -714,9 +757,11 @@
       return;
     }
     try {
-      const [project, statuses, types, priorities, users] = await Promise.all([
+      const [project, statuses, terminal, resolutions, types, priorities, users] = await Promise.all([
         api.get(`/api/projects/${encodeURIComponent(projectId)}`),
         api.get('/api/statuses'),
+        api.get('/api/terminal-status'),
+        api.get('/api/resolutions'),
         api.get('/api/types'),
         api.get('/api/priorities'),
         api.get('/api/users'),
@@ -724,6 +769,8 @@
       Object.assign(state, {
         project,
         statuses,
+        terminalStatus: terminal.status,
+        resolutions,
         types,
         priorities: priorities.priorities,
         defaultPriority: priorities.default,

@@ -1,11 +1,15 @@
 // Data access for work items (table `issues`). All SQL for work items lives here.
 // Validation (allowed statuses, types, archived guard) happens in the routes;
-// these functions assume their input is already valid.
+// these functions assume their input is already valid. The resolution rule
+// (set the default on entering the terminal status, clear it on leaving) is
+// applied here so the status and resolution are always written together.
+const { isTerminalStatus } = require('../statuses');
+const { defaultResolution } = require('../resolutions');
 
 const RANK_STEP = 1000;
 
 const COLUMNS =
-  'id, project_id, number, key, type, title, description, status, priority, assignee_id, epic_id, rank, created_at, updated_at';
+  'id, project_id, number, key, type, title, description, status, priority, assignee_id, epic_id, rank, resolution, created_at, updated_at';
 
 // Each item carries comment_count (number of discussion messages) so the
 // board needs no extra request per card.
@@ -50,6 +54,17 @@ function rebalanceIfNeeded(db, projectId, status, movedId) {
   rows.forEach((r, i) => update.run((i + 1) * RANK_STEP, r.id));
 }
 
+// The resolution a work item should have after a write. Outside the terminal
+// status it is always null. In it: the supplied value if any, otherwise the
+// current one, falling back to the default on entering the status (or if a
+// terminal item somehow has none).
+function resolutionFor(status, supplied, current, entering) {
+  if (!isTerminalStatus(status)) return null;
+  if (supplied) return supplied;
+  if (entering || !current) return defaultResolution();
+  return current;
+}
+
 // Creates a work item, allocating the next per-project number. Numbers are
 // never reused because next_issue_number only ever increases.
 function createIssue(db, project, fields) {
@@ -61,8 +76,8 @@ function createIssue(db, project, fields) {
     const info = db
       .prepare(
         `INSERT INTO issues (project_id, number, key, type, title, description, status, priority,
-           assignee_id, epic_id, rank, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           assignee_id, epic_id, rank, resolution, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         project.id,
@@ -76,6 +91,7 @@ function createIssue(db, project, fields) {
         fields.assignee_id ?? null,
         fields.epic_id ?? null,
         bottomRank(db, project.id, fields.status),
+        resolutionFor(fields.status, fields.resolution, null, true),
         now,
         now
       );
@@ -84,7 +100,7 @@ function createIssue(db, project, fields) {
   })();
 }
 
-const UPDATABLE = ['type', 'title', 'description', 'status', 'priority', 'assignee_id', 'epic_id', 'rank'];
+const UPDATABLE = ['type', 'title', 'description', 'status', 'priority', 'assignee_id', 'epic_id', 'rank', 'resolution'];
 
 // Applies a partial update atomically.
 // options.clearChildren: also clear epic_id on items pointing at this one
@@ -97,6 +113,7 @@ function updateIssue(db, id, changes, options = {}) {
     if (statusChanged && next.rank === undefined) {
       next.rank = bottomRank(db, current.project_id, next.status);
     }
+    next.resolution = resolutionFor(next.status ?? current.status, next.resolution, current.resolution, statusChanged);
     const sets = [];
     const params = [];
     for (const field of UPDATABLE) {

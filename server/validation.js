@@ -1,6 +1,7 @@
 // Request validation for projects, work items and discussion messages. Allowed values come from the
 // single-source lists; nothing here names a specific status or type.
-const { isValidStatus } = require('./statuses');
+const { isValidStatus, defaultStatus, isTerminalStatus, terminalStatus } = require('./statuses');
+const { isValidResolution } = require('./resolutions');
 const { isValidType, isEpicType } = require('./types');
 const { isValidPriority } = require('./priorities');
 const { isValidProjectStatus } = require('./projectStatuses');
@@ -95,6 +96,24 @@ function checkIssueFields(db, project, body, existing) {
   if (body.rank !== undefined && !creating) {
     if (!Number.isInteger(body.rank)) throw new ValidationError('Rank must be an integer.');
     out.rank = body.rank;
+  }
+
+  // A resolution is only valid on an item that is (or is being moved to) the
+  // terminal status, and an item there must keep one. Omitting it lets the
+  // data-access layer set the default or clear it.
+  if (body.resolution !== undefined) {
+    const finalStatus = creating ? defaultStatus() : out.status ?? existing.status;
+    if (body.resolution === null) {
+      if (isTerminalStatus(finalStatus)) {
+        throw new ValidationError(`A work item in ${terminalStatus()} must have a resolution.`);
+      }
+    } else {
+      if (!isValidResolution(body.resolution)) throw new ValidationError(`Unknown resolution: ${body.resolution}`);
+      if (!isTerminalStatus(finalStatus)) {
+        throw new ValidationError(`A resolution can only be set on a work item in ${terminalStatus()}.`);
+      }
+      out.resolution = body.resolution;
+    }
   }
 
   const finalType = out.type ?? existing?.type;

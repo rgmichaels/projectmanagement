@@ -38,6 +38,30 @@ test('no hard-coded work item status or type names outside their list files (AC 
   assert.deepEqual(offenders, []);
 });
 
+test('no hard-coded resolution names outside server/resolutions.js (resolution AC 3)', () => {
+  const names = ['Fixed', "Won't Do", 'Duplicate', 'Cannot Reproduce'];
+  const offenders = [];
+  for (const file of sourceFiles) {
+    if (rel(file) === 'server/resolutions.js') continue;
+    const text = fs.readFileSync(file, 'utf8');
+    for (const name of names) {
+      const pattern = new RegExp(`(['"\`]${name}['"\`])|(>\\s*${name}\\s*<)`);
+      if (pattern.test(text)) offenders.push(`${rel(file)}: ${name}`);
+    }
+  }
+  assert.deepEqual(offenders, []);
+});
+
+test('the terminal status is derived only in server/statuses.js (resolution AC 2)', () => {
+  // Nothing else picks the last status itself; the client asks the server.
+  const pattern = /STATUSES\[STATUSES\.length - 1\]|statuses\[(state\.)?statuses\.length - 1\]|\.at\(-1\)/;
+  const offenders = sourceFiles
+    .filter((f) => rel(f) !== 'server/statuses.js')
+    .filter((f) => pattern.test(fs.readFileSync(f, 'utf8')))
+    .map(rel);
+  assert.deepEqual(offenders, []);
+});
+
 test('the epic behaviour keys off the isEpic flag (AC 26)', () => {
   const { TYPES } = require('../server/types');
   assert.equal(TYPES.filter((t) => t.isEpic).length, 1);
@@ -79,7 +103,7 @@ test('Discussion buttons cannot submit the method="dialog" form (ticket-discussi
   }
 });
 
-test('schema has no CHECK constraint on status or type (AC 27)', () => {
+test('schema has no CHECK constraint on status, type or resolution (AC 27, resolution AC 3)', () => {
   const db = openDb(tempDbPath());
   const { sql } = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'issues'").get();
   db.close();

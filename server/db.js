@@ -1,10 +1,13 @@
 // Opens the SQLite database (better-sqlite3), creates the schema and seeds the
 // fixed user list on first start. This is the single schema/setup file.
-// Status and type columns deliberately have no CHECK constraints: their valid
-// values come from server/statuses.js and server/types.js.
+// Status, type and resolution columns deliberately have no CHECK constraints:
+// their valid values come from server/statuses.js, server/types.js and
+// server/resolutions.js.
 const fs = require('node:fs');
 const path = require('node:path');
 const Database = require('better-sqlite3');
+const { terminalStatus } = require('./statuses');
+const { defaultResolution } = require('./resolutions');
 
 const DEFAULT_DB_PATH = path.join(__dirname, '..', 'data', 'app.db');
 
@@ -39,6 +42,7 @@ CREATE TABLE IF NOT EXISTS issues (
   rank INTEGER NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
+  resolution TEXT,
   UNIQUE (project_id, number)
 );
 
@@ -63,6 +67,18 @@ CREATE INDEX IF NOT EXISTS idx_comments_issue ON comments(issue_id);
 // Seed data: a small fixed list of placeholder people (no user management in the UI).
 const SEED_USERS = ['Alex Morgan', 'Blake Chen', 'Casey Rivera', 'Dana Patel'];
 
+// Databases created before the resolution spec lack issues.resolution. Add it
+// (idempotent: only when missing) and give work items already in the terminal
+// status the default resolution, so "terminal status <=> resolution" holds.
+function migrateResolution(db) {
+  const columns = db.prepare('PRAGMA table_info(issues)').all().map((c) => c.name);
+  if (columns.includes('resolution')) return;
+  db.transaction(() => {
+    db.exec('ALTER TABLE issues ADD COLUMN resolution TEXT');
+    db.prepare('UPDATE issues SET resolution = ? WHERE status = ?').run(defaultResolution(), terminalStatus());
+  })();
+}
+
 function openDb(dbPath = DEFAULT_DB_PATH) {
   if (dbPath !== ':memory:') {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -70,6 +86,7 @@ function openDb(dbPath = DEFAULT_DB_PATH) {
   const db = new Database(dbPath);
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
+  migrateResolution(db);
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
   if (n === 0) {
     const insert = db.prepare('INSERT INTO users (name) VALUES (?)');

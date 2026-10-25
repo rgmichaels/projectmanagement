@@ -12,4 +12,14 @@ function defaultStatus() {
   return STATUSES[0];
 }
 
-module.exports = { STATUSES, isValidStatus, defaultStatus };
+// The terminal status is the last entry. Only work items in it carry a
+// resolution (see server/resolutions.js).
+function terminalStatus() {
+  return STATUSES[STATUSES.length - 1];
+}
+
+function isTerminalStatus(name) {
+  return name === terminalStatus();
+}
+
+module.exports = { STATUSES, isValidStatus, defaultStatus, terminalStatus, isTerminalStatus };
