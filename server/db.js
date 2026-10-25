@@ -10,16 +10,23 @@ const path = require('node:path');
 const Database = require('better-sqlite3');
 const { terminalStatus } = require('./statuses');
 const { defaultResolution } = require('./resolutions');
+const { defaultGroup, initialAdminGroup } = require('./groups');
 
 const DEFAULT_DB_PATH = path.join(__dirname, '..', 'data', 'app.db');
+
+// A string literal for SQL text (only used for values from our own lists).
+const sqlText = (value) => `'${String(value).replace(/'/g, "''")}'`;
 
 const SCHEMA = `
 -- username is the sign-in name (unique, case-insensitive: see the index made
 -- in migrateUsername). Databases created before it get it via migrateUsername.
+-- group_name is the permission group (server/groups.js; no CHECK constraint;
+-- "group" is an SQL keyword). Older databases get it via migrateGroups.
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
-  username TEXT NOT NULL
+  username TEXT NOT NULL,
+  group_name TEXT NOT NULL DEFAULT ${sqlText(defaultGroup())}
 );
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -150,12 +157,14 @@ CREATE INDEX IF NOT EXISTS idx_attachments_issue ON attachments(issue_id, id);
 `;
 
 // Seed data: a small fixed list of placeholder people (no user management in
-// the UI). `name` is the display name, `username` the sign-in name.
+// the UI). `name` is the display name, `username` the sign-in name, `group`
+// the permission group: the first user is the initial Admin, the rest get the
+// default group (no Viewer is seeded).
 const SEED_USERS = [
-  { name: 'Alex Morgan', username: 'alex' },
-  { name: 'Blake Chen', username: 'blake' },
-  { name: 'Casey Rivera', username: 'casey' },
-  { name: 'Dana Patel', username: 'dana' },
+  { name: 'Alex Morgan', username: 'alex', group: initialAdminGroup() },
+  { name: 'Blake Chen', username: 'blake', group: defaultGroup() },
+  { name: 'Casey Rivera', username: 'casey', group: defaultGroup() },
+  { name: 'Dana Patel', username: 'dana', group: defaultGroup() },
 ];
 
 // The username derived from a display name: its first word, lower-cased
@@ -207,6 +216,22 @@ function migrateResolution(db) {
   })();
 }
 
+// Databases created before the permission-groups spec lack users.group_name.
+// Add it (idempotent: only when missing); everyone gets the default group
+// and the lowest-id user becomes the initial Admin, so at least one user can
+// manage groups. Comments, items and history are untouched.
+function migrateGroups(db) {
+  const columns = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+  if (columns.includes('group_name')) return;
+  db.transaction(() => {
+    db.exec(`ALTER TABLE users ADD COLUMN group_name TEXT NOT NULL DEFAULT ${sqlText(defaultGroup())}`);
+    const admins = db.prepare('SELECT COUNT(*) AS n FROM users WHERE group_name = ?').get(initialAdminGroup()).n;
+    if (admins === 0) {
+      db.prepare('UPDATE users SET group_name = ? WHERE id = (SELECT MIN(id) FROM users)').run(initialAdminGroup());
+    }
+  })();
+}
+
 function openDb(dbPath = DEFAULT_DB_PATH) {
   if (dbPath !== ':memory:') {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -217,10 +242,11 @@ function openDb(dbPath = DEFAULT_DB_PATH) {
   migrateResolution(db);
   migrateUsername(db);
   migrateReporter(db);
+  migrateGroups(db);
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
   if (n === 0) {
-    const insert = db.prepare('INSERT INTO users (name, username) VALUES (?, ?)');
-    db.transaction(() => SEED_USERS.forEach((u) => insert.run(u.name, u.username)))();
+    const insert = db.prepare('INSERT INTO users (name, username, group_name) VALUES (?, ?, ?)');
+    db.transaction(() => SEED_USERS.forEach((u) => insert.run(u.name, u.username, u.group)))();
   }
   return db;
 }

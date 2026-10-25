@@ -10,6 +10,8 @@ const { linkField } = require('../server/historyFields');
 const { STATUSES } = require('../server/statuses');
 const { TYPES } = require('../server/types');
 const links = require('../server/data/links');
+const { setUserGroup } = require('../server/data/users');
+const { initialAdminGroup } = require('../server/groups');
 
 let app;
 let users;
@@ -425,6 +427,8 @@ test('deleting a work item removes its links and writes partner events (AC 12, 1
   await addLink(c, { link_type: OTHER_DIRECTED.name, direction: 'outward', target_id: a.id }); // a target
   await addLink(b, { link_type: SYMMETRIC.name, target_id: c.id }); // unrelated to a
   const client = await app.client(users[2].username);
+  // Deleting needs delete-item (permission groups): make this user an Admin.
+  setUserGroup(app.db, users[2].id, initialAdminGroup());
 
   assert.equal((await client.del(`/api/issues/${a.id}`)).status, 204);
   const refs = app.db.prepare('SELECT COUNT(*) AS n FROM issue_links WHERE source_id = ? OR target_id = ?').get(a.id, a.id).n;

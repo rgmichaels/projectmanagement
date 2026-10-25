@@ -13,6 +13,8 @@ const { HISTORY_FIELDS, publicFields } = require('../server/historyFields');
 const issues = require('../server/data/issues');
 const history = require('../server/data/history');
 const { actorFrom } = require('../server/routes/guards');
+const { setUserGroup } = require('../server/data/users');
+const { initialAdminGroup } = require('../server/groups');
 
 let app;
 let users;
@@ -204,6 +206,8 @@ test('deleting an epic records an epic change on each child, by the acting user 
   const a = await createItem(app, project.id, { epic_id: epic.id });
   const b = await createItem(app, project.id, { epic_id: epic.id });
   const actor = users[1];
+  // Deleting needs delete-item (permission groups): make this user an Admin.
+  setUserGroup(app.db, actor.id, initialAdminGroup());
   assert.equal((await as(actor).del(`/api/issues/${epic.id}`)).status, 204);
   for (const child of [a, b]) {
     const [e] = await events(child.id);

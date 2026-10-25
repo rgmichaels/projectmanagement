@@ -27,8 +27,11 @@ function authRoutes(db) {
     res.json(users.listLoginUsers(db).map(publicUser));
   });
 
+  // The signed-in user with their group and its permission names; the
+  // client hides controls from `permissions` and never from a group name.
   router.get('/auth/me', auth.requireUser, (req, res) => {
-    res.json(publicUser(req.user));
+    const { group, permissions } = req.user;
+    res.json({ ...publicUser(req.user), group, permissions });
   });
 
   return router;

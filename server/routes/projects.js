@@ -13,7 +13,7 @@ const {
   checkProjectStatus,
   checkIssueFields,
 } = require('../validation');
-const { loadProject, assertWritable, actorFrom } = require('./guards');
+const { assertCan, loadProject, assertWritable, actorFrom } = require('./guards');
 
 function projectRoutes(db) {
   const router = express.Router();
@@ -23,6 +23,7 @@ function projectRoutes(db) {
   });
 
   router.post('/projects', (req, res) => {
+    assertCan(req.user, 'manage-projects');
     const body = req.body || {};
     const name = checkProjectName(body.name);
     const key = checkProjectKey(body.key);
@@ -40,6 +41,7 @@ function projectRoutes(db) {
   // Name, status and the archived flag. Archived is allowed only in an
   // archivable status; moving to a non-archivable status unarchives.
   router.patch('/projects/:id', (req, res) => {
+    assertCan(req.user, 'manage-projects');
     const project = loadProject(db, req.params.id);
     const body = req.body || {};
     const changes = {};
@@ -63,6 +65,7 @@ function projectRoutes(db) {
   });
 
   router.post('/projects/:id/issues', (req, res) => {
+    assertCan(req.user, 'write');
     const project = loadProject(db, req.params.id);
     assertWritable(project);
     const fields = checkIssueFields(db, project, req.body || {});

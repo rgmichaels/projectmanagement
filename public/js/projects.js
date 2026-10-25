@@ -1,4 +1,6 @@
 // Project list page: list, create, change status, archive/unarchive.
+// Create, status and archive controls are shown only with the
+// `manage-projects` permission (session.can); everyone can list and open.
 (() => {
   const els = {
     showArchived: document.getElementById('show-archived'),
@@ -14,6 +16,7 @@
   };
 
   let projectStatuses = [];
+  const canManage = () => session.can('manage-projects');
 
   function el(tag, attrs = {}, ...children) {
     const node = document.createElement(tag);
@@ -41,7 +44,9 @@
 
   function renderRow(project) {
     const actions = el('td', { class: 'row-actions' });
-    if (project.archived) {
+    if (!canManage()) {
+      // Read-only row: the status as text, no archive controls.
+    } else if (project.archived) {
       actions.append(el('button', { type: 'button', onclick: () => updateProject(project.id, { archived: false }) }, 'Unarchive'));
     } else if (isArchivable(project.status)) {
       actions.append(el('button', { type: 'button', onclick: () => updateProject(project.id, { archived: true }) }, 'Archive'));
@@ -53,7 +58,7 @@
       { class: project.archived ? 'is-archived' : '' },
       nameCell,
       el('td', {}, project.key),
-      el('td', {}, statusSelect(project)),
+      el('td', {}, canManage() ? statusSelect(project) : project.status),
       actions
     );
   }
@@ -82,6 +87,7 @@
   }
 
   function openForm() {
+    if (!canManage()) return;
     els.form.hidden = false;
     els.createError.textContent = '';
     els.form.elements.name.focus();
@@ -121,6 +127,8 @@
   (async () => {
     try {
       await session.ready; // the header is filled before the list loads
+      els.openCreate.hidden = !canManage();
+      els.emptyCreate.hidden = !canManage();
       projectStatuses = await api.get('/api/project-statuses');
     } catch (err) {
       els.listError.textContent = err.message;

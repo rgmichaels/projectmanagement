@@ -6,6 +6,8 @@
 // plus pasted-image tokens); pasting an image uploads it as an attachment.
 // Status, type, priority, resolution and link type names all come from the
 // API; none are named here. The terminal status and the default resolution are the server's.
+// What the signed-in user may change comes from their group's permission
+// names (session.can); the board never looks at a group name.
 (() => {
   const GROUP_BY_STORAGE_KEY = 'pm.groupBy';
   const COMMENT_MAX_LENGTH = 2000;
@@ -26,7 +28,7 @@
     historyFields: [], // [{ key, label, kind }] from the server, for the History filter
     linkOptions: [], // [{ link_type, direction, label }] from the server, for the Links form
     attachmentTypes: { types: [], max_bytes: 0, max_per_item: 0 }, // GET /api/attachment-types
-    me: null, // the signed-in user { id, name, username }
+    me: null, // the signed-in user { id, name, username, group, permissions }
     items: [],
     groupBy: localStorage.getItem(GROUP_BY_STORAGE_KEY) || 'none',
     collapsed: new Set(),
@@ -130,7 +132,11 @@
     return node;
   }
 
-  const readOnly = () => Boolean(state.project && state.project.archived);
+  // Nothing on the board can be changed when the project is archived or the
+  // user's group lacks `write` (a Viewer): no create, drag, edit, comment,
+  // link or attach controls. Reading everything still works.
+  const readOnly = () => Boolean(state.project && state.project.archived) || !session.can('write');
+  const canDeleteItems = () => session.can('delete-item');
   const typeOf = (name) => state.types.find((t) => t.name === name);
   const isEpicItem = (item) => Boolean(typeOf(item.type) && typeOf(item.type).isEpic);
   const epicType = () => state.types.find((t) => t.isEpic);
@@ -548,7 +554,7 @@
     els.historyField.disabled = false; // History stays usable when read-only
     els.saveBtn.hidden = ro;
     els.saveBtn.textContent = item ? 'Save' : 'Create';
-    els.deleteBtn.hidden = ro || !item;
+    els.deleteBtn.hidden = ro || !item || !canDeleteItems();
     els.activityTabs.hidden = !item;
     // Attachments first: the description and the thread render image tokens
     // against this item's attachment list.
@@ -613,7 +619,7 @@
   });
 
   els.deleteBtn.addEventListener('click', async () => {
-    if (!editing || readOnly()) return;
+    if (!editing || readOnly() || !canDeleteItems()) return;
     if (!confirm(`Delete ${editing.key}? This cannot be undone.`)) return;
     try {
       await api.del(`/api/issues/${editing.id}`);

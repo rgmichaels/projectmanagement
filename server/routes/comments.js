@@ -6,7 +6,7 @@ const express = require('express');
 const projects = require('../data/projects');
 const comments = require('../data/comments');
 const { checkCommentBody } = require('../validation');
-const { loadIssue, loadComment, assertWritable, assertOwnsComment } = require('./guards');
+const { assertCan, loadIssue, loadComment, assertWritable, assertOwnsComment } = require('./guards');
 
 function commentRoutes(db) {
   const router = express.Router();
@@ -20,6 +20,7 @@ function commentRoutes(db) {
   });
 
   router.post('/issues/:id/comments', (req, res) => {
+    assertCan(req.user, 'write');
     const issue = loadIssue(db, req.params.id);
     assertWritable(projects.getProject(db, issue.project_id));
     // Any author_id in the body is ignored.
@@ -27,8 +28,9 @@ function commentRoutes(db) {
     res.status(201).json(comments.createComment(db, issue.id, req.user.id, text));
   });
 
+  // Order: group (403), not found (404), not the author (403), archived (409).
   router.patch('/comments/:id', (req, res) => {
-    // Order: not found (404), not the author (403), archived (409).
+    assertCan(req.user, 'write');
     const comment = loadComment(db, req.params.id);
     assertOwnsComment(req.user, comment);
     assertWritable(projectOfComment(comment));
@@ -37,6 +39,7 @@ function commentRoutes(db) {
   });
 
   router.delete('/comments/:id', (req, res) => {
+    assertCan(req.user, 'write');
     const comment = loadComment(db, req.params.id);
     assertOwnsComment(req.user, comment);
     assertWritable(projectOfComment(comment));

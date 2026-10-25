@@ -20,7 +20,7 @@ const {
   matchesSignature,
 } = require('../attachmentTypes');
 const { ValidationError, checkFilename } = require('../validation');
-const { loadIssue, loadAttachment, assertWritable, assertOwnsAttachment, actorFrom } = require('./guards');
+const { assertCan, loadIssue, loadAttachment, assertWritable, assertOwnsAttachment, actorFrom } = require('./guards');
 
 const TOO_LARGE = 'File is too large (max 10 MB).';
 const NOT_ALLOWED = 'That file type is not allowed.';
@@ -91,10 +91,11 @@ function attachmentRoutes(db) {
     res.json(attachments.listAttachments(db, issue.id).map(toPublic));
   });
 
-  // Checks run in this order: work item (404), archived (409), file name
+  // Checks run in this order: group (403), work item (404), archived (409), file name
   // (400), type (415), count (409), then while streaming size (413),
   // signature (415) and empty (400). A rejected upload stores nothing.
   router.post('/issues/:id/attachments', async (req, res) => {
+    assertCan(req.user, 'write');
     const issue = loadIssue(db, req.params.id);
     assertWritable(projects.getProject(db, issue.project_id));
     const filename = checkFilename(req.get('X-Filename'));
@@ -151,8 +152,9 @@ function attachmentRoutes(db) {
     await sendFile(res, row, 'inline');
   });
 
-  // Order: not found (404), not the uploader (403), archived (409).
+  // Order: group (403), not found (404), not the uploader (403), archived (409).
   router.delete('/attachments/:id', async (req, res) => {
+    assertCan(req.user, 'write');
     const row = loadAttachment(db, req.params.id);
     assertOwnsAttachment(req.user, row);
     assertWritable(projects.getProject(db, loadIssue(db, row.issue_id).project_id));

@@ -7,7 +7,7 @@ const projects = require('../data/projects');
 const links = require('../data/links');
 const { getLinkType, DIRECTIONS } = require('../linkTypes');
 const { ValidationError } = require('../validation');
-const { loadIssue, loadLink, assertWritable, actorFrom } = require('./guards');
+const { assertCan, loadIssue, loadLink, assertWritable, actorFrom } = require('./guards');
 
 // A whole number (JSON number or digit string); null otherwise.
 function toInteger(raw) {
@@ -27,7 +27,9 @@ function linkRoutes(db) {
   // Body { link_type, direction, target_id }. `outward`: this item is the
   // source ("this blocks target"); `inward`: the target is the source.
   // Checks run in the order of docs/specs/work-item-links.md AC 5.
+  // The group check comes first (permission-groups AC 5).
   router.post('/issues/:id/links', (req, res) => {
+    assertCan(req.user, 'write');
     const body = req.body || {};
     const type = typeof body.link_type === 'string' ? getLinkType(body.link_type) : null;
     if (!type) throw new ValidationError(`Unknown link type: ${body.link_type}`);
@@ -48,6 +50,7 @@ function linkRoutes(db) {
   });
 
   router.delete('/issues/:id/links/:linkId', (req, res) => {
+    assertCan(req.user, 'write');
     const issue = loadIssue(db, req.params.id);
     const link = loadLink(db, req.params.linkId, issue.id);
     assertWritable(projects.getProject(db, issue.project_id));

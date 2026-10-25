@@ -475,3 +475,36 @@ test('the epic view renders text only and its buttons cannot submit the form (ep
   // The Epic field's link to the epic is a button too.
   assert.match(html, /<button type="button" id="epic-open"/);
 });
+
+// ---------- permission groups (docs/specs/permission-groups.md AC 2) ----------
+
+test('no group name outside server/groups.js (and db.js) in server/ or public/js/ (permission groups AC 2)', () => {
+  const { groupNames } = require('../server/groups');
+  const allowed = new Set(['server/groups.js', 'server/db.js']);
+  const files = sourceFiles.filter((f) => /^(server|public\/js)\//.test(rel(f)) && !allowed.has(rel(f)));
+  assert.ok(files.length > 0);
+  const offenders = [];
+  for (const file of files) {
+    const text = read(file);
+    for (const name of groupNames()) if (quoted(name).test(text)) offenders.push(`${rel(file)}: ${name}`);
+  }
+  assert.deepEqual(offenders, []);
+  // The client decides from the permission list, never from the group.
+  const client = sourceFiles.filter((f) => rel(f).startsWith('public/js/')).map(read).join('\n');
+  assert.doesNotMatch(client, /\.group\s*[!=]==?/, 'no comparison against a group');
+  assert.match(client, /permissions/);
+});
+
+test('every write route calls assertCan before loading records (permission groups AC 4, 5)', () => {
+  const routes = walk(path.join(root, 'server/routes')).filter((f) => f.endsWith('.js'));
+  const offenders = [];
+  for (const file of routes) {
+    const src = read(file);
+    const re = /router\.(post|put|patch|delete)\(\s*'([^']+)'[^\n]*\n\s*([^\n]*)/g;
+    for (const m of src.matchAll(re)) {
+      if (rel(file) === 'server/routes/auth.js') continue; // sign-in itself is public
+      if (!/^assertCan\(req\.user, '[a-z-]+'/.test(m[3])) offenders.push(`${rel(file)}: ${m[1]} ${m[2]}`);
+    }
+  }
+  assert.deepEqual(offenders, []);
+});

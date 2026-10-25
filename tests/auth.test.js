@@ -8,6 +8,7 @@ const { openDb } = require('../server/db');
 const { safeNext, loginUrl } = require('../public/js/redirect');
 const auth = require('../server/auth');
 const { startServer, tempDbPath, createProject, createItem } = require('./helpers');
+const { permissionsOf } = require('../server/groups');
 
 let app;
 let users;
@@ -92,7 +93,9 @@ test('GET /api/auth/users is public and lists id, name, username in /api/users o
 test('GET /api/auth/me: the user when signed in; 401 without, garbage, unknown token (AC 10, 11)', async () => {
   const me = await app.get('/api/auth/me');
   assert.equal(me.status, 200);
-  assert.deepEqual(me.body, users.find((u) => u.username === 'alex'));
+  const alex = users.find((u) => u.username === 'alex');
+  // Permission groups add the group's permission names (permission-groups AC 14).
+  assert.deepEqual(me.body, { ...alex, permissions: permissionsOf(alex.group) });
 
   assert.deepEqual((await app.raw('GET', '/api/auth/me')).body, { error: 'Sign in required.' });
   for (const cookie of ['pm_session=garbage', 'pm_session=%E0%A4%A', 'pm_session=', `pm_session=${'0'.repeat(64)}`, 'pm_session']) {

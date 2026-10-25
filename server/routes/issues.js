@@ -5,7 +5,7 @@ const projects = require('../data/projects');
 const issues = require('../data/issues');
 const { isEpicType } = require('../types');
 const { checkIssueFields, ValidationError } = require('../validation');
-const { loadIssue, assertWritable, actorFrom } = require('./guards');
+const { assertCan, loadIssue, assertWritable, actorFrom } = require('./guards');
 
 function issueRoutes(db) {
   const router = express.Router();
@@ -28,6 +28,7 @@ function issueRoutes(db) {
   });
 
   router.patch('/issues/:id', (req, res) => {
+    assertCan(req.user, 'write');
     const issue = loadIssue(db, req.params.id);
     const project = projects.getProject(db, issue.project_id);
     assertWritable(project);
@@ -39,6 +40,7 @@ function issueRoutes(db) {
   });
 
   router.delete('/issues/:id', async (req, res) => {
+    assertCan(req.user, 'delete-item');
     const issue = loadIssue(db, req.params.id);
     assertWritable(projects.getProject(db, issue.project_id));
     // Resolves once the item's attachment files have been removed.

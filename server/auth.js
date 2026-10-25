@@ -4,13 +4,15 @@
 //
 // A session is a row in `sessions` (server/data/sessions.js) whose random
 // token is sent as the HttpOnly cookie `pm_session`. Everything outside this
-// file sees only `req.user = { id, name, username }`. To move to SSO, replace
+// file sees only `req.user = { id, name, username, group, permissions }`. To move to SSO, replace
 // how `authenticate` produces req.user and the signIn/signOut steps; routes,
 // data access and the UI (apart from the sign-in page) stay as they are.
-// Permission groups would be added to req.user here (one lookup per request).
+// The group and its permissions (server/groups.js) are read from the user row
+// on every request, so a group change applies without signing in again.
 const crypto = require('node:crypto');
 const path = require('node:path');
 const sessions = require('./data/sessions');
+const { permissionsOf } = require('./groups');
 const { safeNext, loginUrl } = require('../public/js/redirect');
 
 const COOKIE_NAME = 'pm_session';
@@ -67,12 +69,20 @@ function resolveSession(db, req) {
   return { present: true, session };
 }
 
-// Middleware: sets req.user = { id, name, username } for a live session
-// (undefined otherwise) and clears a cookie that no longer works.
+// Middleware: sets req.user = { id, name, username, group, permissions } for
+// a live session (undefined otherwise) and clears a cookie that no longer works.
 function authenticate(db) {
   return (req, res, next) => {
     const { present, session } = resolveSession(db, req);
-    req.user = session ? { id: session.uid, name: session.user_name, username: session.username } : undefined;
+    req.user = session
+      ? {
+          id: session.uid,
+          name: session.user_name,
+          username: session.username,
+          group: session.user_group,
+          permissions: permissionsOf(session.user_group),
+        }
+      : undefined;
     if (present && !session) clearSessionCookie(res);
     next();
   };

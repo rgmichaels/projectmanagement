@@ -1,5 +1,7 @@
-// Shared route guards: loading records by id, the archived read-only rule and
-// ownership. Permission checks (later) belong here too, next to these.
+// Shared route guards: permission groups, loading records by id, the
+// archived read-only rule and ownership. Write routes check, in this order:
+// group (403, assertCan, before any record is loaded), record exists (404),
+// ownership (403), archived (409), then field validation (400).
 const projects = require('../data/projects');
 const issues = require('../data/issues');
 const comments = require('../data/comments');
@@ -7,6 +9,18 @@ const links = require('../data/links');
 const attachments = require('../data/attachments');
 const { UNKNOWN_ACTOR } = require('../data/history');
 const { ValidationError } = require('../validation');
+const { can, actionOf } = require('../groups');
+
+// The signed-in user's group must have `permission` (server/groups.js).
+// `project` is accepted for later per-project membership and ignored for now:
+// a project_members role would be consulted here, and only here.
+// eslint-disable-next-line no-unused-vars
+function assertCan(user, permission, project) {
+  if (!user || !can(user.group, permission)) {
+    const group = user && user.group ? user.group : 'none';
+    throw new ValidationError(`Your group (${group}) is not allowed to ${actionOf(permission)}.`, 403);
+  }
+}
 
 function parseId(raw) {
   const id = Number(raw);
@@ -65,7 +79,7 @@ function loadAttachment(db, rawId) {
   return attachment;
 }
 
-// Only an attachment's uploader may delete it (until permission groups exist).
+// Only an attachment's uploader may delete it (Admins included).
 function assertOwnsAttachment(user, attachment) {
   if (attachment.uploader_id !== user.id) {
     throw new ValidationError('You can only delete your own attachments.', 403);
@@ -79,6 +93,7 @@ function actorFrom(req) {
 }
 
 module.exports = {
+  assertCan,
   loadProject,
   loadIssue,
   loadComment,

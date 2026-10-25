@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Users</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">Projects</a>
+    <span class="crumb">/ Users</span>
+  </header>
+
+  <main class="page">
+    <section class="toolbar">
+      <h1>Users</h1>
+    </section>
+
+    <p class="error" id="users-error" role="alert"></p>
+
+    <!-- Shown only with the manage-users permission. Each group dropdown saves
+         as soon as it changes (PATCH /api/users/:id). -->
+    <table id="users-table" class="projects users" hidden>
+      <thead>
+        <tr><th>Name</th><th>Username</th><th>Group</th><th></th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </main>
+
+  <script src="js/redirect.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/session.js"></script>
+  <script src="js/users.js"></script>
+</body>
+</html>

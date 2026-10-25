@@ -307,3 +307,9 @@ label.history-filter { flex-direction: row; align-items: center; gap: 6px; margi
 .epic-child .epic-child-status, .epic-child .epic-child-assignee, .epic-child .epic-child-priority { font-size: 11px; color: var(--muted); white-space: nowrap; }
 .epic-actions { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
 .epic-actions select { flex: 1; min-width: 0; }
+
+/* Permission groups: header Users link and the Users page */
+.topbar .nav-link { color: #fff; text-decoration: none; font-weight: 600; }
+.topbar .nav-link:hover { text-decoration: underline; }
+table.users .save-status { color: var(--muted); font-size: 0.9em; }
+table[hidden] { display: none; }

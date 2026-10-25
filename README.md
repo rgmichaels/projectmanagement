@@ -2,7 +2,7 @@
 
 A proof-of-concept, Jira-style project management tool: work items, a kanban board, and swimlanes (by assignee, epic or priority), built because Jira is too expensive for a personal project.
 
-Status: board MVP implemented (spec: `docs/specs/board-mvp.md`), plus a Discussion thread on each work item (spec: `docs/specs/ticket-discussion.md`) a Resolution on done work items (spec: `docs/specs/resolution-and-comments.md`), a username sign-in (spec: `docs/specs/username-login.md`), a History of changes on each work item (spec: `docs/specs/ticket-history.md`), Links between work items (spec: `docs/specs/work-item-links.md`), and Attachments and pasted images (spec: `docs/specs/attachments-and-pasted-images.md`).
+Status: board MVP implemented (spec: `docs/specs/board-mvp.md`), plus a Discussion thread on each work item (spec: `docs/specs/ticket-discussion.md`) a Resolution on done work items (spec: `docs/specs/resolution-and-comments.md`), a username sign-in (spec: `docs/specs/username-login.md`), a History of changes on each work item (spec: `docs/specs/ticket-history.md`), Links between work items (spec: `docs/specs/work-item-links.md`), Attachments and pasted images (spec: `docs/specs/attachments-and-pasted-images.md`), and Permission groups (spec: `docs/specs/permission-groups.md`).
 
 ## Run
 
@@ -15,17 +15,35 @@ npm start
 
 Then open http://localhost:3000. If port 3000 is taken, run `PORT=3001 npm start` instead.
 
-The database is a single local SQLite file, `data/app.db` (git-ignored). It is created with an empty schema and the seeded users on first start. New tables (such as `comments` for the Discussion, `sessions` for sign-in and `issue_history_events`/`issue_history_changes` for History, `issue_links` for Links, `attachments` for Attachments) and columns (such as `issues.resolution`, `users.username` and `issues.reporter_id`) are added to an existing database automatically on the next start; when the `resolution` column is added, work items already in the last status get the default resolution, and existing users get a username from the first word of their name (`Alex Morgan` becomes `alex`; duplicates get `2`, `3`, ...). Work items that existed before History was added get no backfilled history; theirs starts with the next change. Delete it and restart to start fresh. Set `DB_PATH` to use a different file.
+The database is a single local SQLite file, `data/app.db` (git-ignored). It is created with an empty schema and the seeded users on first start. New tables (such as `comments` for the Discussion, `sessions` for sign-in and `issue_history_events`/`issue_history_changes` for History, `issue_links` for Links, `attachments` for Attachments) and columns (such as `issues.resolution`, `users.username`, `issues.reporter_id` and `users.group_name`) are added to an existing database automatically on the next start; when the `resolution` column is added, work items already in the last status get the default resolution, and existing users get a username from the first word of their name (`Alex Morgan` becomes `alex`; duplicates get `2`, `3`, ...). Work items that existed before History was added get no backfilled history; theirs starts with the next change. Delete it and restart to start fresh. Set `DB_PATH` to use a different file.
 
 Attachment files are stored in `data/files/` (git-ignored, created on start), one file per attachment named by a random key; set `FILES_DIR` to use a different directory. Back it up together with `data/app.db`.
 
 ## Signing in
 
-**This sign-in is not secure, on purpose.** There is no password: anyone who can reach the server can sign in as any user. It only tells the app who is acting (comment authors, who may edit a message, who reported a work item). Do not expose the server to the internet or use it with real or sensitive data. There is no HTTPS, no CSRF token (only `SameSite=Lax`) and no rate limiting.
+**This sign-in is not secure, on purpose.** There is no password: anyone who can reach the server can sign in as any user. It only tells the app who is acting (comment authors, who may edit a message, who reported a work item) and which permission group applies (see Permission groups). Do not expose the server to the internet or use it with real or sensitive data. There is no HTTPS, no CSRF token (only `SameSite=Lax`) and no rate limiting.
 
 Opening any page sends you to `/login.html`. Pick a user (`alex`, `blake`, `casey` or `dana`, the seeded users) and press Sign in; you land on the page you asked for. The header shows "Signed in as ..." and a Sign out button; to switch users, sign out first.
 
 The session is a random token in the `pm_session` cookie (HttpOnly, discarded when the browser closes) backed by a row in the `sessions` table, so it survives a server restart. A session unused for 12 hours expires. Every API route except `POST /api/auth/login`, `GET /api/auth/users` and `POST /api/auth/logout` returns 401 when signed out. All identity code is in `server/auth.js`, which is the piece to replace for SSO later; routes only read `req.user`.
+
+## Permission groups
+
+Every user is in one group, which decides what they may change (the server checks every write and answers 403 `Your group (<group>) is not allowed to ...` otherwise; reads are open to everyone signed in):
+
+| | Admin | Member | Viewer |
+|---|---|---|---|
+| Read everything (boards, items, comments, links, history, attachments) | yes | yes | yes |
+| Create, edit and move work items; comment; links; attachments | yes | yes | no |
+| Delete work items | yes | no | no |
+| Create, edit, archive projects | yes | no | no |
+| Change a user's group | yes | no | no |
+
+Only the author may edit or delete a message, and only the uploader may delete an attachment, whatever their group. The header shows `Signed in as <name> (<group>)`; controls the group may not use are hidden.
+
+**Changing a group:** an Admin opens **Users** in the header (`/users.html`) and picks the group from the dropdown; it is saved at once and applies to that user's next request, without signing in again. The last Admin cannot be changed to another group. A new database seeds `alex` as Admin and the others as Member; an existing database gets the `users.group_name` column on the next start, with the oldest user (lowest id) as Admin and everyone else Member.
+
+**Adding or changing a group:** edit `GROUPS` in `server/groups.js` (the only file that names groups and their permissions: `write`, `delete-item`, `manage-projects`, `manage-users`) and restart. The client only uses the permission list from `/api/auth/me`.
 
 ## Tests
 
@@ -50,10 +68,11 @@ Tests use the built-in `node:test` runner against the API, each with its own tem
 - `server/attachmentTypes.js`: the allowed attachment file types, the 10 MB size limit and the 25-per-item limit.
 - `server/data/storage.js`: the only code that reads or writes attachment bytes (`put`, `open`, `remove`, `exists`); replace it to move files off local disk.
 - `server/linkTypes.js`: the single list of link types (Blocks, Relates, Duplicates), with the label each end reads.
-- `server/auth.js`: sign-in sessions and the `pm_session` cookie; sets `req.user`.
+- `server/auth.js`: sign-in sessions and the `pm_session` cookie; sets `req.user` (with the user's group and permissions).
+- `server/groups.js`: the permission groups and what each may do; `server/routes/guards.js` `assertCan` enforces them.
 - `server/db.js`: schema, migrations and seed users. `server/data/`: the data-access layer; all SQL lives in these two places.
 - `server/routes/`: REST API (validation, archived read-only guard); routes call the data-access layer only.
-- `public/`: sign-in (`login.html`), project list (`index.html`), board (`board.html`), scripts in `public/js/`.
+- `public/`: sign-in (`login.html`), project list (`index.html`), board (`board.html`), users and groups (`users.html`, Admin only), scripts in `public/js/`.
 - `tests/`: API and source checks.
 
 ## Discussion
