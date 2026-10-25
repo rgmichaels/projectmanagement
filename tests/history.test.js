@@ -469,7 +469,7 @@ test('GET /api/history-fields lists the fields in display order (AC 18)', async 
   const res = await app.get('/api/history-fields');
   assert.equal(res.status, 200);
   assert.deepEqual(res.body, publicFields());
-  assert.deepEqual(res.body.map((f) => f.key), ['type', 'title', 'description', 'status', 'priority', 'assignee', 'epic', 'resolution']);
+  assert.deepEqual(res.body.map((f) => f.key), ['type', 'title', 'description', 'status', 'priority', 'assignee', 'epic', 'resolution', 'link']);
   for (const f of res.body) assert.deepEqual(Object.keys(f).sort(), ['key', 'kind', 'label']);
   assert.ok(!res.body.some((f) => f.key === 'rank'));
 });
@@ -481,5 +481,9 @@ test('every updatable column except rank has a history field (AC 28)', () => {
   const missing = issues.UPDATABLE.filter((c) => c !== 'rank' && !tracked.has(c));
   assert.deepEqual(missing, []);
   assert.ok(!tracked.has('rank'));
-  for (const f of HISTORY_FIELDS) assert.ok(issues.UPDATABLE.includes(f.column), `${f.key} tracks an updatable column`);
+  // A field with no issues column (links, docs/specs/work-item-links.md AC 19)
+  // is recorded by its own code and is not required to be updatable.
+  for (const f of HISTORY_FIELDS.filter((x) => x.column)) {
+    assert.ok(issues.UPDATABLE.includes(f.column), `${f.key} tracks an updatable column`);
+  }
 });

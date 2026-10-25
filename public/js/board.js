@@ -1,8 +1,8 @@
 // Board page: columns from the status list, cards styled from the type list,
 // swimlanes (assignee / epic / priority), drag-and-drop and the detail view
-// with its Discussion and History tabs.
-// Status, type, priority and resolution names all come from the API; none are
-// named here. The terminal status and the default resolution are the server's.
+// with its Links section and Discussion and History tabs.
+// Status, type, priority, resolution and link type names all come from the
+// API; none are named here. The terminal status and the default resolution are the server's.
 (() => {
   const GROUP_BY_STORAGE_KEY = 'pm.groupBy';
   const COMMENT_MAX_LENGTH = 2000;
@@ -21,6 +21,7 @@
     defaultPriority: null,
     users: [],
     historyFields: [], // [{ key, label, kind }] from the server, for the History filter
+    linkOptions: [], // [{ link_type, direction, label }] from the server, for the Links form
     me: null, // the signed-in user { id, name, username }
     items: [],
     groupBy: localStorage.getItem(GROUP_BY_STORAGE_KEY) || 'none',
@@ -69,6 +70,14 @@
     historyRetry: document.getElementById('history-retry'),
     historyList: document.getElementById('history-list'),
     historyMore: document.getElementById('history-more'),
+    links: document.getElementById('links'),
+    linksEmpty: document.getElementById('links-empty'),
+    linksList: document.getElementById('links-list'),
+    linkForm: document.getElementById('link-form'),
+    linkRelation: document.getElementById('link-relation'),
+    linkTarget: document.getElementById('link-target'),
+    linkAdd: document.getElementById('link-add'),
+    linkError: document.getElementById('link-error'),
   };
 
   // ---------- helpers ----------
@@ -475,10 +484,12 @@
     els.saveBtn.textContent = item ? 'Save' : 'Create';
     els.deleteBtn.hidden = ro || !item;
     els.activityTabs.hidden = !item;
+    openLinks(item);
     openDiscussion(item);
     openHistory(item);
     selectTab('discussion'); // the default each time a dialog opens
-    els.dialog.showModal();
+    // A linked item re-points the dialog that is already open.
+    if (!els.dialog.open) els.dialog.showModal();
   }
 
   function formValues() {
@@ -754,6 +765,7 @@
     discussion.issueId = null;
     discussion.editingId = null;
     historyView.issueId = null;
+    linksView.issueId = null;
   });
 
   // ---------- history ----------
@@ -898,6 +910,177 @@
     if (!historyView.loading) loadHistory(false);
   });
 
+  // ---------- links ----------
+  // Links of the open work item, grouped by how they read from it. Not part of
+  // the work item form: these handlers never submit, save or close it.
+  // Relationship labels come from the server; none are named here.
+
+  const linksView = {
+    issueId: null, // work item whose links are shown, or null
+    links: [], // as GET /api/issues/:id/links returns them (already ordered)
+    loadSeq: 0,
+    busy: false, // an add or remove is in flight
+  };
+
+  // The relationship dropdown: one option per entry of GET /api/link-types,
+  // valued by its index in state.linkOptions.
+  function fillLinkRelation() {
+    els.linkRelation.replaceChildren(
+      el('option', { value: '' }, 'Relationship...'),
+      ...state.linkOptions.map((o, i) => el('option', { value: String(i) }, o.label))
+    );
+  }
+
+  // The other work items of this project, from the items the board loaded.
+  function fillLinkTarget(item) {
+    const others = state.items.filter((i) => i.id !== item.id).sort((a, b) => a.number - b.number);
+    els.linkTarget.replaceChildren(
+      el('option', { value: '' }, 'Work item...'),
+      ...others.map((i) => el('option', { value: String(i.id) }, `${i.key} ${i.title}`))
+    );
+  }
+
+  function syncLinkAdd() {
+    els.linkAdd.disabled = linksView.busy || !els.linkRelation.value || !els.linkTarget.value;
+  }
+
+  function renderLinkRow(link) {
+    const type = typeOf(link.other.type);
+    const open = () => openLinked(link.other.id);
+    const li = el(
+      'li',
+      { class: 'links-row', 'data-id': link.id },
+      el(
+        'span',
+        {
+          class: 'type-icon links-type',
+          style: type && type.color ? `--type-color: ${type.color}` : undefined,
+          title: (type && type.label) || link.other.type,
+          'aria-hidden': 'true',
+        },
+        (type && type.icon) || '□'
+      ),
+      el('button', { type: 'button', class: 'link links-key', onclick: open }, link.other.key), // text, never parsed as HTML
+      el('button', { type: 'button', class: 'link links-title', onclick: open }, link.other.title),
+      el('span', { class: 'links-status' }, link.other.status)
+    );
+    if (!readOnly()) {
+      li.append(el('button', { type: 'button', class: 'link danger', onclick: () => removeLink(link) }, 'Remove'));
+    }
+    return li;
+  }
+
+  function renderLinks() {
+    const groups = new Map(); // label -> links, in the server's order
+    for (const link of linksView.links) {
+      if (!groups.has(link.label)) groups.set(link.label, []);
+      groups.get(link.label).push(link);
+    }
+    els.linksEmpty.hidden = linksView.links.length > 0;
+    els.linksList.replaceChildren(
+      ...[...groups].map(([label, list]) =>
+        el('div', { class: 'links-group' }, el('h4', {}, label), el('ul', {}, ...list.map(renderLinkRow)))
+      )
+    );
+  }
+
+  // Shows the section for an existing work item (not when creating) and
+  // loads its links.
+  function openLinks(item) {
+    linksView.issueId = item ? item.id : null;
+    linksView.links = [];
+    linksView.busy = false;
+    linksView.loadSeq += 1;
+    els.links.hidden = !item;
+    els.linkError.textContent = '';
+    if (!item) return;
+    els.linkForm.hidden = readOnly();
+    fillLinkRelation();
+    fillLinkTarget(item);
+    syncLinkAdd();
+    els.linksEmpty.hidden = true;
+    els.linksList.replaceChildren();
+    loadLinks(item.id);
+  }
+
+  async function loadLinks(issueId) {
+    const seq = ++linksView.loadSeq;
+    try {
+      const list = await api.get(`/api/issues/${issueId}/links`);
+      if (seq !== linksView.loadSeq || linksView.issueId !== issueId) return; // a newer dialog is open
+      linksView.links = list;
+      renderLinks();
+    } catch (err) {
+      if (linksView.issueId === issueId) els.linkError.textContent = `Could not load links: ${err.message}`;
+    }
+  }
+
+  // Re-points the open dialog at a linked work item.
+  async function openLinked(id) {
+    let item = itemById(id);
+    if (!item) {
+      try {
+        item = await api.get(`/api/issues/${id}`);
+      } catch (err) {
+        els.linkError.textContent = `Could not open the linked work item: ${err.message}`;
+        return;
+      }
+    }
+    openDetail(item);
+  }
+
+  els.linkRelation.addEventListener('change', syncLinkAdd);
+  els.linkTarget.addEventListener('change', syncLinkAdd);
+
+  els.linkAdd.addEventListener('click', async () => {
+    const issueId = linksView.issueId;
+    const option = state.linkOptions[Number(els.linkRelation.value)];
+    if (linksView.busy || readOnly() || issueId === null || !els.linkRelation.value || !option || !els.linkTarget.value) return;
+    els.linkError.textContent = '';
+    linksView.busy = true;
+    syncLinkAdd();
+    try {
+      await api.post(`/api/issues/${issueId}/links`, {
+        link_type: option.link_type,
+        direction: option.direction,
+        target_id: Number(els.linkTarget.value),
+      });
+      if (linksView.issueId === issueId) {
+        els.linkRelation.value = '';
+        els.linkTarget.value = '';
+        await loadLinks(issueId);
+      }
+      historySaved(issueId);
+    } catch (err) {
+      // The form keeps its values so the user can correct them.
+      if (linksView.issueId === issueId) els.linkError.textContent = `Could not add link: ${err.message}`;
+    } finally {
+      linksView.busy = false;
+      syncLinkAdd();
+    }
+  });
+
+  async function removeLink(link) {
+    const issueId = linksView.issueId;
+    if (linksView.busy || readOnly() || issueId === null) return;
+    els.linkError.textContent = '';
+    linksView.busy = true;
+    syncLinkAdd();
+    try {
+      await api.del(`/api/issues/${issueId}/links/${link.id}`);
+      if (linksView.issueId === issueId) {
+        linksView.links = linksView.links.filter((l) => l.id !== link.id);
+        renderLinks();
+      }
+      historySaved(issueId);
+    } catch (err) {
+      if (linksView.issueId === issueId) els.linkError.textContent = `Could not remove link: ${err.message}`;
+    } finally {
+      linksView.busy = false;
+      syncLinkAdd();
+    }
+  }
+
   // ---------- loading ----------
 
   async function reloadItems() {
@@ -925,7 +1108,7 @@
       return;
     }
     try {
-      const [project, statuses, terminal, resolutions, types, priorities, users, historyFields] = await Promise.all([
+      const [project, statuses, terminal, resolutions, types, priorities, users, historyFields, linkOptions] = await Promise.all([
         api.get(`/api/projects/${encodeURIComponent(projectId)}`),
         api.get('/api/statuses'),
         api.get('/api/terminal-status'),
@@ -934,6 +1117,7 @@
         api.get('/api/priorities'),
         api.get('/api/users'),
         api.get('/api/history-fields'),
+        api.get('/api/link-types'),
       ]);
       Object.assign(state, {
         project,
@@ -945,6 +1129,7 @@
         defaultPriority: priorities.default,
         users,
         historyFields,
+        linkOptions,
       });
       renderHeader();
       fillHistoryFilter();

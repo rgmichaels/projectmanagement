@@ -31,3 +31,8 @@ test('event lines: one per change, or "created this work item" (AC 1, 21)', () =
 test('markup in values stays literal text (AC 22)', () => {
   assert.equal(changeLine(change({ label: 'Title', old: '<b>x</b>', new: '<i>y</i>' })), 'changed Title from <b>x</b> to <i>y</i>');
 });
+
+test('a link change reads like any other field (links AC 16)', () => {
+  assert.equal(changeLine(change({ label: 'Link', kind: 'link', old: null, new: 'blocks PM-2' })), 'changed Link from None to blocks PM-2');
+  assert.equal(changeLine(change({ label: 'Link', kind: 'link', old: 'blocks PM-2', new: null })), 'changed Link from blocks PM-2 to None');
+});

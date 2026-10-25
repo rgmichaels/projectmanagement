@@ -5,7 +5,7 @@
 // Callers pass the same `db` from inside their own transaction, so an event
 // commits or rolls back with the write it describes. History is append-only:
 // rows go away only with their work item (deleteHistory).
-const { HISTORY_FIELDS, getField } = require('../historyFields');
+const { HISTORY_FIELDS, getField, linkField } = require('../historyFields');
 const users = require('./users');
 
 // The actor when no signed-in user is known (entries written before login).
@@ -50,9 +50,10 @@ function recordCreated(db, issueId, actor, when) {
 
 // Compares `before` and `after` (work item rows) over the history fields and
 // writes one `changed` event with a row per field whose value differs.
+// Fields with no column (links) are not compared; recordLinkChange writes them.
 // Writes nothing, and returns null, when nothing changed.
 function recordChanges(db, issueId, actor, before, after, when) {
-  const changed = HISTORY_FIELDS.filter((f) => clean(before[f.column]) !== clean(after[f.column]));
+  const changed = HISTORY_FIELDS.filter((f) => f.column && clean(before[f.column]) !== clean(after[f.column]));
   if (changed.length === 0) return null;
   const eventId = insertEvent(db, issueId, 'changed', actor, when);
   const insert = db.prepare(
@@ -63,6 +64,17 @@ function recordChanges(db, issueId, actor, before, after, when) {
     const newValue = snapshot(db, f, after[f.column]);
     insert.run(eventId, f.key, oldValue.text, newValue.text, oldValue.id, newValue.id);
   }
+  return eventId;
+}
+
+// One `changed` event with a single link change on `issueId`: oldText/oldId
+// for a removed link, newText/newId for an added one (the text is
+// `<label> <other key>` from this item's point of view).
+function recordLinkChange(db, issueId, actor, { oldText = null, newText = null, oldId = null, newId = null }, when) {
+  const eventId = insertEvent(db, issueId, 'changed', actor, when);
+  db.prepare(
+    'INSERT INTO issue_history_changes (event_id, field, old_value, new_value, old_id, new_id) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(eventId, linkField().key, clean(oldText), clean(newText), oldId, newId);
   return eventId;
 }
 
@@ -126,4 +138,4 @@ function deleteHistory(db, issueId) {
   db.prepare('DELETE FROM issue_history_events WHERE issue_id = ?').run(issueId);
 }
 
-module.exports = { UNKNOWN_ACTOR, recordCreated, recordChanges, listHistory, deleteHistory };
+module.exports = { UNKNOWN_ACTOR, recordCreated, recordChanges, recordLinkChange, listHistory, deleteHistory };

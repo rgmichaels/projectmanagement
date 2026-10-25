@@ -1,6 +1,7 @@
 // Read-only lists the client needs: users and the single-source lists for
 // statuses (and which one is terminal), types, priorities, resolutions,
-// project statuses and the fields that appear in work item history.
+// project statuses, the fields that appear in work item history and the
+// link relationships.
 const express = require('express');
 const users = require('../data/users');
 const { STATUSES, terminalStatus } = require('../statuses');
@@ -9,6 +10,7 @@ const { TYPES } = require('../types');
 const { PRIORITIES, DEFAULT_PRIORITY } = require('../priorities');
 const { PROJECT_STATUSES } = require('../projectStatuses');
 const { publicFields } = require('../historyFields');
+const { linkOptions } = require('../linkTypes');
 
 function metaRoutes(db) {
   const router = express.Router();
@@ -21,6 +23,7 @@ function metaRoutes(db) {
   router.get('/priorities', (req, res) => res.json({ priorities: PRIORITIES, default: DEFAULT_PRIORITY }));
   router.get('/project-statuses', (req, res) => res.json(PROJECT_STATUSES));
   router.get('/history-fields', (req, res) => res.json(publicFields()));
+  router.get('/link-types', (req, res) => res.json(linkOptions()));
   return router;
 }
 

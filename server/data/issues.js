@@ -8,6 +8,7 @@
 const { isTerminalStatus } = require('../statuses');
 const { defaultResolution } = require('../resolutions');
 const history = require('./history');
+const links = require('./links');
 
 const RANK_STEP = 1000;
 
@@ -156,13 +157,16 @@ function updateIssue(db, id, changes, actor, options = {}) {
   })();
 }
 
-// Deletes a work item with its discussion messages and history. Children of
-// a deleted epic keep existing (with their own messages) with no epic, and
-// each gets an epic change in its history. Messages and history are deleted
+// Deletes a work item with its discussion messages, links and history.
+// Children of a deleted epic keep existing (with their own messages) with no
+// epic, and each gets an epic change in its history; each former link partner
+// gets a link removal in its history. Messages, links and history are deleted
 // explicitly rather than relying on the foreign-key cascade alone.
 function deleteIssue(db, id, actor) {
   db.transaction(() => {
-    releaseChildren(db, id, actor, new Date().toISOString());
+    const now = new Date().toISOString();
+    releaseChildren(db, id, actor, now);
+    links.deleteLinksFor(db, id, actor, now);
     history.deleteHistory(db, id);
     db.prepare('DELETE FROM comments WHERE issue_id = ?').run(id);
     db.prepare('DELETE FROM issues WHERE id = ?').run(id);

@@ -3,6 +3,7 @@
 const projects = require('../data/projects');
 const issues = require('../data/issues');
 const comments = require('../data/comments');
+const links = require('../data/links');
 const { UNKNOWN_ACTOR } = require('../data/history');
 const { ValidationError } = require('../validation');
 
@@ -32,6 +33,16 @@ function loadComment(db, rawId) {
   return comment;
 }
 
+// A link that involves the work item `issueId` (as its source or target).
+function loadLink(db, rawId, issueId) {
+  const id = parseId(rawId);
+  const link = id && links.getLink(db, id);
+  if (!link || (link.source_id !== issueId && link.target_id !== issueId)) {
+    throw new ValidationError('Link not found.', 404);
+  }
+  return link;
+}
+
 // Work items of an archived project are read-only.
 function assertWritable(project) {
   if (project.archived) {
@@ -52,4 +63,4 @@ function actorFrom(req) {
   return req.user ? { id: req.user.id, name: req.user.name } : UNKNOWN_ACTOR;
 }
 
-module.exports = { loadProject, loadIssue, loadComment, assertWritable, assertOwnsComment, actorFrom };
+module.exports = { loadProject, loadIssue, loadComment, loadLink, assertWritable, assertOwnsComment, actorFrom };

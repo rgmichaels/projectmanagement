@@ -8,6 +8,10 @@
 //              long  : only that it changed, no old or new text
 //              user  : the id plus the user's display name
 //              issue : the id plus `<key> <title>` of that work item
+//              link  : a link added or removed, as `<label> <other key>`
+//                      from this item's point of view, plus the other id.
+//                      It has no column (column: null): recordChanges skips
+//                      it and server/data/links.js records it instead.
 // `rank` is deliberately absent: reorders are bookkeeping, not history.
 // To track a new editable column, add one entry here (tests/history.test.js
 // fails if an updatable column other than rank is missing). Field names only;
@@ -26,10 +30,16 @@ const HISTORY_FIELDS = [
   { key: 'assignee', column: 'assignee_id', label: 'Assignee', kind: 'user' },
   { key: 'epic', column: 'epic_id', label: epicType ? epicType.label || epicType.name : 'Parent', kind: 'issue' },
   { key: 'resolution', label: 'Resolution', kind: 'text' },
+  { key: 'link', column: null, label: 'Link', kind: 'link' },
 ].map((f) => ({ column: f.key, ...f }));
 
 function getField(key) {
   return HISTORY_FIELDS.find((f) => f.key === key);
+}
+
+// The field that records links.
+function linkField() {
+  return HISTORY_FIELDS.find((f) => f.kind === 'link');
 }
 
 function isHistoryField(key) {
@@ -41,4 +51,4 @@ function publicFields() {
   return HISTORY_FIELDS.map(({ key, label, kind }) => ({ key, label, kind }));
 }
 
-module.exports = { HISTORY_FIELDS, getField, isHistoryField, publicFields };
+module.exports = { HISTORY_FIELDS, getField, isHistoryField, linkField, publicFields };

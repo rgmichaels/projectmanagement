@@ -1,6 +1,6 @@
 // Opens the SQLite database (better-sqlite3), creates the schema, applies the
 // additive migrations and seeds the fixed user list on first start. This is the single schema/setup file.
-// New tables (comments, sessions, work item history) are created with
+// New tables (comments, sessions, work item history, links) are created with
 // CREATE TABLE IF NOT EXISTS, so existing databases gain them on start.
 // Status, type and resolution columns deliberately have no CHECK constraints:
 // their valid values come from server/statuses.js, server/types.js and
@@ -109,6 +109,24 @@ CREATE TABLE IF NOT EXISTS issue_history_changes (
 
 CREATE INDEX IF NOT EXISTS idx_history_changes_event ON issue_history_changes(event_id);
 CREATE INDEX IF NOT EXISTS idx_history_changes_field ON issue_history_changes(field);
+
+-- Links between work items (server/data/links.js). One row per link; the
+-- other end's reading is derived at read time. link_type is a name from
+-- server/linkTypes.js (no CHECK constraint). For a symmetric type the lower
+-- issue id is stored as source_id, so the unique key also catches the
+-- reversed pair. Existing databases gain this table on start.
+CREATE TABLE IF NOT EXISTS issue_links (
+  id INTEGER PRIMARY KEY,
+  link_type TEXT NOT NULL,
+  source_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+  target_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+  created_by_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  UNIQUE (link_type, source_id, target_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_issue_links_source ON issue_links(source_id);
+CREATE INDEX IF NOT EXISTS idx_issue_links_target ON issue_links(target_id);
 `;
 
 // Seed data: a small fixed list of placeholder people (no user management in

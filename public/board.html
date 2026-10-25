@@ -45,6 +45,20 @@
       </div>
       <label>Description <textarea name="description" rows="5"></textarea></label>
       <p class="reporter" id="reporter" hidden></p>
+      <!-- Links: not part of the work item's Save. Relationships come from
+           GET /api/link-types; buttons are type="button" so they never submit
+           the method="dialog" form. Add and Remove are hidden when archived. -->
+      <section id="links" class="links" hidden>
+        <h3>Links</h3>
+        <p class="links-empty" id="links-empty" hidden>No links.</p>
+        <div id="links-list" class="links-list"></div>
+        <div id="link-form" class="link-form">
+          <select id="link-relation" aria-label="Relationship"></select>
+          <select id="link-target" aria-label="Work item to link"></select>
+          <button type="button" id="link-add">Add link</button>
+        </div>
+        <p class="error" id="link-error" role="alert"></p>
+      </section>
       <!-- Discussion and History tabs: not part of the work item's Save. Their
            buttons are type="button" so they never submit the method="dialog" form. -->
       <div id="activity-tabs" class="tabs" role="tablist" aria-label="Activity" hidden>

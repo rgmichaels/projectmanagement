@@ -119,6 +119,7 @@ test('a fresh database file gets the schema and seed users (AC 38)', () => {
     'comments',
     'issue_history_changes',
     'issue_history_events',
+    'issue_links',
     'issues',
     'projects',
     'sessions',
@@ -229,7 +230,7 @@ test('history code names no status, type, priority or resolution (AC 27)', () =>
 
 test('only server/historyFields.js names the history fields (AC 27, 28)', () => {
   const { HISTORY_FIELDS } = require('../server/historyFields');
-  const names = new Set(HISTORY_FIELDS.flatMap((f) => [f.key, f.column, f.label]));
+  const names = new Set(HISTORY_FIELDS.flatMap((f) => [f.key, f.column, f.label]).filter(Boolean));
   const offenders = [];
   for (const [file, text] of historySources()) {
     if (file === 'server/historyFields.js') continue;
@@ -267,4 +268,61 @@ test('History renders text only and its buttons cannot submit the form (AC 22)',
   for (const call of boardHistorySection().match(/el\(\s*'button',\s*\{[^}]*\}/g) || []) {
     assert.match(call, /type: 'button'/, call);
   }
+});
+
+// ---------- work item links (docs/specs/work-item-links.md AC 3, 25) ----------
+
+test('no link type name or label outside server/linkTypes.js (links AC 3)', () => {
+  const { LINK_TYPES } = require('../server/linkTypes');
+  const names = new Set(LINK_TYPES.flatMap((t) => [t.name, t.outward, t.inward]).filter(Boolean));
+  const files = sourceFiles.filter((f) => {
+    const r = rel(f);
+    return (r.startsWith('server/') && r !== 'server/linkTypes.js') || r.startsWith('public/js/');
+  });
+  assert.ok(files.length > 0);
+  const offenders = [];
+  for (const file of files) {
+    const text = read(file);
+    for (const name of names) if (quoted(name).test(text)) offenders.push(`${rel(file)}: ${name}`);
+  }
+  assert.deepEqual(offenders, []);
+});
+
+test('link SQL appears only in server/data/ (links data model)', () => {
+  const pattern = /\bissue_links\b/;
+  assert.deepEqual(offendersOf(pattern, new Set(['server/db.js', 'server/data/links.js'])), []);
+  assert.match(read(path.join(root, 'server/data/links.js')), /INSERT\s+INTO\s+issue_links/);
+  // deleteIssue removes links through the links module, in its transaction.
+  assert.match(read(path.join(root, 'server/data/issues.js')), /links\.deleteLinksFor\(/);
+  assert.match(read(path.join(root, 'server/routes/links.js')), /require\('\.\.\/data\/links'\)/);
+});
+
+test('the schema has issue_links with no CHECK on link_type (links data model)', () => {
+  const db = openDb(tempDbPath());
+  const { sql } = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'issue_links'").get();
+  const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'issue_links'").all().map((r) => r.name);
+  db.close();
+  assert.doesNotMatch(sql, /CHECK/i);
+  assert.match(sql, /UNIQUE\s*\(\s*link_type,\s*source_id,\s*target_id\s*\)/);
+  assert.ok(indexes.includes('idx_issue_links_source') && indexes.includes('idx_issue_links_target'));
+});
+
+test('Links renders text only and its buttons cannot submit the form (links AC 25)', () => {
+  const js = boardJs();
+  const start = js.indexOf('// ---------- links ----------');
+  assert.ok(start !== -1, 'board.js has a links section');
+  const end = js.indexOf('// ----------', start + 10);
+  const section = js.slice(start, end === -1 ? undefined : end);
+  assert.doesNotMatch(section, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
+  for (const call of section.match(/el\(\s*'button',\s*\{[^}]*\}/g) || []) {
+    assert.match(call, /type: 'button'/, call);
+  }
+  const html = read(path.join(root, 'public/board.html'));
+  const open = html.indexOf('<section id="links"');
+  const markup = html.slice(open, html.indexOf('</section>', open));
+  assert.ok(open !== -1 && markup.length > 0);
+  assert.doesNotMatch(markup, /<form\b/i, 'no nested form');
+  for (const b of markup.match(/<button\b[^>]*>/gi) || []) assert.match(b, /type="button"/, b);
+  // Between the description and the Discussion/History tabs (AC 20).
+  assert.ok(html.indexOf('name="description"') < open && open < html.indexOf('<div id="activity-tabs"'));
 });
