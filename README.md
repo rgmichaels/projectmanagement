@@ -2,7 +2,7 @@
 
 A proof-of-concept, Jira-style project management tool: work items, a kanban board, and swimlanes (by assignee, epic or priority), built because Jira is too expensive for a personal project.
 
-Status: board MVP implemented (spec: `docs/specs/board-mvp.md`), plus a Discussion thread on each work item (spec: `docs/specs/ticket-discussion.md`) a Resolution on done work items (spec: `docs/specs/resolution-and-comments.md`), a username sign-in (spec: `docs/specs/username-login.md`), a History of changes on each work item (spec: `docs/specs/ticket-history.md`), and Links between work items (spec: `docs/specs/work-item-links.md`).
+Status: board MVP implemented (spec: `docs/specs/board-mvp.md`), plus a Discussion thread on each work item (spec: `docs/specs/ticket-discussion.md`) a Resolution on done work items (spec: `docs/specs/resolution-and-comments.md`), a username sign-in (spec: `docs/specs/username-login.md`), a History of changes on each work item (spec: `docs/specs/ticket-history.md`), Links between work items (spec: `docs/specs/work-item-links.md`), and Attachments and pasted images (spec: `docs/specs/attachments-and-pasted-images.md`).
 
 ## Run
 
@@ -15,7 +15,9 @@ npm start
 
 Then open http://localhost:3000. If port 3000 is taken, run `PORT=3001 npm start` instead.
 
-The database is a single local SQLite file, `data/app.db` (git-ignored). It is created with an empty schema and the seeded users on first start. New tables (such as `comments` for the Discussion, `sessions` for sign-in and `issue_history_events`/`issue_history_changes` for History, `issue_links` for Links) and columns (such as `issues.resolution`, `users.username` and `issues.reporter_id`) are added to an existing database automatically on the next start; when the `resolution` column is added, work items already in the last status get the default resolution, and existing users get a username from the first word of their name (`Alex Morgan` becomes `alex`; duplicates get `2`, `3`, ...). Work items that existed before History was added get no backfilled history; theirs starts with the next change. Delete it and restart to start fresh. Set `DB_PATH` to use a different file.
+The database is a single local SQLite file, `data/app.db` (git-ignored). It is created with an empty schema and the seeded users on first start. New tables (such as `comments` for the Discussion, `sessions` for sign-in and `issue_history_events`/`issue_history_changes` for History, `issue_links` for Links, `attachments` for Attachments) and columns (such as `issues.resolution`, `users.username` and `issues.reporter_id`) are added to an existing database automatically on the next start; when the `resolution` column is added, work items already in the last status get the default resolution, and existing users get a username from the first word of their name (`Alex Morgan` becomes `alex`; duplicates get `2`, `3`, ...). Work items that existed before History was added get no backfilled history; theirs starts with the next change. Delete it and restart to start fresh. Set `DB_PATH` to use a different file.
+
+Attachment files are stored in `data/files/` (git-ignored, created on start), one file per attachment named by a random key; set `FILES_DIR` to use a different directory. Back it up together with `data/app.db`.
 
 ## Signing in
 
@@ -31,7 +33,7 @@ The session is a random token in the `pm_session` cookie (HttpOnly, discarded wh
 npm test
 ```
 
-Tests use the built-in `node:test` runner against the API, each with its own temporary database. The test client in `tests/helpers.js` is signed in as `alex`; `app.client(username)` gives a second, independent signed-in client and `app.raw(...)` sends requests with no cookie. `public/js/time.js` (Discussion and History timestamps), `public/js/historyFormat.js` (History lines) and `public/js/redirect.js` (the sign-in `next` rule) are also unit tested directly. There are no browser (UI) tests.
+Tests use the built-in `node:test` runner against the API, each with its own temporary database and a scratch attachment directory (never `data/files/`). The test client in `tests/helpers.js` is signed in as `alex`; `app.client(username)` gives a second, independent signed-in client and `app.raw(...)` sends requests with no cookie. `public/js/time.js` (Discussion and History timestamps), `public/js/historyFormat.js` (History lines), `public/js/richText.js` (comment and description rendering) and `public/js/redirect.js` (the sign-in `next` rule) are also unit tested directly. There are no browser (UI) tests.
 
 ## Stack
 
@@ -45,6 +47,8 @@ Tests use the built-in `node:test` runner against the API, each with its own tem
 - `server/resolutions.js`: the single list of resolutions, in display order, with the default flag.
 - `server/priorities.js`, `server/projectStatuses.js`: the priority list and the project status list.
 - `server/historyFields.js`: the work item fields recorded in History, with their labels and how each is recorded.
+- `server/attachmentTypes.js`: the allowed attachment file types, the 10 MB size limit and the 25-per-item limit.
+- `server/data/storage.js`: the only code that reads or writes attachment bytes (`put`, `open`, `remove`, `exists`); replace it to move files off local disk.
 - `server/linkTypes.js`: the single list of link types (Blocks, Relates, Duplicates), with the label each end reads.
 - `server/auth.js`: sign-in sessions and the `pm_session` cookie; sets `req.user`.
 - `server/db.js`: schema, migrations and seed users. `server/data/`: the data-access layer; all SQL lives in these two places.
@@ -79,5 +83,15 @@ API: `GET /api/issues/:id/history?limit=&before=&field=` (newest first, `limit` 
 The detail dialog has a **Links** section between the description and the Discussion/History tabs. It lists the items linked to this one, grouped by how the link reads from here ("blocks", "is blocked by", "relates to", "duplicates", "is duplicated by"). Pick a relationship and another work item of the same project and press **Add link**; the other item shows the reverse reading at once. **Remove** works from either end. Click a linked item's key or title to open it in the same dialog. Each add or remove appears in the History of both items (as "Link"), and deleting a work item removes its links and records the removal on each former partner. Links are same-project only; cycles are allowed; on archived projects links are read-only.
 
 API: `GET /api/link-types` (the relationship options), `GET|POST /api/issues/:id/links` (body `{ link_type, direction: 'outward' | 'inward', target_id }`; `direction` may be omitted for a symmetric type), `DELETE /api/issues/:id/links/:linkId`. To add a link type, add an entry to `server/linkTypes.js` and restart.
+
+## Attachments and pasted images
+
+The detail dialog of a saved work item has an **Attachments** section (after Links): **Add files** (several at once) or drop files onto the section. Each row shows the file name, size, uploader and time, a Download link, a thumbnail for images (click it to open the full image in a new tab) and, for your own uploads only, Delete. A new work item must be saved first. On archived projects attachments are read-only (download and preview still work).
+
+Paste a screenshot (Ctrl/Cmd+V) into the Discussion box, a message being edited, or the description (click **Edit** next to Description first): it is uploaded as an attachment named `pasted-image-<date>-<time>.png` and the token `![image](attachment:<id>)` is inserted at the cursor. After posting or saving, the token shows as the image; the text is still stored as plain text. The token is the only markup; a deleted image shows `[image removed]`. Pasted images also appear in the Attachments list.
+
+Limits: 10 MB per file, 25 files per work item. Allowed: png, jpg/jpeg, gif, webp (previewable images), pdf, txt, md, csv, log, docx, xlsx, pptx, zip. SVG, HTML, JavaScript and executables are refused, and an image whose bytes do not match its extension is refused. Only the uploader may delete an attachment. Adding and removing appear in History ("added attachment ...", "removed attachment ..."). Deleting a work item deletes its attachments and their files.
+
+API: `GET /api/attachment-types` (types and limits), `GET|POST /api/issues/:id/attachments` (POST body: the raw file bytes, header `X-Filename`: the URL-encoded file name), `GET /api/attachments/:id` (details), `GET /api/attachments/:id/download`, `GET /api/attachments/:id/preview` (images only), `DELETE /api/attachments/:id`. To allow a new type, add an entry to `server/attachmentTypes.js` and restart.
 
 See `CLAUDE.md` for how the AI dev team (product manager, developer, QA) builds this.

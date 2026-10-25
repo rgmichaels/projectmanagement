@@ -1,6 +1,8 @@
 // Board page: columns from the status list, cards styled from the type list,
 // swimlanes (assignee / epic / priority), drag-and-drop and the detail view
-// with its Links section and Discussion and History tabs.
+// with its Links and Attachments sections and Discussion and History tabs.
+// Comments and the description are shown through js/richText.js (plain text
+// plus pasted-image tokens); pasting an image uploads it as an attachment.
 // Status, type, priority, resolution and link type names all come from the
 // API; none are named here. The terminal status and the default resolution are the server's.
 (() => {
@@ -22,6 +24,7 @@
     users: [],
     historyFields: [], // [{ key, label, kind }] from the server, for the History filter
     linkOptions: [], // [{ link_type, direction, label }] from the server, for the Links form
+    attachmentTypes: { types: [], max_bytes: 0, max_per_item: 0 }, // GET /api/attachment-types
     me: null, // the signed-in user { id, name, username }
     items: [],
     groupBy: localStorage.getItem(GROUP_BY_STORAGE_KEY) || 'none',
@@ -78,6 +81,22 @@
     linkTarget: document.getElementById('link-target'),
     linkAdd: document.getElementById('link-add'),
     linkError: document.getElementById('link-error'),
+    description: document.getElementById('description-input'),
+    descriptionEdit: document.getElementById('description-edit'),
+    descriptionView: document.getElementById('description-view'),
+    descriptionNote: document.getElementById('description-note'),
+    descriptionImages: document.getElementById('description-images'),
+    descriptionThumbs: document.getElementById('description-thumbs'),
+    commentNote: document.getElementById('comment-note'),
+    attachments: document.getElementById('attachments'),
+    attachmentsHeading: document.getElementById('attachments-heading'),
+    attachmentsNote: document.getElementById('attachments-note'),
+    attachmentsEmpty: document.getElementById('attachments-empty'),
+    attachmentControls: document.getElementById('attachment-controls'),
+    attachmentAdd: document.getElementById('attachment-add'),
+    attachmentInput: document.getElementById('attachment-input'),
+    attachmentError: document.getElementById('attachment-error'),
+    attachmentList: document.getElementById('attachment-list'),
   };
 
   // ---------- helpers ----------
@@ -484,6 +503,10 @@
     els.saveBtn.textContent = item ? 'Save' : 'Create';
     els.deleteBtn.hidden = ro || !item;
     els.activityTabs.hidden = !item;
+    // Attachments first: the description and the thread render image tokens
+    // against this item's attachment list.
+    openAttachments(item);
+    openDescription(item);
     openLinks(item);
     openDiscussion(item);
     openHistory(item);
@@ -514,7 +537,7 @@
 
   els.form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (readOnly()) return;
+    if (readOnly() || pasteUploads.description > 0) return; // Save waits for a pasted image
     els.detailError.textContent = '';
     const values = formValues();
     if (!values.title) {
@@ -609,18 +632,28 @@
       editor.value = discussion.editDraft;
       editor.addEventListener('input', () => { discussion.editDraft = editor.value; });
       const error = el('p', { class: 'error', role: 'alert' });
+      const note = el('p', { class: 'paste-note', role: 'status', hidden: true });
       const saveBtn = el('button', { type: 'button', class: 'primary' }, 'Save');
+      // Pasting an image here works as in the new-message box; Save waits for it.
+      let editUploads = 0;
+      editor.addEventListener('paste', (e) =>
+        pasteImage(e, editor, note, (busy) => {
+          editUploads += busy ? 1 : -1;
+          saveBtn.disabled = editUploads > 0;
+        })
+      );
       const cancelBtn = el('button', { type: 'button' }, 'Cancel');
       saveBtn.addEventListener('click', () => saveEdit(comment, editor, error, saveBtn));
       cancelBtn.addEventListener('click', () => {
         discussion.editingId = null;
         renderThread();
       });
-      li.append(editor, error, el('div', { class: 'actions message-actions' }, saveBtn, cancelBtn));
+      li.append(editor, note, error, el('div', { class: 'actions message-actions' }, saveBtn, cancelBtn));
       return li;
     }
 
-    li.append(el('div', { class: 'message-body' }, comment.body)); // textContent: never parsed as HTML
+    // Text nodes plus image tokens as <img> (js/richText.js): never parsed as HTML.
+    li.append(el('div', { class: 'message-body rich-text', 'data-comment-id': comment.id }, ...richNodes(comment.body)));
     if (own) {
       const editBtn = el('button', { type: 'button', class: 'link' }, 'Edit');
       const deleteBtn = el('button', { type: 'button', class: 'link danger' }, 'Delete');
@@ -656,6 +689,8 @@
     els.commentForm.hidden = readOnly();
     els.commentBody.value = '';
     els.commentError.textContent = '';
+    els.commentNote.hidden = true;
+    pasteUploads.comment = 0;
     els.commentPost.disabled = false;
     discussion.posting = false;
     els.postingAs.textContent = `Posting as ${state.me.name}`;
@@ -689,7 +724,7 @@
   }
 
   els.commentPost.addEventListener('click', async () => {
-    if (discussion.posting || readOnly() || discussion.issueId === null) return;
+    if (discussion.posting || pasteUploads.comment > 0 || readOnly() || discussion.issueId === null) return;
     const issueId = discussion.issueId;
     const text = els.commentBody.value.trim();
     const problem = commentTextError(text);
@@ -711,7 +746,7 @@
       if (discussion.issueId === issueId) els.commentError.textContent = `Could not post: ${err.message}`;
     } finally {
       discussion.posting = false;
-      els.commentPost.disabled = false;
+      els.commentPost.disabled = pasteUploads.comment > 0;
     }
   });
 
@@ -766,6 +801,7 @@
     discussion.editingId = null;
     historyView.issueId = null;
     linksView.issueId = null;
+    attachmentsView.issueId = null;
   });
 
   // ---------- history ----------
@@ -1081,6 +1117,365 @@
     }
   }
 
+  // ---------- attachments ----------
+  // Files attached to the open work item, newest first, and the pasted-image
+  // flow that shares their upload. Not part of the work item form: these
+  // handlers never submit, save or close it. Allowed types and limits are the
+  // server's (GET /api/attachment-types); file names are always text.
+
+  const attachmentsView = {
+    issueId: null, // saved work item whose attachments are shown, or null
+    list: [], // newest first, as GET /api/issues/:id/attachments returns them
+    pending: [], // [{ id, name }] uploads in flight, shown as "Uploading..."
+    loaded: false,
+    loadSeq: 0,
+    lookups: new Map(), // id -> attachment of any item, or null when gone (for image tokens)
+  };
+  let pendingSeq = 0;
+
+  // `2.3 MB`
+  function humanSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  const canAttach = () => attachmentsView.issueId !== null && !readOnly();
+
+  // What an image token with this id becomes (see richText.segments): an
+  // image only for an inline attachment of the open item; `[image removed]`
+  // once the server says the id is gone; otherwise the raw token text (another
+  // item's attachment, or not looked up yet).
+  function resolveToken(id) {
+    const v = attachmentsView;
+    const own = v.list.find((a) => a.id === id);
+    if (own) return own.inline ? 'image' : 'raw';
+    if (!v.loaded) return 'raw';
+    if (!v.lookups.has(id)) {
+      lookupAttachment(id);
+      return 'raw';
+    }
+    const found = v.lookups.get(id);
+    if (found === null) return 'removed';
+    return found && found.issue_id === v.issueId && found.inline ? 'image' : 'raw';
+  }
+
+  // An id referenced by a token but not in this item's list: ask the server
+  // whether it still exists (and where), then re-render the text.
+  async function lookupAttachment(id) {
+    const v = attachmentsView;
+    const issueId = v.issueId;
+    v.lookups.set(id, undefined); // in flight
+    let found;
+    try {
+      found = await api.get(`/api/attachments/${id}`);
+    } catch (err) {
+      found = err.status === 404 ? null : undefined; // other errors: keep the raw text
+    }
+    if (v.issueId !== issueId) return;
+    v.lookups.set(id, found);
+    refreshRichText();
+  }
+
+  const richNodes = (text) => richText.render(document, text, resolveToken);
+
+  // Re-renders the description read view, comment bodies (in place, so an
+  // open message edit keeps its cursor) and the description image strip.
+  function refreshRichText() {
+    renderDescriptionView();
+    for (const body of els.thread.querySelectorAll('.message-body[data-comment-id]')) {
+      const comment = discussion.comments.find((c) => c.id === Number(body.dataset.commentId));
+      if (comment) body.replaceChildren(...richNodes(comment.body));
+    }
+    renderDescriptionImages();
+  }
+
+  function renderAttachmentRow(a) {
+    const own = !readOnly() && Boolean(state.me) && a.uploader_id === state.me.id;
+    const preview = richText.previewUrl(a.id);
+    return el(
+      'li',
+      { class: 'attachment-row', 'data-id': a.id },
+      a.inline
+        ? el(
+            'a',
+            { href: preview, target: '_blank', rel: 'noopener', class: 'attachment-thumb-link', title: 'Open the full image' },
+            el('img', { src: preview, alt: '', class: 'attachment-thumb', loading: 'lazy' })
+          )
+        : null,
+      el(
+        'div',
+        { class: 'attachment-info' },
+        el('span', { class: 'attachment-name' }, a.filename), // text, never parsed as HTML
+        el(
+          'span',
+          { class: 'attachment-meta' },
+          `${humanSize(a.size_bytes)} · `,
+          el('span', {}, a.uploader_name),
+          ' · ',
+          el('span', { class: 'relative-time', 'data-time': a.created_at, title: a.created_at }, timeFormat.relativeTime(a.created_at))
+        )
+      ),
+      el('a', { href: `/api/attachments/${a.id}/download`, class: 'attachment-download', download: true }, 'Download'),
+      own ? el('button', { type: 'button', class: 'link danger', onclick: () => deleteAttachment(a) }, 'Delete') : null
+    );
+  }
+
+  function renderAttachments() {
+    const v = attachmentsView;
+    els.attachmentsHeading.textContent = `Attachments (${v.list.length})`;
+    els.attachmentsEmpty.hidden = v.issueId === null || !v.loaded || v.list.length > 0 || v.pending.length > 0;
+    els.attachmentList.replaceChildren(
+      ...v.pending.map((p) =>
+        el(
+          'li',
+          { class: 'attachment-row pending' },
+          el('div', { class: 'attachment-info' }, el('span', { class: 'attachment-name' }, p.name), el('span', { class: 'attachment-meta' }, 'Uploading...'))
+        )
+      ),
+      ...v.list.map(renderAttachmentRow)
+    );
+    refreshRichText();
+  }
+
+  // Shows the section; for a new work item (no id yet) only "Save the work
+  // item first." with no upload control.
+  function openAttachments(item) {
+    Object.assign(attachmentsView, { issueId: item ? item.id : null, list: [], pending: [], loaded: false, lookups: new Map() });
+    attachmentsView.loadSeq += 1;
+    els.attachments.hidden = false;
+    els.attachmentsNote.hidden = Boolean(item);
+    els.attachmentControls.hidden = !item || readOnly();
+    els.attachmentError.textContent = '';
+    els.attachmentInput.value = '';
+    els.attachmentInput.accept = state.attachmentTypes.types.map((t) => `.${t.extension}`).join(',');
+    renderAttachments();
+    if (item) loadAttachments(item.id);
+  }
+
+  async function loadAttachments(issueId) {
+    const seq = ++attachmentsView.loadSeq;
+    try {
+      const list = await api.get(`/api/issues/${issueId}/attachments`);
+      if (seq !== attachmentsView.loadSeq || attachmentsView.issueId !== issueId) return; // a newer dialog is open
+      attachmentsView.list = list;
+      attachmentsView.loaded = true;
+      renderAttachments();
+    } catch (err) {
+      if (attachmentsView.issueId === issueId) els.attachmentError.textContent = `Could not load attachments: ${err.message}`;
+    }
+  }
+
+  // Uploads one file (or pasted image) to `issueId` and adds it to the list.
+  // Rejects with the server's message (too large, type not allowed, ...).
+  async function uploadAttachment(issueId, file, filename) {
+    const created = await api.upload(`/api/issues/${issueId}/attachments`, file, filename);
+    if (attachmentsView.issueId === issueId) {
+      attachmentsView.list.unshift(created);
+      renderAttachments();
+    }
+    historySaved(issueId);
+    return created;
+  }
+
+  // Uploads the chosen or dropped files one after another; a rejected file
+  // shows the server's message and the others still upload.
+  async function addFiles(fileList) {
+    const issueId = attachmentsView.issueId;
+    const files = [...fileList];
+    if (!canAttach() || files.length === 0) return;
+    els.attachmentError.textContent = '';
+    const queue = files.map((file) => ({ id: ++pendingSeq, name: file.name, file }));
+    attachmentsView.pending.push(...queue);
+    renderAttachments();
+    const problems = [];
+    for (const p of queue) {
+      try {
+        await uploadAttachment(issueId, p.file, p.file.name);
+      } catch (err) {
+        problems.push(`${p.name}: ${err.message}`);
+      } finally {
+        attachmentsView.pending = attachmentsView.pending.filter((x) => x.id !== p.id);
+        if (attachmentsView.issueId === issueId) renderAttachments();
+      }
+    }
+    if (attachmentsView.issueId === issueId) els.attachmentError.textContent = problems.join('\n');
+  }
+
+  async function deleteAttachment(a) {
+    const issueId = attachmentsView.issueId;
+    if (!canAttach()) return;
+    if (!confirm(`Delete the attachment "${a.filename}"? This cannot be undone.`)) return;
+    els.attachmentError.textContent = '';
+    try {
+      await api.del(`/api/attachments/${a.id}`);
+      if (attachmentsView.issueId === issueId) {
+        attachmentsView.list = attachmentsView.list.filter((x) => x.id !== a.id);
+        attachmentsView.lookups.set(a.id, null); // its tokens now read [image removed]
+        renderAttachments();
+      }
+      historySaved(issueId);
+    } catch (err) {
+      if (attachmentsView.issueId === issueId) els.attachmentError.textContent = `Could not delete: ${err.message}`;
+    }
+  }
+
+  els.attachmentAdd.addEventListener('click', () => els.attachmentInput.click());
+  els.attachmentInput.addEventListener('change', () => {
+    const files = [...els.attachmentInput.files];
+    els.attachmentInput.value = ''; // the same file can be chosen again
+    addFiles(files);
+  });
+
+  // Drag-and-drop of files onto the section (not onto the text boxes).
+  const draggingFiles = (e) => Boolean(e.dataTransfer) && [...e.dataTransfer.types].includes('Files');
+  els.attachments.addEventListener('dragover', (e) => {
+    if (!canAttach() || !draggingFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    els.attachments.classList.add('drop-target');
+  });
+  els.attachments.addEventListener('dragleave', (e) => {
+    if (!els.attachments.contains(e.relatedTarget)) els.attachments.classList.remove('drop-target');
+  });
+  els.attachments.addEventListener('drop', (e) => {
+    els.attachments.classList.remove('drop-target');
+    if (!canAttach() || !draggingFiles(e)) return;
+    e.preventDefault();
+    addFiles(e.dataTransfer.files);
+  });
+
+  // ----- pasted images -----
+
+  // Uploads in flight per text box, which keep its Post or Save disabled.
+  const pasteUploads = { comment: 0, description: 0 };
+
+  // The first image file on the clipboard of a paste event, or null.
+  function clipboardImage(e) {
+    const items = e.clipboardData ? [...e.clipboardData.items] : [];
+    const item = items.find((i) => i.kind === 'file' && i.type.startsWith('image/'));
+    return item ? item.getAsFile() : null;
+  }
+
+  // `pasted-image-20261025-141503.<ext>`, the extension taken from the
+  // server's type list for the clipboard's MIME type.
+  function pastedImageName(file) {
+    const known = state.attachmentTypes.types.find((t) => t.mime === file.type);
+    const ext = known ? known.extension : file.type.split('/')[1].replace(/[^a-z0-9]/gi, '');
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+    return `pasted-image-${stamp}.${ext}`;
+  }
+
+  const showNote = (note, text) => {
+    note.textContent = text;
+    note.hidden = !text;
+  };
+
+  // Paste handler for a text box. Plain text pastes as usual. An image is
+  // uploaded as an attachment of the open work item and its token is
+  // inserted where the cursor was; on failure nothing is inserted and the
+  // server's message is shown. setBusy(true/false) brackets the upload.
+  async function pasteImage(e, textarea, note, setBusy) {
+    const file = clipboardImage(e);
+    if (!file) return;
+    e.preventDefault(); // the default paste would add nothing useful
+    if (attachmentsView.issueId === null) {
+      showNote(note, 'Save the work item first.');
+      return;
+    }
+    if (readOnly()) return;
+    const issueId = attachmentsView.issueId;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    setBusy(true);
+    showNote(note, 'Uploading image...');
+    try {
+      const created = await uploadAttachment(issueId, file, pastedImageName(file));
+      if (attachmentsView.issueId !== issueId || !textarea.isConnected) return;
+      const token = `![image](attachment:${created.id})`;
+      const text = textarea.value;
+      textarea.value = text.slice(0, start) + token + text.slice(end);
+      textarea.selectionStart = textarea.selectionEnd = start + token.length;
+      textarea.dispatchEvent(new Event('input')); // keeps drafts and the image strip in step
+      showNote(note, '');
+    } catch (err) {
+      if (attachmentsView.issueId === issueId) showNote(note, `Could not upload image: ${err.message}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  els.commentBody.addEventListener('paste', (e) =>
+    pasteImage(e, els.commentBody, els.commentNote, (busy) => {
+      pasteUploads.comment += busy ? 1 : -1;
+      els.commentPost.disabled = discussion.posting || pasteUploads.comment > 0;
+    })
+  );
+  els.description.addEventListener('paste', (e) =>
+    pasteImage(e, els.description, els.descriptionNote, (busy) => {
+      pasteUploads.description += busy ? 1 : -1;
+      els.saveBtn.disabled = pasteUploads.description > 0;
+    })
+  );
+
+  // ----- description: read view and edit view -----
+
+  // A saved item opens on the read view (Edit switches to the textarea); a
+  // new item opens on the textarea; an archived project shows the read view only.
+  function openDescription(item) {
+    pasteUploads.description = 0;
+    els.saveBtn.disabled = false;
+    showNote(els.descriptionNote, '');
+    setDescriptionEditing(!item);
+  }
+
+  function setDescriptionEditing(editingText) {
+    els.descriptionView.hidden = editingText;
+    els.descriptionEdit.hidden = editingText || readOnly();
+    els.description.hidden = !editingText;
+    if (editingText) renderDescriptionImages();
+    else renderDescriptionView();
+    if (!editingText) els.descriptionImages.hidden = true;
+  }
+
+  function renderDescriptionView() {
+    if (els.descriptionView.hidden) return;
+    const text = editing ? editing.description : '';
+    if (text) {
+      els.descriptionView.classList.remove('empty-text');
+      els.descriptionView.replaceChildren(...richNodes(text));
+    } else {
+      els.descriptionView.classList.add('empty-text');
+      els.descriptionView.textContent = readOnly() ? 'No description.' : 'No description. Click Edit to add one.';
+    }
+  }
+
+  // Thumbnails of the images whose tokens are in the textarea, so the author
+  // sees that a paste worked.
+  function renderDescriptionImages() {
+    if (els.description.hidden) return;
+    const ids = richText.tokenIds(els.description.value).filter((id) => resolveToken(id) === 'image');
+    els.descriptionImages.hidden = ids.length === 0;
+    els.descriptionThumbs.replaceChildren(
+      ...ids.map((id) =>
+        el(
+          'a',
+          { href: richText.previewUrl(id), target: '_blank', rel: 'noopener', class: 'attachment-thumb-link' },
+          el('img', { src: richText.previewUrl(id), alt: '', class: 'attachment-thumb' })
+        )
+      )
+    );
+  }
+
+  els.descriptionEdit.addEventListener('click', () => {
+    if (readOnly()) return;
+    setDescriptionEditing(true);
+    els.description.focus();
+  });
+  els.description.addEventListener('input', renderDescriptionImages);
+
   // ---------- loading ----------
 
   async function reloadItems() {
@@ -1108,7 +1503,7 @@
       return;
     }
     try {
-      const [project, statuses, terminal, resolutions, types, priorities, users, historyFields, linkOptions] = await Promise.all([
+      const [project, statuses, terminal, resolutions, types, priorities, users, historyFields, linkOptions, attachmentTypes] = await Promise.all([
         api.get(`/api/projects/${encodeURIComponent(projectId)}`),
         api.get('/api/statuses'),
         api.get('/api/terminal-status'),
@@ -1118,6 +1513,7 @@
         api.get('/api/users'),
         api.get('/api/history-fields'),
         api.get('/api/link-types'),
+        api.get('/api/attachment-types'),
       ]);
       Object.assign(state, {
         project,
@@ -1130,6 +1526,7 @@
         users,
         historyFields,
         linkOptions,
+        attachmentTypes,
       });
       renderHeader();
       fillHistoryFilter();

@@ -43,7 +43,23 @@
         <label>Assignee <select name="assignee_id"></select></label>
         <label id="epic-field"><span id="epic-label"></span> <select name="epic_id"></select></label>
       </div>
-      <label>Description <textarea name="description" rows="5"></textarea></label>
+      <!-- Description: for a saved work item a read view (plain text with image
+           tokens shown as images, js/richText.js) and Edit; the edit view is a
+           plain textarea showing the raw text. Pasting an image uploads it as
+           an attachment and inserts its token. -->
+      <div class="description-field">
+        <div class="field-head">
+          <label for="description-input">Description</label>
+          <button type="button" id="description-edit" class="link" hidden>Edit</button>
+        </div>
+        <div id="description-view" class="description-view" hidden></div>
+        <textarea id="description-input" name="description" rows="5"></textarea>
+        <p class="paste-note" id="description-note" role="status" hidden></p>
+        <div id="description-images" class="image-strip" hidden>
+          <span class="image-strip-label">Images in this description</span>
+          <div id="description-thumbs" class="image-strip-thumbs"></div>
+        </div>
+      </div>
       <p class="reporter" id="reporter" hidden></p>
       <!-- Links: not part of the work item's Save. Relationships come from
            GET /api/link-types; buttons are type="button" so they never submit
@@ -59,6 +75,22 @@
         </div>
         <p class="error" id="link-error" role="alert"></p>
       </section>
+      <!-- Attachments: not part of the work item's Save. Allowed types and
+           limits come from GET /api/attachment-types; buttons are type="button"
+           so they never submit the method="dialog" form. Add and Delete are
+           hidden when archived; a new work item must be saved first. -->
+      <section id="attachments" class="attachments" hidden>
+        <h3 id="attachments-heading">Attachments (0)</h3>
+        <p class="attachments-note" id="attachments-note" hidden>Save the work item first.</p>
+        <div id="attachment-controls" class="attachment-controls">
+          <button type="button" id="attachment-add">Add files</button>
+          <input type="file" id="attachment-input" multiple hidden aria-label="Files to attach">
+          <span class="hint">or drop files here</span>
+        </div>
+        <p class="error attachment-error" id="attachment-error" role="alert"></p>
+        <p class="attachments-empty" id="attachments-empty" hidden>No attachments.</p>
+        <ul id="attachment-list" class="attachment-list"></ul>
+      </section>
       <!-- Discussion and History tabs: not part of the work item's Save. Their
            buttons are type="button" so they never submit the method="dialog" form. -->
       <div id="activity-tabs" class="tabs" role="tablist" aria-label="Activity" hidden>
@@ -70,6 +102,7 @@
         <div id="comment-form" class="comment-form">
           <p class="posting-as" id="posting-as"></p>
           <textarea id="comment-body" rows="3" placeholder="Write a message" aria-label="Message"></textarea>
+          <p class="paste-note" id="comment-note" role="status" hidden></p>
           <p class="error" id="comment-error" role="alert"></p>
           <div class="actions"><button type="button" id="comment-post" class="primary">Post</button></div>
         </div>
@@ -103,6 +136,7 @@
   <script src="js/session.js"></script>
   <script src="js/time.js"></script>
   <script src="js/historyFormat.js"></script>
+  <script src="js/richText.js"></script>
   <script src="js/board.js"></script>
 </body>
 </html>

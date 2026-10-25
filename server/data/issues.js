@@ -9,6 +9,8 @@ const { isTerminalStatus } = require('../statuses');
 const { defaultResolution } = require('../resolutions');
 const history = require('./history');
 const links = require('./links');
+const attachments = require('./attachments');
+const storage = require('./storage');
 
 const RANK_STEP = 1000;
 
@@ -157,20 +159,33 @@ function updateIssue(db, id, changes, actor, options = {}) {
   })();
 }
 
-// Deletes a work item with its discussion messages, links and history.
-// Children of a deleted epic keep existing (with their own messages) with no
-// epic, and each gets an epic change in its history; each former link partner
-// gets a link removal in its history. Messages, links and history are deleted
-// explicitly rather than relying on the foreign-key cascade alone.
+// Deletes a work item with its discussion messages, links, attachments and
+// history. Children of a deleted epic keep existing (with their own messages)
+// with no epic, and each gets an epic change in its history; each former link
+// partner gets a link removal in its history. Messages, links, attachments
+// and history are deleted explicitly rather than relying on the foreign-key
+// cascade alone. The rows go in one transaction (done when this returns);
+// the attachment files are removed after it commits, best effort: a file
+// that cannot be removed is logged and does not stop the others. The
+// returned promise settles once every removal has been tried.
 function deleteIssue(db, id, actor) {
-  db.transaction(() => {
+  const keys = db.transaction(() => {
     const now = new Date().toISOString();
     releaseChildren(db, id, actor, now);
     links.deleteLinksFor(db, id, actor, now);
+    const removed = attachments.deleteAttachmentsFor(db, id);
     history.deleteHistory(db, id);
     db.prepare('DELETE FROM comments WHERE issue_id = ?').run(id);
     db.prepare('DELETE FROM issues WHERE id = ?').run(id);
+    return removed;
   })();
+  return Promise.all(
+    keys.map((key) =>
+      Promise.resolve()
+        .then(() => storage.remove(key))
+        .catch((err) => console.error(`Could not remove attachment file ${key}: ${err.message}`))
+    )
+  ).then(() => undefined);
 }
 
 module.exports = {

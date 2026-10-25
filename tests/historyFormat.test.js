@@ -36,3 +36,9 @@ test('a link change reads like any other field (links AC 16)', () => {
   assert.equal(changeLine(change({ label: 'Link', kind: 'link', old: null, new: 'blocks PM-2' })), 'changed Link from None to blocks PM-2');
   assert.equal(changeLine(change({ label: 'Link', kind: 'link', old: 'blocks PM-2', new: null })), 'changed Link from blocks PM-2 to None');
 });
+
+test('an attachment change reads "added/removed attachment <name>" (attachments AC 39, 40)', () => {
+  assert.equal(changeLine(change({ label: 'Attachment', kind: 'file', old: null, new: 'spec.pdf' })), 'added attachment spec.pdf');
+  assert.equal(changeLine(change({ label: 'Attachment', kind: 'file', old: 'spec.pdf', new: null })), 'removed attachment spec.pdf');
+  assert.equal(changeLine(change({ label: 'Attachment', kind: 'file', new: '<img src=x>.png' })), 'added attachment <img src=x>.png');
+});

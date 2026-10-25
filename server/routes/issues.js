@@ -25,10 +25,11 @@ function issueRoutes(db) {
     res.json(issues.updateIssue(db, issue.id, changes, actorFrom(req), { clearChildren }));
   });
 
-  router.delete('/issues/:id', (req, res) => {
+  router.delete('/issues/:id', async (req, res) => {
     const issue = loadIssue(db, req.params.id);
     assertWritable(projects.getProject(db, issue.project_id));
-    issues.deleteIssue(db, issue.id, actorFrom(req));
+    // Resolves once the item's attachment files have been removed.
+    await issues.deleteIssue(db, issue.id, actorFrom(req));
     res.status(204).end();
   });
 

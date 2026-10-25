@@ -12,6 +12,9 @@
 //                      from this item's point of view, plus the other id.
 //                      It has no column (column: null): recordChanges skips
 //                      it and server/data/links.js records it instead.
+//              file  : an attachment added (new = its file name) or removed
+//                      (old = its file name). No column either;
+//                      server/data/attachments.js records it.
 // `rank` is deliberately absent: reorders are bookkeeping, not history.
 // To track a new editable column, add one entry here (tests/history.test.js
 // fails if an updatable column other than rank is missing). Field names only;
@@ -31,6 +34,7 @@ const HISTORY_FIELDS = [
   { key: 'epic', column: 'epic_id', label: epicType ? epicType.label || epicType.name : 'Parent', kind: 'issue' },
   { key: 'resolution', label: 'Resolution', kind: 'text' },
   { key: 'link', column: null, label: 'Link', kind: 'link' },
+  { key: 'attachment', column: null, label: 'Attachment', kind: 'file' },
 ].map((f) => ({ column: f.key, ...f }));
 
 function getField(key) {
@@ -42,6 +46,11 @@ function linkField() {
   return HISTORY_FIELDS.find((f) => f.kind === 'link');
 }
 
+// The field that records attachments.
+function attachmentField() {
+  return HISTORY_FIELDS.find((f) => f.kind === 'file');
+}
+
 function isHistoryField(key) {
   return Boolean(getField(key));
 }
@@ -51,4 +60,4 @@ function publicFields() {
   return HISTORY_FIELDS.map(({ key, label, kind }) => ({ key, label, kind }));
 }
 
-module.exports = { HISTORY_FIELDS, getField, isHistoryField, linkField, publicFields };
+module.exports = { HISTORY_FIELDS, getField, isHistoryField, linkField, attachmentField, publicFields };

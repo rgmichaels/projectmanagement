@@ -5,7 +5,7 @@
 // Callers pass the same `db` from inside their own transaction, so an event
 // commits or rolls back with the write it describes. History is append-only:
 // rows go away only with their work item (deleteHistory).
-const { HISTORY_FIELDS, getField, linkField } = require('../historyFields');
+const { HISTORY_FIELDS, getField, linkField, attachmentField } = require('../historyFields');
 const users = require('./users');
 
 // The actor when no signed-in user is known (entries written before login).
@@ -50,7 +50,8 @@ function recordCreated(db, issueId, actor, when) {
 
 // Compares `before` and `after` (work item rows) over the history fields and
 // writes one `changed` event with a row per field whose value differs.
-// Fields with no column (links) are not compared; recordLinkChange writes them.
+// Fields with no column (links, attachments) are not compared;
+// recordLinkChange and recordAttachmentChange write them.
 // Writes nothing, and returns null, when nothing changed.
 function recordChanges(db, issueId, actor, before, after, when) {
   const changed = HISTORY_FIELDS.filter((f) => f.column && clean(before[f.column]) !== clean(after[f.column]));
@@ -67,15 +68,26 @@ function recordChanges(db, issueId, actor, before, after, when) {
   return eventId;
 }
 
-// One `changed` event with a single link change on `issueId`: oldText/oldId
-// for a removed link, newText/newId for an added one (the text is
-// `<label> <other key>` from this item's point of view).
-function recordLinkChange(db, issueId, actor, { oldText = null, newText = null, oldId = null, newId = null }, when) {
+// One `changed` event with a single change of a field that has no column.
+function recordSingleChange(db, issueId, actor, field, { oldText = null, newText = null, oldId = null, newId = null }, when) {
   const eventId = insertEvent(db, issueId, 'changed', actor, when);
   db.prepare(
     'INSERT INTO issue_history_changes (event_id, field, old_value, new_value, old_id, new_id) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(eventId, linkField().key, clean(oldText), clean(newText), oldId, newId);
+  ).run(eventId, field.key, clean(oldText), clean(newText), oldId, newId);
   return eventId;
+}
+
+// One `changed` event with a single link change on `issueId`: oldText/oldId
+// for a removed link, newText/newId for an added one (the text is
+// `<label> <other key>` from this item's point of view).
+function recordLinkChange(db, issueId, actor, change, when) {
+  return recordSingleChange(db, issueId, actor, linkField(), change, when);
+}
+
+// One `changed` event for an attachment: { newText: filename } when added,
+// { oldText: filename } when removed.
+function recordAttachmentChange(db, issueId, actor, { oldText = null, newText = null }, when) {
+  return recordSingleChange(db, issueId, actor, attachmentField(), { oldText, newText }, when);
 }
 
 // The change as the API returns it. A field no longer in the list keeps its
@@ -138,4 +150,12 @@ function deleteHistory(db, issueId) {
   db.prepare('DELETE FROM issue_history_events WHERE issue_id = ?').run(issueId);
 }
 
-module.exports = { UNKNOWN_ACTOR, recordCreated, recordChanges, recordLinkChange, listHistory, deleteHistory };
+module.exports = {
+  UNKNOWN_ACTOR,
+  recordCreated,
+  recordChanges,
+  recordLinkChange,
+  recordAttachmentChange,
+  listHistory,
+  deleteHistory,
+};

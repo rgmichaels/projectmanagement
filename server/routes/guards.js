@@ -4,6 +4,7 @@ const projects = require('../data/projects');
 const issues = require('../data/issues');
 const comments = require('../data/comments');
 const links = require('../data/links');
+const attachments = require('../data/attachments');
 const { UNKNOWN_ACTOR } = require('../data/history');
 const { ValidationError } = require('../validation');
 
@@ -57,10 +58,34 @@ function assertOwnsComment(user, comment) {
   }
 }
 
+function loadAttachment(db, rawId) {
+  const id = parseId(rawId);
+  const attachment = id && attachments.getAttachment(db, id);
+  if (!attachment) throw new ValidationError('Attachment not found.', 404);
+  return attachment;
+}
+
+// Only an attachment's uploader may delete it (until permission groups exist).
+function assertOwnsAttachment(user, attachment) {
+  if (attachment.uploader_id !== user.id) {
+    throw new ValidationError('You can only delete your own attachments.', 403);
+  }
+}
+
 // Who is acting, for history: always the signed-in user (never the request
 // body), or the Unknown actor when there is none.
 function actorFrom(req) {
   return req.user ? { id: req.user.id, name: req.user.name } : UNKNOWN_ACTOR;
 }
 
-module.exports = { loadProject, loadIssue, loadComment, loadLink, assertWritable, assertOwnsComment, actorFrom };
+module.exports = {
+  loadProject,
+  loadIssue,
+  loadComment,
+  loadLink,
+  loadAttachment,
+  assertWritable,
+  assertOwnsComment,
+  assertOwnsAttachment,
+  actorFrom,
+};

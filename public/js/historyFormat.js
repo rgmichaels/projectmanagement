@@ -7,8 +7,13 @@ const historyFormat = (() => {
   const value = (v) => (v === null || v === undefined || v === '' ? NONE : String(v));
 
   // `changed Status from To Do to In Progress`; a long field has no values.
+  // A file field reads `added <label> <name>` or `removed <label> <name>`.
   function changeLine(change) {
     if (change.kind === 'long') return `changed ${change.label}`;
+    if (change.kind === 'file') {
+      const label = change.label.toLowerCase();
+      return change.new ? `added ${label} ${change.new}` : `removed ${label} ${value(change.old)}`;
+    }
     return `changed ${change.label} from ${value(change.old)} to ${value(change.new)}`;
   }
 

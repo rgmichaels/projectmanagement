@@ -135,9 +135,32 @@ function checkCommentBody(body) {
   return text;
 }
 
+const FILENAME_MAX_LENGTH = 200;
+
+// An attachment's display name from the URL-encoded X-Filename header: path
+// separators and control characters removed, trimmed, at most 200 characters
+// (the end, with the extension, is kept when it is shortened). It is only
+// ever shown and stored, never used as a path.
+function checkFilename(raw) {
+  let name;
+  try {
+    name = typeof raw === 'string' ? decodeURIComponent(raw) : '';
+  } catch {
+    throw new ValidationError('The file name is not valid.');
+  }
+  // eslint-disable-next-line no-control-regex
+  name = name.replace(/[/\\\u0000-\u001f\u007f]/g, '').trim();
+  if (!name) throw new ValidationError('A file name is required (X-Filename header).');
+  const chars = [...name];
+  if (chars.length > FILENAME_MAX_LENGTH) name = chars.slice(-FILENAME_MAX_LENGTH).join('');
+  return name;
+}
+
 module.exports = {
   ValidationError,
   COMMENT_MAX_LENGTH,
+  FILENAME_MAX_LENGTH,
+  checkFilename,
   checkCommentBody,
   checkProjectName,
   checkProjectKey,

@@ -1,6 +1,6 @@
 // Opens the SQLite database (better-sqlite3), creates the schema, applies the
 // additive migrations and seeds the fixed user list on first start. This is the single schema/setup file.
-// New tables (comments, sessions, work item history, links) are created with
+// New tables (comments, sessions, work item history, links, attachments) are created with
 // CREATE TABLE IF NOT EXISTS, so existing databases gain them on start.
 // Status, type and resolution columns deliberately have no CHECK constraints:
 // their valid values come from server/statuses.js, server/types.js and
@@ -127,6 +127,26 @@ CREATE TABLE IF NOT EXISTS issue_links (
 
 CREATE INDEX IF NOT EXISTS idx_issue_links_source ON issue_links(source_id);
 CREATE INDEX IF NOT EXISTS idx_issue_links_target ON issue_links(target_id);
+
+-- Files attached to a work item, pasted images included
+-- (server/data/attachments.js). storage_key names the bytes in
+-- server/data/storage.js; filename is a sanitized display name only, never a
+-- path. uploader_name is a snapshot like comments and history. Allowed types
+-- come from server/attachmentTypes.js (no CHECK constraint). Existing
+-- databases gain this table on start.
+CREATE TABLE IF NOT EXISTS attachments (
+  id INTEGER PRIMARY KEY,
+  issue_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+  storage_key TEXT NOT NULL UNIQUE,
+  filename TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  uploader_id INTEGER REFERENCES users(id),
+  uploader_name TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_attachments_issue ON attachments(issue_id, id);
 `;
 
 // Seed data: a small fixed list of placeholder people (no user management in

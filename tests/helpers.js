@@ -2,6 +2,13 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+
+// Attachment bytes go to a scratch directory, never the real data/files/.
+// Set before the server modules load; a test file may set its own first.
+if (!process.env.FILES_DIR) {
+  process.env.FILES_DIR = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'pm-poc-files-')), 'files');
+}
+
 const { openDb } = require('../server/db');
 const { createApp } = require('../server/app');
 
@@ -15,12 +22,14 @@ const DEFAULT_USERNAME = 'alex';
 
 // One HTTP call. Bodies are parsed as JSON when the response is JSON and
 // returned as text otherwise; redirects are not followed.
+// A Buffer body is sent as is (an upload; set Content-Type in headers).
 async function send(base, method, url, body, headers = {}) {
+  const raw = Buffer.isBuffer(body);
   const res = await fetch(base + url, {
     method,
     redirect: 'manual',
-    headers: body === undefined ? headers : { 'Content-Type': 'application/json', ...headers },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers: body === undefined || raw ? headers : { 'Content-Type': 'application/json', ...headers },
+    body: body === undefined ? undefined : raw ? body : JSON.stringify(body),
   });
   const text = await res.text();
   const isJson = (res.headers.get('content-type') || '').includes('application/json');
@@ -36,8 +45,8 @@ async function send(base, method, url, body, headers = {}) {
 // browser. Signed out until login() is called.
 function makeClient(base) {
   let cookie = null; // "pm_session=<token>" or null
-  async function request(method, url, body) {
-    const res = await send(base, method, url, body, cookie ? { Cookie: cookie } : {});
+  async function request(method, url, body, headers = {}) {
+    const res = await send(base, method, url, body, cookie ? { ...headers, Cookie: cookie } : headers);
     for (const c of res.setCookies) {
       const [pair, ...attrs] = c.split(';');
       const [name, value] = pair.split('=');
@@ -52,6 +61,12 @@ function makeClient(base) {
     post: (url, body) => request('POST', url, body),
     patch: (url, body) => request('PATCH', url, body),
     del: (url) => request('DELETE', url),
+    // Uploads `bytes` (a Buffer) as an attachment of work item `issueId`.
+    upload: (issueId, filename, bytes, contentType = 'application/octet-stream') =>
+      request('POST', `/api/issues/${issueId}/attachments`, bytes, {
+        'Content-Type': contentType,
+        'X-Filename': encodeURIComponent(filename),
+      }),
     // Sends any method with this client's cookie.
     request,
     async login(username) {

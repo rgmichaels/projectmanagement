@@ -116,6 +116,7 @@ test('a fresh database file gets the schema and seed users (AC 38)', () => {
   const db = openDb(dbPath);
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name);
   assert.deepEqual(tables.sort(), [
+    'attachments',
     'comments',
     'issue_history_changes',
     'issue_history_events',
@@ -325,4 +326,86 @@ test('Links renders text only and its buttons cannot submit the form (links AC 2
   for (const b of markup.match(/<button\b[^>]*>/gi) || []) assert.match(b, /type="button"/, b);
   // Between the description and the Discussion/History tabs (AC 20).
   assert.ok(html.indexOf('name="description"') < open && open < html.indexOf('<div id="activity-tabs"'));
+});
+
+// ---------- attachments (docs/specs/attachments-and-pasted-images.md AC 1, 5, 11, 29, 36) ----------
+
+const REQUIRES_FS = /require\(\s*['"](node:)?fs(\/promises)?['"]\s*\)/;
+
+test('only server/data/storage.js touches the file system for attachment bytes (attachments AC 1)', () => {
+  // server/db.js uses fs only to create the database's directory.
+  assert.deepEqual(offendersOf(REQUIRES_FS, new Set(['server/data/storage.js', 'server/db.js'])), []);
+  assert.doesNotMatch(read(path.join(root, 'server/db.js')), /data\/files|FILES_DIR|attachment bytes/i);
+  // Tests: only tests/storage.test.js reads the files directory. helpers.js
+  // makes the empty scratch directory; this file reads source text.
+  const testFiles = walk(path.join(root, 'tests')).filter((f) => f.endsWith('.js'));
+  const allowed = new Set(['tests/storage.test.js', 'tests/helpers.js', 'tests/source.test.js']);
+  const offenders = testFiles
+    .filter((f) => !allowed.has(rel(f)) && REQUIRES_FS.test(read(f)) && /FILES_DIR|data\/files|storage_key|storage\./.test(read(f)))
+    .map(rel);
+  assert.deepEqual(offenders, []);
+  // The storage module exports exactly the four functions.
+  assert.deepEqual(Object.keys(require('../server/data/storage')).sort(), ['exists', 'open', 'put', 'remove']);
+});
+
+test('attachment SQL appears only in server/data/attachments.js and the schema (attachments AC 5)', () => {
+  const pattern = /\b(FROM\s+attachments|INSERT\s+INTO\s+attachments|UPDATE\s+attachments|JOIN\s+attachments)\b/i;
+  assert.deepEqual(offendersOf(pattern, new Set(['server/db.js', 'server/data/attachments.js'])), []);
+  assert.match(read(path.join(root, 'server/data/attachments.js')), /INSERT\s+INTO\s+attachments/);
+  const route = read(path.join(root, 'server/routes/attachments.js'));
+  assert.match(route, /require\('\.\.\/data\/attachments'\)/);
+  assert.match(route, /require\('\.\.\/data\/storage'\)/);
+  assert.doesNotMatch(route, /\.prepare\(|\bdb\.exec\(/, 'no SQL in the route');
+  // deleteIssue removes attachment rows through the attachments module.
+  assert.match(read(path.join(root, 'server/data/issues.js')), /attachments\.deleteAttachmentsFor\(/);
+});
+
+test('attachment type names and limits appear only in server/attachmentTypes.js (attachments AC 6, 11)', () => {
+  const { ATTACHMENT_TYPES } = require('../server/attachmentTypes');
+  const names = new Set(ATTACHMENT_TYPES.flatMap((t) => [t.extension, t.mime]));
+  const files = sourceFiles.filter((f) => /^(server|public\/js)\//.test(rel(f)) && rel(f) !== 'server/attachmentTypes.js');
+  const offenders = [];
+  for (const file of files) {
+    // DataTransfer formats (card drag-and-drop) are not attachment types.
+    const text = read(file).replace(/\b(set|get)Data\(\s*'[^']*'/g, '');
+    for (const name of names) if (quoted(name).test(text)) offenders.push(`${rel(file)}: ${name}`);
+    if (/10485760|10\s*\*\s*1024\s*\*\s*1024/.test(text)) offenders.push(`${rel(file)}: size limit`);
+  }
+  assert.deepEqual(offenders, []);
+});
+
+test('Attachments and rich text render text only; buttons cannot submit the form (attachments AC 29, 33)', () => {
+  const js = boardJs();
+  const start = js.indexOf('// ---------- attachments ----------');
+  assert.ok(start !== -1, 'board.js has an attachments section');
+  const end = js.indexOf('// ----------', start + 10);
+  const section = js.slice(start, end === -1 ? undefined : end);
+  for (const [name, text] of [['board.js', js], ['richText.js', read(path.join(root, 'public/js/richText.js'))]]) {
+    assert.doesNotMatch(text, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/, name);
+  }
+  for (const call of section.match(/el\(\s*'button',\s*\{[^}]*\}/g) || []) {
+    assert.match(call, /type: 'button'/, call);
+  }
+  const html = read(path.join(root, 'public/board.html'));
+  const open = html.indexOf('<section id="attachments"');
+  const markup = html.slice(open, html.indexOf('</section>', open));
+  assert.ok(open !== -1 && markup.length > 0);
+  assert.doesNotMatch(markup, /<form\b/i, 'no nested form');
+  for (const b of markup.match(/<button\b[^>]*>/gi) || []) assert.match(b, /type="button"/, b);
+  assert.match(markup, />Save the work item first\.</);
+  // Comments and the description go through the one shared renderer.
+  assert.match(js, /richText\.render\(/);
+  assert.equal((js.match(/richText\.render\(/g) || []).length, 1, 'one call site, used by comments and the description');
+  assert.doesNotMatch(js, /el\('div', \{ class: 'message-body' \}, comment\.body\)/, 'comment bodies use the renderer');
+});
+
+test('the schema has attachments with a unique storage key and no CHECK (attachments data model)', () => {
+  const db = openDb(tempDbPath());
+  const { sql } = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'attachments'").get();
+  const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'attachments'").all().map((r) => r.name);
+  db.close();
+  assert.doesNotMatch(sql, /CHECK/i);
+  assert.match(sql, /storage_key TEXT NOT NULL UNIQUE/);
+  assert.match(sql, /issue_id INTEGER NOT NULL REFERENCES issues\(id\) ON DELETE CASCADE/);
+  assert.ok(indexes.includes('idx_attachments_issue'));
 });
