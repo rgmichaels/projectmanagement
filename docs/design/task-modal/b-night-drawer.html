@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Task modal B: Night drawer</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#14161c; --raise:#1c1f27; --raise2:#242833; --line:#2e3340; --text:#e8eaf0; --dim:#97a0b3;
+  --amber:#ffb454; --amber-ink:#2a1a00; --story:#4fd1a1; --bug:#ff6b6b; --epic:#a78bfa;
+  font-family:Manrope,system-ui,sans-serif;color:var(--text);font-size:14px;
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:#0c0d11;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+.backdrop{position:fixed;inset:0;padding:60px 24px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px;opacity:.5;pointer-events:none}
+.backdrop div{background:#171a21;border-radius:8px;padding:10px}.backdrop i{display:block;height:80px;background:#222632;border-radius:6px;margin-bottom:10px}
+
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(620px,100%);background:var(--bg);border-left:1px solid var(--line);box-shadow:-30px 0 80px rgba(0,0,0,.6);display:flex;flex-direction:column}
+.band{height:3px;background:var(--story)}
+.head{padding:16px 24px 14px;display:flex;align-items:center;gap:10px}
+.key{font-family:"JetBrains Mono",monospace;font-weight:700;color:var(--story);font-size:13px}
+.chip{font-size:12px;font-weight:700;padding:3px 9px;border-radius:99px;background:var(--raise2);color:var(--dim)}
+.chip.epic{background:rgba(167,139,250,.15);color:var(--epic);border:0;cursor:pointer}
+.head .x{margin-left:auto;border:1px solid var(--line);background:var(--raise);border-radius:8px;padding:5px 10px;cursor:pointer;color:var(--dim);font-family:"JetBrains Mono",monospace;font-size:12px}
+.head .x:hover{color:var(--text)}
+.scroll{flex:1;overflow:auto;padding:0 24px 24px}
+.title{width:calc(100% + 16px);background:transparent;border:1px solid transparent;border-radius:8px;padding:6px 8px;margin:0 -8px;font:800 24px/1.25 Manrope;letter-spacing:-.015em}
+.title:hover{background:var(--raise)}.title:focus{outline:2px solid var(--amber);background:var(--raise)}
+
+.props{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0 8px}
+.prop{background:var(--raise);border:1px solid var(--line);border-radius:10px;padding:9px 12px;position:relative}
+.prop label{display:block;font-size:11px;color:var(--dim);font-weight:600;margin-bottom:2px}
+.prop select{width:100%;background:transparent;border:0;font-weight:700;padding:0;appearance:none;cursor:pointer}
+.prop select option{background:var(--raise);color:var(--text)}
+.prop.status{border-color:var(--amber);background:rgba(255,180,84,.08)}
+.prop.status select{color:var(--amber)}
+.prop:focus-within{outline:2px solid var(--amber)}
+.props.two{grid-template-columns:1fr 1fr;margin-top:0}
+
+section{margin-top:28px}
+h3{margin:0 0 10px;font-size:15px;font-weight:800;display:flex;align-items:baseline;gap:8px}
+h3 small{color:var(--dim);font-weight:600;font-size:12px}
+.link{margin-left:auto;border:0;background:none;color:var(--amber);font-weight:700;cursor:pointer;font-size:13px}
+.link:hover{text-decoration:underline}
+.desc{line-height:1.65;color:#cfd4e0;max-width:60ch}.desc p{margin:0 0 10px}
+.shot{height:140px;max-width:320px;border-radius:10px;border:1px solid var(--line);background:
+ linear-gradient(#2e3340,#2e3340) 16px 16px/110px 9px no-repeat,
+ linear-gradient(#2a2e3a,#2a2e3a) 16px 40px/230px 24px no-repeat,
+ linear-gradient(#2a2e3a,#2a2e3a) 16px 74px/108px 24px no-repeat,
+ linear-gradient(#2a2e3a,#2a2e3a) 136px 74px/110px 24px no-repeat,
+ linear-gradient(var(--amber),var(--amber)) 16px 108px/120px 18px no-repeat,var(--raise)}
+.cap{font-size:12px;color:var(--dim);margin-top:4px}
+
+.list{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.list li{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line);background:var(--raise)}
+.list li:first-child{border-top:0}.list li:hover{background:var(--raise2)}
+.list .k{font-family:"JetBrains Mono",monospace;font-size:12px;font-weight:700}
+.list .t{flex:1;min-width:0}
+.rel{font-size:11px;font-weight:700;color:var(--dim);width:78px}
+.st{font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--raise2);color:var(--dim)}
+.st.done{background:rgba(79,209,161,.15);color:var(--story)}.st.go{background:rgba(255,180,84,.15);color:var(--amber)}
+.files{display:flex;gap:10px;flex-wrap:wrap}
+.file{flex:1;min-width:200px;display:flex;gap:10px;align-items:center;background:var(--raise);border:1px solid var(--line);border-radius:12px;padding:9px}
+.file .th{width:38px;height:38px;border-radius:8px;background:var(--raise2);display:grid;place-items:center;font:700 10px "JetBrains Mono",monospace;color:var(--amber)}
+.file small{display:block;color:var(--dim)}
+.drop{width:100%;border:1.5px dashed var(--line);border-radius:12px;padding:12px;text-align:center;color:var(--dim)}
+
+.tabs{display:inline-flex;gap:2px;background:var(--raise);border:1px solid var(--line);border-radius:10px;padding:3px;margin-bottom:6px}
+.tab{border:0;background:none;padding:6px 14px;border-radius:8px;font-weight:700;color:var(--dim);cursor:pointer}
+.tab[aria-selected=true]{background:var(--raise2);color:var(--text)}
+.panel[hidden]{display:none}
+.cmt{display:flex;gap:10px;padding:14px 0;border-bottom:1px solid var(--line)}
+.av{width:30px;height:30px;border-radius:50%;background:var(--amber);color:var(--amber-ink);display:grid;place-items:center;font-size:11px;font-weight:800;flex:none}.av.b{background:var(--epic);color:#150a38}
+.cmt p{margin:3px 0 0}.cmt em{font-style:normal;color:var(--dim);font-size:12px}
+textarea{width:100%;background:var(--raise);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:12px;resize:vertical}
+textarea:focus{outline:2px solid var(--amber)}
+.hist{list-style:none;margin:0;padding:0}.hist li{padding:9px 0;border-bottom:1px solid var(--line);color:var(--dim)}.hist b{color:var(--text)}
+
+.foot{display:flex;align-items:center;gap:10px;padding:14px 24px;border-top:1px solid var(--line);background:var(--raise)}
+.hint{color:var(--dim);font-size:12px;margin-right:auto}.hint kbd{font-family:"JetBrains Mono",monospace;background:var(--raise2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:11px}
+.btn{border:1px solid var(--line);background:var(--raise2);border-radius:9px;padding:8px 16px;font-weight:700;cursor:pointer}.btn:hover{border-color:var(--dim)}
+.btn.primary{background:var(--amber);border-color:var(--amber);color:var(--amber-ink)}.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger{color:var(--bug);background:none;border-color:transparent}.btn.danger:hover{background:rgba(255,107,107,.1)}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+@media(max-width:520px){.props{grid-template-columns:1fr 1fr}.hint{display:none}.foot{flex-wrap:wrap}}
+@media(prefers-reduced-motion:no-preference){.drawer{animation:slide .22s cubic-bezier(.2,.8,.2,1)}@keyframes slide{from{transform:translateX(40px);opacity:0}}}
+</style>
+</head>
+<body>
+<div class="backdrop" aria-hidden="true"><div><i></i><i></i></div><div><i></i><i></i><i></i></div><div><i></i></div></div>
+
+<aside class="drawer" role="dialog" aria-labelledby="t">
+  <div class="band"></div>
+  <header class="head">
+    <span class="key">PM-142</span>
+    <span class="chip">Story</span>
+    <button class="chip epic" type="button">Checkout revamp</button>
+    <button class="x" type="button" aria-label="Close">Esc</button>
+  </header>
+
+  <div class="scroll">
+    <input id="t" class="title" value="Let customers save a card at checkout" aria-label="Title">
+
+    <div class="props">
+      <div class="prop status"><label for="s">Status</label><select id="s"><option>In progress</option><option>To do</option><option>Done</option></select></div>
+      <div class="prop"><label for="a">Assignee</label><select id="a"><option>Dana Ortiz</option><option>Alex</option><option>Unassigned</option></select></div>
+      <div class="prop"><label for="p">Priority</label><select id="p"><option>High</option><option>Medium</option><option>Low</option></select></div>
+    </div>
+    <div class="props two">
+      <div class="prop"><label for="ty">Type</label><select id="ty"><option>Story</option><option>Bug</option><option>Task</option><option>Epic</option></select></div>
+      <div class="prop"><label for="e">Epic</label><select id="e"><option>PM-98 Checkout revamp</option><option>No epic</option></select></div>
+    </div>
+
+    <section>
+      <h3>Description <button class="link" type="button">Edit</button></h3>
+      <div class="desc">
+        <p>Returning customers retype their card every order. Add a “Save this card” checkbox under the card form and store only the processor token.</p>
+        <div class="shot" role="img" aria-label="Checkout card form mock"></div>
+        <div class="cap">card-form-v2.png</div>
+      </div>
+    </section>
+
+    <section>
+      <h3>Links <small>3</small> <button class="link" type="button">Add link</button></h3>
+      <ul class="list">
+        <li><span class="rel">Blocks</span><span class="k">PM-150</span><span class="t">Show saved cards on account page</span><span class="st">To do</span></li>
+        <li><span class="rel">Blocked by</span><span class="k">PM-139</span><span class="t">Choose payment processor token API</span><span class="st done">Done</span></li>
+        <li><span class="rel">Relates to</span><span class="k">PM-131</span><span class="t">Card form loses focus on mobile</span><span class="st go">In progress</span></li>
+      </ul>
+    </section>
+
+    <section>
+      <h3>Attachments <small>2</small></h3>
+      <div class="files">
+        <div class="file"><span class="th">PNG</span><div>card-form-v2.png<small>184 KB · Dana, today</small></div></div>
+        <div class="file"><span class="th">PDF</span><div>pci-notes.pdf<small>1.2 MB · Alex, Oct 22</small></div></div>
+        <div class="drop">Drop files here or <button class="link" type="button" style="margin:0">browse</button></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="tabs" role="tablist"><button class="tab" role="tab" aria-selected="true" data-p="disc">Discussion · 2</button><button class="tab" role="tab" aria-selected="false" data-p="hist">History</button></div>
+      <div class="panel" id="disc">
+        <div class="cmt"><span class="av">DO</span><div><strong>Dana Ortiz</strong> <em>2 hours ago</em><p>Processor sandbox is wired up. Starting on the checkbox.</p></div></div>
+        <div class="cmt"><span class="av b">AL</span><div><strong>Alex</strong> <em>yesterday</em><p>Please keep the checkbox unticked by default.</p></div></div>
+        <textarea rows="2" placeholder="Write a message" aria-label="Message"></textarea>
+      </div>
+      <div class="panel" id="hist" hidden>
+        <ul class="hist">
+          <li><b>Dana Ortiz</b> changed Status from To do to In progress · 2 hours ago</li>
+          <li><b>Alex</b> changed Priority from Medium to High · yesterday</li>
+          <li><b>Alex</b> created this story · Oct 21</li>
+        </ul>
+      </div>
+    </section>
+  </div>
+
+  <footer class="foot">
+    <button class="btn danger" type="button">Delete</button>
+    <span class="hint"><kbd>⌘</kbd> <kbd>Enter</kbd> to save</span>
+    <button class="btn primary" type="button">Save</button>
+  </footer>
+</aside>
+<script>
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected',x===t));
+  document.querySelectorAll('.panel').forEach(p=>p.hidden=p.id!==t.dataset.p);
+});
+</script>
+</body>
+</html>
