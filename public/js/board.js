@@ -1,6 +1,7 @@
 // Board page: columns from the status list, cards styled from the type list,
 // swimlanes (assignee / epic / priority), drag-and-drop and the detail view
-// with its Links and Attachments sections and Discussion and History tabs.
+// with its Epic (for epic types), Links and Attachments sections and
+// Discussion and History tabs.
 // Comments and the description are shown through js/richText.js (plain text
 // plus pasted-image tokens); pasting an image uploads it as an attachment.
 // Status, type, priority, resolution and link type names all come from the
@@ -97,6 +98,21 @@
     attachmentInput: document.getElementById('attachment-input'),
     attachmentError: document.getElementById('attachment-error'),
     attachmentList: document.getElementById('attachment-list'),
+    epicOpen: document.getElementById('epic-open'),
+    epicView: document.getElementById('epic-view'),
+    epicViewHeading: document.getElementById('epic-view-heading'),
+    epicViewError: document.getElementById('epic-view-error'),
+    epicProgressBar: document.getElementById('epic-progress-bar'),
+    epicProgressFill: document.getElementById('epic-progress-fill'),
+    epicProgressText: document.getElementById('epic-progress-text'),
+    epicCounts: document.getElementById('epic-counts'),
+    epicEmpty: document.getElementById('epic-empty'),
+    epicChildren: document.getElementById('epic-children'),
+    epicActions: document.getElementById('epic-actions'),
+    epicAddTarget: document.getElementById('epic-add-target'),
+    epicAdd: document.getElementById('epic-add'),
+    epicCreateChild: document.getElementById('epic-create-child'),
+    epicAddError: document.getElementById('epic-add-error'),
   };
 
   // ---------- helpers ----------
@@ -227,7 +243,7 @@
         { class: 'card-meta' },
         typeBadge,
         el('span', { class: 'card-key' }, item.key),
-        epic ? el('span', { class: 'epic-chip', title: epic.title }, epic.key) : null,
+        epic ? epicChip(epic) : null,
         el('span', { class: 'priority', title: `Priority: ${item.priority}` }, item.priority),
         resolutionLabel(item),
         commentChip(item.comment_count || 0),
@@ -254,6 +270,27 @@
       });
     }
     return card;
+  }
+
+  // Opens the epic's dialog. A click or Enter here is not a click on the card.
+  function epicChip(epic) {
+    const open = (e) => {
+      e.stopPropagation();
+      openLinked(epic.id);
+    };
+    return el(
+      'span',
+      {
+        class: 'epic-chip',
+        title: `Open ${epic.key} ${epic.title}`,
+        role: 'button',
+        tabindex: '0',
+        draggable: 'false',
+        onclick: open,
+        onkeydown: (e) => { if (e.key === 'Enter') open(e); },
+      },
+      epic.key // text, never parsed as HTML
+    );
   }
 
   // Shown only in the terminal column, from the server's value.
@@ -462,8 +499,17 @@
     els.epicField.hidden = !epicType() || Boolean(type && type.isEpic);
   }
 
+  // A link to the saved epic of the open item, beside the dropdown.
+  function syncEpicOpen(item) {
+    const epic = item && item.epic_id ? itemById(item.epic_id) : null;
+    els.epicOpen.hidden = !epic;
+    els.epicOpen.textContent = epic ? `${epic.key} ${epic.title}` : ''; // text, never parsed as HTML
+    els.epicOpen.onclick = epic ? () => openLinked(epic.id, els.detailError) : null;
+  }
+
   function openDetail(item) {
     editing = item || null;
+    epicView.returnTo = null; // set again by Create child
     const f = els.form.elements;
     const ro = readOnly();
     const defaultType = state.types.find((t) => t.isDefault) || state.types[0];
@@ -496,6 +542,7 @@
     els.resolutionField.hidden = true;
     syncResolutionField();
     syncEpicField();
+    syncEpicOpen(item);
 
     for (const field of els.form.querySelectorAll('input, select, textarea')) field.disabled = ro;
     els.historyField.disabled = false; // History stays usable when read-only
@@ -507,6 +554,7 @@
     // against this item's attachment list.
     openAttachments(item);
     openDescription(item);
+    openEpicView(item);
     openLinks(item);
     openDiscussion(item);
     openHistory(item);
@@ -550,6 +598,12 @@
         historySaved(editing.id);
       } else {
         await api.post(`/api/projects/${state.project.id}/issues`, values);
+        // Created from an epic's Create child: go back to that epic.
+        const epic = epicView.returnTo !== null && (await reloadThenFind(epicView.returnTo));
+        if (epic) {
+          openDetail(epic);
+          return;
+        }
       }
       els.dialog.close();
       await reloadItems();
@@ -802,6 +856,8 @@
     historyView.issueId = null;
     linksView.issueId = null;
     attachmentsView.issueId = null;
+    epicView.issueId = null;
+    epicView.returnTo = null;
   });
 
   // ---------- history ----------
@@ -946,6 +1002,203 @@
     if (!historyView.loading) loadHistory(false);
   });
 
+  // ---------- epic view ----------
+  // For an epic-type work item: progress, a count per status and the
+  // children (GET /api/issues/:id/children). Add and Remove set the child's
+  // epic through the usual PATCH (so its History records the change); Create
+  // child opens the create form with this epic chosen. Not part of the work
+  // item form: these handlers never submit it. Status and type names come
+  // from the server; none are named here.
+
+  const epicView = {
+    issueId: null, // epic whose children are shown, or null
+    data: null, // { items, summary } from the server
+    loadSeq: 0,
+    busy: false, // an add or remove is in flight
+    returnTo: null, // epic to reopen after Create child saves
+  };
+
+  // Work items of this project that can be added: not an epic type and not
+  // already a child of this epic. Items in another epic show its key.
+  function fillEpicAddTarget() {
+    const epicId = epicView.issueId;
+    const candidates = state.items
+      .filter((i) => !isEpicItem(i) && i.epic_id !== epicId)
+      .sort((a, b) => a.number - b.number);
+    const label = (i) => {
+      const current = i.epic_id ? itemById(i.epic_id) : null;
+      return current ? `${i.key} ${i.title} (${current.key})` : `${i.key} ${i.title}`;
+    };
+    const previous = els.epicAddTarget.value;
+    els.epicAddTarget.replaceChildren(
+      el('option', { value: '' }, 'Work item...'),
+      ...candidates.map((i) => el('option', { value: String(i.id) }, label(i)))
+    );
+    // Keep the choice across a refresh while it is still a candidate.
+    if (candidates.some((i) => String(i.id) === previous)) els.epicAddTarget.value = previous;
+    syncEpicAdd();
+  }
+
+  function syncEpicAdd() {
+    els.epicAdd.disabled = epicView.busy || !els.epicAddTarget.value;
+  }
+
+  function renderEpicChild(child) {
+    const type = typeOf(child.type);
+    const open = () => openLinked(child.id, els.epicViewError);
+    const li = el(
+      'li',
+      { class: 'epic-child', 'data-id': child.id },
+      el(
+        'span',
+        {
+          class: 'type-icon epic-child-type',
+          style: type && type.color ? `--type-color: ${type.color}` : undefined,
+          title: (type && type.label) || child.type,
+          'aria-hidden': 'true',
+        },
+        (type && type.icon) || '□'
+      ),
+      el('button', { type: 'button', class: 'link epic-child-key', onclick: open }, child.key), // text, never parsed as HTML
+      el('button', { type: 'button', class: 'link epic-child-title', onclick: open }, child.title),
+      el('span', { class: 'epic-child-status' }, child.status),
+      el('span', { class: 'epic-child-assignee' }, child.assignee_name || 'Unassigned'),
+      el('span', { class: 'priority epic-child-priority', title: `Priority: ${child.priority}` }, child.priority)
+    );
+    if (!readOnly()) {
+      li.append(el('button', { type: 'button', class: 'link danger', onclick: () => removeEpicChild(child) }, 'Remove'));
+    }
+    return li;
+  }
+
+  function renderEpicView() {
+    const data = epicView.data || { items: [], summary: { total: 0, done: 0, byStatus: [] } };
+    const { total, done, byStatus } = data.summary;
+    const percent = total ? Math.round((done / total) * 100) : 0;
+    els.epicProgressFill.style.width = `${percent}%`;
+    els.epicProgressBar.setAttribute('aria-valuemax', String(total));
+    els.epicProgressBar.setAttribute('aria-valuenow', String(done));
+    els.epicProgressText.textContent = `${done} of ${total} done`;
+    els.epicCounts.replaceChildren(
+      ...byStatus.map((s) =>
+        el('li', { class: `epic-count${s.count ? '' : ' zero'}` }, el('span', {}, s.status), ' ', el('strong', {}, String(s.count)))
+      )
+    );
+    els.epicEmpty.hidden = !epicView.data || data.items.length > 0;
+    els.epicChildren.replaceChildren(...data.items.map(renderEpicChild));
+  }
+
+  // Shows the section when `item` is a saved epic-type work item and loads
+  // its children; hides it otherwise.
+  function openEpicView(item) {
+    const show = Boolean(item) && isEpicItem(item);
+    epicView.issueId = show ? item.id : null;
+    epicView.data = null;
+    epicView.busy = false;
+    epicView.loadSeq += 1;
+    els.epicView.hidden = !show;
+    els.epicViewError.textContent = '';
+    els.epicAddError.textContent = '';
+    if (!show) return;
+    const type = typeOf(item.type);
+    const label = (type && type.label) || item.type;
+    els.epicViewHeading.textContent = label;
+    els.epicEmpty.textContent = `No items in this ${label.toLowerCase()} yet.`;
+    els.epicActions.hidden = readOnly();
+    els.epicAddTarget.value = '';
+    fillEpicAddTarget();
+    renderEpicView();
+    loadEpicChildren(item.id);
+  }
+
+  async function loadEpicChildren(epicId) {
+    const seq = ++epicView.loadSeq;
+    try {
+      const data = await api.get(`/api/issues/${epicId}/children`);
+      if (seq !== epicView.loadSeq || epicView.issueId !== epicId) return; // a newer dialog is open
+      epicView.data = data;
+      els.epicViewError.textContent = '';
+      renderEpicView();
+    } catch (err) {
+      if (seq === epicView.loadSeq && epicView.issueId === epicId) {
+        els.epicViewError.textContent = `Could not load the ${els.epicViewHeading.textContent.toLowerCase()}'s items: ${err.message}`;
+      }
+    }
+  }
+
+  // Reloads the board's items (cards and swimlanes) and returns the item
+  // with `id`, or null if it is gone or the reload failed.
+  async function reloadThenFind(id) {
+    try {
+      await reloadItems();
+    } catch (err) {
+      showMessage(err.message);
+      return null;
+    }
+    return itemById(id) || null;
+  }
+
+  // Sets a child's epic (null removes it), then refreshes the board and the
+  // section without closing the dialog.
+  async function setChildEpic(childId, epicIdOrNull, epicId) {
+    await api.patch(`/api/issues/${childId}`, { epic_id: epicIdOrNull });
+    historySaved(childId);
+    await refreshCards();
+    if (epicView.issueId !== epicId) return;
+    fillEpicAddTarget();
+    await loadEpicChildren(epicId);
+  }
+
+  els.epicAddTarget.addEventListener('change', syncEpicAdd);
+
+  els.epicAdd.addEventListener('click', async () => {
+    const epicId = epicView.issueId;
+    if (epicView.busy || readOnly() || epicId === null || !els.epicAddTarget.value) return;
+    els.epicAddError.textContent = '';
+    epicView.busy = true;
+    syncEpicAdd();
+    try {
+      await setChildEpic(Number(els.epicAddTarget.value), epicId, epicId);
+      if (epicView.issueId === epicId) {
+        els.epicAddTarget.value = '';
+      }
+    } catch (err) {
+      // The form keeps its values so the user can try again.
+      if (epicView.issueId === epicId) els.epicAddError.textContent = `Could not add: ${err.message}`;
+    } finally {
+      epicView.busy = false;
+      syncEpicAdd();
+    }
+  });
+
+  // No confirmation: the child is only taken out of the epic, not deleted.
+  async function removeEpicChild(child) {
+    const epicId = epicView.issueId;
+    if (epicView.busy || readOnly() || epicId === null) return;
+    els.epicAddError.textContent = '';
+    epicView.busy = true;
+    syncEpicAdd();
+    try {
+      await setChildEpic(child.id, null, epicId);
+    } catch (err) {
+      if (epicView.issueId === epicId) els.epicAddError.textContent = `Could not remove ${child.key}: ${err.message}`;
+    } finally {
+      epicView.busy = false;
+      syncEpicAdd();
+    }
+  }
+
+  // The create form, re-pointed in the same dialog, with this epic chosen and
+  // the normal default type. After Create the dialog returns to the epic.
+  els.epicCreateChild.addEventListener('click', () => {
+    const epicId = epicView.issueId;
+    if (readOnly() || epicId === null) return;
+    openDetail(null);
+    els.form.elements.epic_id.value = String(epicId);
+    syncEpicField();
+    epicView.returnTo = epicId;
+  });
+
   // ---------- links ----------
   // Links of the open work item, grouped by how they read from it. Not part of
   // the work item form: these handlers never submit, save or close it.
@@ -1051,14 +1304,18 @@
     }
   }
 
-  // Re-points the open dialog at a linked work item.
-  async function openLinked(id) {
+  // Re-points the open dialog (or opens it) at a linked work item. A failure
+  // is shown in `errorEl` (the Links error by default), or as a page message
+  // when the dialog is closed.
+  async function openLinked(id, errorEl = els.linkError) {
     let item = itemById(id);
     if (!item) {
       try {
         item = await api.get(`/api/issues/${id}`);
       } catch (err) {
-        els.linkError.textContent = `Could not open the linked work item: ${err.message}`;
+        const text = `Could not open the linked work item: ${err.message}`;
+        if (els.dialog.open) errorEl.textContent = text;
+        else showMessage(text);
         return;
       }
     }

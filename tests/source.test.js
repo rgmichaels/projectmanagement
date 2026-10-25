@@ -409,3 +409,69 @@ test('the schema has attachments with a unique storage key and no CHECK (attachm
   assert.match(sql, /issue_id INTEGER NOT NULL REFERENCES issues\(id\) ON DELETE CASCADE/);
   assert.ok(indexes.includes('idx_attachments_issue'));
 });
+
+// ---------- epic view (docs/specs/epic-view.md AC 8, 23, 25, 26) ----------
+
+function boardSection(marker) {
+  const js = boardJs();
+  const start = js.indexOf(marker);
+  assert.ok(start !== -1, `board.js has a "${marker}" section`);
+  const end = js.indexOf('// ----------', start + 10);
+  return js.slice(start, end === -1 ? undefined : end);
+}
+
+test('epic view code names no status, type, priority or resolution (epic view AC 25)', () => {
+  const { STATUSES } = require('../server/statuses');
+  const { TYPES } = require('../server/types');
+  const { PRIORITIES } = require('../server/priorities');
+  const { RESOLUTIONS } = require('../server/resolutions');
+  const names = new Set([...STATUSES, ...TYPES.flatMap((t) => [t.name, t.label]), ...PRIORITIES, ...RESOLUTIONS.map((r) => r.name)]);
+  const html = read(path.join(root, 'public/board.html'));
+  const open = html.indexOf('<section id="epic-view"');
+  const sources = [
+    ['public/js/board.js (epic view section)', boardSection('// ---------- epic view ----------')],
+    ['public/board.html (epic view section)', html.slice(open, html.indexOf('</section>', open))],
+    ['server/data/issues.js', read(path.join(root, 'server/data/issues.js'))],
+    ['server/routes/issues.js', read(path.join(root, 'server/routes/issues.js'))],
+  ];
+  const offenders = [];
+  for (const [file, text] of sources) {
+    for (const name of names) if (quoted(name).test(text)) offenders.push(`${file}: ${name}`);
+  }
+  assert.deepEqual(offenders, []);
+  // The summary is built from the status list and the terminal-status rule.
+  const data = read(path.join(root, 'server/data/issues.js'));
+  const summary = data.slice(data.indexOf('function childSummary'), data.indexOf('// Rank that places'));
+  assert.match(summary, /STATUSES\.map\(/);
+  assert.match(summary, /isTerminalStatus\(/);
+});
+
+test('epic view SQL is in the data layer and the route is read-only (epic view AC 8, 26)', () => {
+  const route = read(path.join(root, 'server/routes/issues.js'));
+  assert.doesNotMatch(route, /\.prepare\(|\bdb\.exec\(/, 'no SQL in the route');
+  const handler = route.slice(route.indexOf("router.get('/issues/:id/children'"), route.indexOf('router.patch('));
+  assert.ok(handler.length > 0);
+  assert.match(handler, /issues\.listChildren\(/);
+  assert.match(handler, /issues\.childSummary\(/);
+  assert.doesNotMatch(handler, /assertWritable\(/, 'readable on archived projects');
+  assert.doesNotMatch(route, /router\.(post|put|patch|delete)\(\s*'\/issues\/:id\/children'/);
+  const data = require('../server/data/issues');
+  assert.equal(typeof data.listChildren, 'function');
+  assert.equal(typeof data.childSummary, 'function');
+});
+
+test('the epic view renders text only and its buttons cannot submit the form (epic view AC 23)', () => {
+  const section = boardSection('// ---------- epic view ----------');
+  assert.doesNotMatch(section, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
+  for (const call of section.match(/el\(\s*'button',\s*\{[^}]*\}/g) || []) {
+    assert.match(call, /type: 'button'/, call);
+  }
+  const html = read(path.join(root, 'public/board.html'));
+  const open = html.indexOf('<section id="epic-view"');
+  const markup = html.slice(open, html.indexOf('</section>', open));
+  assert.ok(open !== -1 && markup.length > 0);
+  assert.doesNotMatch(markup, /<form\b/i, 'no nested form');
+  for (const b of markup.match(/<button\b[^>]*>/gi) || []) assert.match(b, /type="button"/, b);
+  // The Epic field's link to the epic is a button too.
+  assert.match(html, /<button type="button" id="epic-open"/);
+});

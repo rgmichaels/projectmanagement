@@ -156,7 +156,8 @@ table.projects tr.is-archived td { color: var(--muted); background: #fafbfc; }
 }
 /* Neutral fallback for a type with no defined styling. */
 .type-badge.type-fallback { background: var(--neutral); }
-.epic-chip { background: #eae6ff; color: #403294; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
+.epic-chip { background: #eae6ff; color: #403294; padding: 1px 5px; border-radius: 3px; font-weight: 600; cursor: pointer; }
+.epic-chip:hover, .epic-chip:focus-visible { background: #c0b6f2; text-decoration: underline; }
 .resolution-label {
   --resolution-color: var(--neutral);
   padding: 1px 5px;
@@ -279,3 +280,30 @@ label.history-filter { flex-direction: row; align-items: center; gap: 6px; margi
 .attachment-download { font-size: 12px; }
 .attachment-thumb-link { flex: none; }
 .attachment-thumb { display: block; width: 48px; height: 48px; object-fit: cover; border: 1px solid var(--border); border-radius: 3px; }
+
+/* Epic field in a child's dialog: the dropdown plus a link to the epic. */
+.epic-field { display: flex; flex-direction: column; }
+.epic-field[hidden], .epic-open[hidden] { display: none; }
+.epic-open { align-self: flex-start; text-align: left; margin: -6px 0 10px; word-break: break-word; }
+
+/* Epic view in the detail dialog (epic types only), before Links. */
+.epic-view { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 10px; }
+.epic-view[hidden], .epic-empty[hidden], .epic-actions[hidden] { display: none; }
+.epic-view h3 { font-size: 14px; margin: 0 0 8px; }
+.epic-progress { display: flex; align-items: center; gap: 8px; }
+.progress-bar { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; width: 0; background: #36b37e; transition: width 0.2s; }
+.progress-text { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.epic-counts { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
+.epic-count strong { color: var(--text); }
+.epic-count.zero strong { color: var(--muted); font-weight: normal; }
+.epic-empty { color: var(--muted); margin: 4px 0; }
+.epic-children { list-style: none; margin: 0; padding: 0; max-height: 30vh; overflow-y: auto; }
+.epic-child { display: flex; align-items: baseline; gap: 6px; padding: 3px 0; border-top: 1px solid var(--border); }
+.epic-child:first-child { border-top: none; }
+.epic-child .epic-child-type { color: var(--type-color, var(--muted)); }
+.epic-child .epic-child-key { font-weight: 600; }
+.epic-child .epic-child-title { flex: 1; min-width: 0; text-align: left; color: var(--text); word-break: break-word; }
+.epic-child .epic-child-status, .epic-child .epic-child-assignee, .epic-child .epic-child-priority { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.epic-actions { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+.epic-actions select { flex: 1; min-width: 0; }

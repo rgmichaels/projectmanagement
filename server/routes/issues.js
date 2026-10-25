@@ -4,7 +4,7 @@ const express = require('express');
 const projects = require('../data/projects');
 const issues = require('../data/issues');
 const { isEpicType } = require('../types');
-const { checkIssueFields } = require('../validation');
+const { checkIssueFields, ValidationError } = require('../validation');
 const { loadIssue, assertWritable, actorFrom } = require('./guards');
 
 function issueRoutes(db) {
@@ -12,6 +12,19 @@ function issueRoutes(db) {
 
   router.get('/issues/:id', (req, res) => {
     res.json(loadIssue(db, req.params.id));
+  });
+
+  // The epic view: an epic's children and its progress. Read-only, so also
+  // readable on archived projects. Unknown ids and non-epics are both 404.
+  router.get('/issues/:id/children', (req, res) => {
+    let epic = null;
+    try {
+      epic = loadIssue(db, req.params.id);
+    } catch (err) {
+      if (err.status !== 404) throw err;
+    }
+    if (!epic || !isEpicType(epic.type)) throw new ValidationError('Epic not found.', 404);
+    res.json({ items: issues.listChildren(db, epic.id), summary: issues.childSummary(db, epic.id) });
   });
 
   router.patch('/issues/:id', (req, res) => {

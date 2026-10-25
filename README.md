@@ -78,6 +78,12 @@ Open a work item and select the **History** tab next to Discussion (Discussion s
 
 API: `GET /api/issues/:id/history?limit=&before=&field=` (newest first, `limit` default 50, max 200, `before` an event id for the next page) returns `{ events, has_more }`; `GET /api/history-fields` lists the fields. To record a new editable work item column, add one entry to `server/historyFields.js` (a test fails if one is missing). New statuses, types, priorities and resolutions need no history change.
 
+## Epic view
+
+Opening an epic (click its card, the epic chip on any of its children's cards, or the epic link under a child's Epic field) shows an **Epic** section in the detail dialog: a progress bar ("3 of 8 done", where done means the terminal status whatever the resolution), a count for every status, and the children with key, title, type, status, assignee and priority (click one to open it). **Add** puts an existing item of the same project into the epic (an item already in another epic moves; the picker shows its current epic), **Remove** takes a child out without deleting it, and **Create child** opens the create form with the epic chosen and returns to the epic after Create. Membership changes go through the normal work item update, so each child's History records them. On archived projects the section is read-only.
+
+API: `GET /api/issues/:id/children` returns `{ items, summary: { total, done, byStatus: [{ status, count }] } }` for an epic (404 `Epic not found.` otherwise). Adding and removing use `PATCH /api/issues/:id` with `epic_id`. New statuses appear in the counts with no other change.
+
 ## Links
 
 The detail dialog has a **Links** section between the description and the Discussion/History tabs. It lists the items linked to this one, grouped by how the link reads from here ("blocks", "is blocked by", "relates to", "duplicates", "is duplicated by"). Pick a relationship and another work item of the same project and press **Add link**; the other item shows the reverse reading at once. **Remove** works from either end. Click a linked item's key or title to open it in the same dialog. Each add or remove appears in the History of both items (as "Link"), and deleting a work item removes its links and records the removal on each former partner. Links are same-project only; cycles are allowed; on archived projects links are read-only.

@@ -5,7 +5,7 @@
 // applied here so the status and resolution are always written together.
 // Every write records history (server/data/history.js) inside its own
 // transaction; `actor` is { id, name } from the route (guards.actorFrom).
-const { isTerminalStatus } = require('../statuses');
+const { STATUSES, isTerminalStatus } = require('../statuses');
 const { defaultResolution } = require('../resolutions');
 const history = require('./history');
 const links = require('./links');
@@ -40,6 +40,47 @@ function getIssue(db, id) {
 
 function countChildren(db, epicId) {
   return db.prepare('SELECT COUNT(*) AS n FROM issues WHERE epic_id = ?').get(epicId).n;
+}
+
+// Position of a status in the display order; a status no longer in the list
+// sorts after all known ones.
+function statusOrder(status) {
+  const i = STATUSES.indexOf(status);
+  return i === -1 ? STATUSES.length : i;
+}
+
+// The children of an epic for the epic view, with the assignee's name,
+// ordered by status display order then item number.
+function listChildren(db, epicId) {
+  const rows = db
+    .prepare(
+      `SELECT i.id, i.number, i.key, i.title, i.type, i.status, i.priority, i.assignee_id,
+              a.name AS assignee_name
+       FROM issues i LEFT JOIN users a ON a.id = i.assignee_id
+       WHERE i.epic_id = ? ORDER BY i.number`
+    )
+    .all(epicId);
+  return rows.sort((x, y) => statusOrder(x.status) - statusOrder(y.status) || x.number - y.number);
+}
+
+// Progress of an epic: total children, how many are in the terminal status
+// (whatever their resolution) and a count for every status in display order,
+// zero included.
+function childSummary(db, epicId) {
+  const counts = new Map(
+    db
+      .prepare('SELECT status, COUNT(*) AS n FROM issues WHERE epic_id = ? GROUP BY status')
+      .all(epicId)
+      .map((r) => [r.status, r.n])
+  );
+  let total = 0;
+  let done = 0;
+  for (const [status, n] of counts) {
+    total += n;
+    if (isTerminalStatus(status)) done += n;
+  }
+  const byStatus = STATUSES.map((status) => ({ status, count: counts.get(status) || 0 }));
+  return { total, done, byStatus };
 }
 
 // Rank that places an item at the bottom of a status column.
@@ -194,6 +235,8 @@ module.exports = {
   listIssues,
   getIssue,
   countChildren,
+  listChildren,
+  childSummary,
   createIssue,
   updateIssue,
   deleteIssue,
