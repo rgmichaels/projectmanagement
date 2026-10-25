@@ -1,22 +1,25 @@
 // Discussion messages (docs/specs/ticket-discussion.md): create, list, edit,
 // delete, comment_count, cascade on work item delete, archived read-only
-// (AC 8-11, 13, 15, 19, 22-31).
+// (AC 8-11, 13, 15, 19, 22-31). Since docs/specs/username-login.md the author
+// is the signed-in user, so each user posts through their own client.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { startServer, createProject, createItem } = require('./helpers');
 
 let app;
 let users;
+const clients = new Map(); // user id -> client signed in as that user
 test.before(async () => {
-  app = await startServer();
+  app = await startServer(); // signed in as users[0]
   users = (await app.get('/api/users')).body;
+  for (const u of users) clients.set(u.id, u.id === users[0].id ? app : await app.client(u.username));
 });
 test.after(async () => { await app.close(); });
 
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const thread = async (issueId) => (await app.get(`/api/issues/${issueId}/comments`)).body;
-const post = (issueId, body, authorId = users[0].id) =>
-  app.post(`/api/issues/${issueId}/comments`, { author_id: authorId, body });
+const as = (user) => clients.get(user.id);
+const post = (issueId, body, author = users[0]) => as(author).post(`/api/issues/${issueId}/comments`, { body });
 const countRows = (issueId) =>
   app.db.prepare('SELECT COUNT(*) AS n FROM comments WHERE issue_id = ?').get(issueId).n;
 const commentCount = async (projectId, issueId) =>
@@ -29,7 +32,7 @@ async function newItem(fields) {
 
 test('a valid message is created and listed back with author and UTC time (AC 8, 10, 16)', async () => {
   const { item } = await newItem();
-  const res = await post(item.id, 'Hello there', users[1].id);
+  const res = await post(item.id, 'Hello there', users[1]);
   assert.equal(res.status, 201);
   assert.equal(res.body.body, 'Hello there');
   assert.equal(res.body.author_id, users[1].id);
@@ -63,15 +66,55 @@ test('body validation: empty, whitespace and 2001 chars rejected; 2000 accepted;
   assert.equal(trimmed.body.body, 'line one\nline two', 'outer whitespace trimmed, inner line break kept');
 });
 
-test('missing, non-integer and unknown author_id rejected; anyone may post as anyone (AC 8)', async () => {
+// Replaces Discussion AC 8 ("missing/unknown author_id is rejected"): the
+// author is the session user and author_id in the body is ignored
+// (username-login AC 18).
+test('the author is the signed-in user whatever author_id says (login AC 18)', async () => {
   const { item } = await newItem();
-  for (const author_id of [undefined, null, 'abc', '1', 1.5, 0, -1, 99999]) {
-    const res = await app.post(`/api/issues/${item.id}/comments`, { author_id, body: 'hi' });
-    assert.ok(res.status >= 400 && res.status < 500, `rejects author_id ${JSON.stringify(author_id)}`);
-    assert.ok(res.body.error);
+  for (const author_id of [undefined, null, 'abc', 1.5, 0, -1, 99999, users[2].id]) {
+    const res = await as(users[1]).post(`/api/issues/${item.id}/comments`, { author_id, body: 'hi' });
+    assert.equal(res.status, 201, `accepts author_id ${JSON.stringify(author_id)}`);
+    assert.equal(res.body.author_id, users[1].id);
+    assert.equal(res.body.author_name, users[1].name);
   }
-  assert.equal(countRows(item.id), 0);
-  for (const u of users) assert.equal((await post(item.id, 'hi', u.id)).status, 201);
+  assert.ok((await thread(item.id)).every((c) => c.author_id === users[1].id));
+  for (const u of users) assert.equal((await post(item.id, 'hi', u)).body.author_id, u.id);
+});
+
+test('only the author may edit or delete; 404 before 403 (login AC 20)', async () => {
+  const { item } = await newItem();
+  const msg = (await post(item.id, 'mine', users[0])).body;
+  const other = as(users[1]);
+  for (const res of [
+    await other.patch(`/api/comments/${msg.id}`, { body: 'hijacked' }),
+    await other.del(`/api/comments/${msg.id}`),
+  ]) {
+    assert.equal(res.status, 403);
+    assert.deepEqual(res.body, { error: 'You can only change your own messages.' });
+  }
+  assert.deepEqual(await thread(item.id), [msg], 'message unchanged');
+  assert.equal((await other.patch('/api/comments/999999', { body: 'x' })).status, 404);
+  assert.equal((await other.del('/api/comments/999999')).status, 404);
+
+  const edited = await as(users[0]).patch(`/api/comments/${msg.id}`, { body: 'mine, edited' });
+  assert.equal(edited.status, 200);
+  assert.equal(edited.body.body, 'mine, edited');
+  assert.equal((await as(users[0]).del(`/api/comments/${msg.id}`)).status, 204);
+  assert.deepEqual(await thread(item.id), []);
+});
+
+test('archived project: a non-author gets 403, the author 409 (login AC 20, 21)', async () => {
+  const p = await createProject(app, { status: 'Completed' });
+  const item = await createItem(app, p.id);
+  const msg = (await post(item.id, 'before archive', users[0])).body;
+  assert.equal((await app.patch(`/api/projects/${p.id}`, { archived: true })).status, 200);
+  const other = as(users[1]);
+  assert.equal((await other.patch(`/api/comments/${msg.id}`, { body: 'x' })).status, 403);
+  assert.equal((await other.del(`/api/comments/${msg.id}`)).status, 403);
+  assert.equal((await as(users[0]).patch(`/api/comments/${msg.id}`, { body: 'x' })).status, 409);
+  assert.equal((await as(users[0]).del(`/api/comments/${msg.id}`)).status, 409);
+  assert.equal((await other.post(`/api/issues/${item.id}/comments`, { body: 'x' })).status, 409);
+  assert.deepEqual(await thread(item.id), [msg]);
 });
 
 test('unknown work item returns 404; non-numeric ids return 4xx with the error shape (AC 31)', async () => {
@@ -81,7 +124,7 @@ test('unknown work item returns 404; non-numeric ids return 4xx with the error s
   assert.equal((await post(999999, 'hi')).status, 404);
   for (const res of [
     await app.get('/api/issues/abc/comments'),
-    await app.post('/api/issues/abc/comments', { author_id: users[0].id, body: 'hi' }),
+    await app.post('/api/issues/abc/comments', { body: 'hi' }),
     await app.patch('/api/comments/abc', { body: 'hi' }),
     await app.del('/api/comments/abc'),
   ]) {
@@ -128,19 +171,21 @@ test('posting on a Done item works and leaves the item unchanged (AC 13)', async
 
 test('edit: changes body and updated_at only; invalid and same-text edits; unknown id (AC 22-24)', async () => {
   const { item } = await newItem();
-  const original = (await post(item.id, 'draft text', users[2].id)).body;
+  const author = as(users[2]);
+  const original = (await post(item.id, 'draft text', users[2])).body;
+  assert.equal(original.author_id, users[2].id);
 
   for (const body of ['', '   ', 'x'.repeat(2001), undefined]) {
-    const res = await app.patch(`/api/comments/${original.id}`, { body });
+    const res = await author.patch(`/api/comments/${original.id}`, { body });
     assert.equal(res.status, 400);
   }
   assert.deepEqual((await thread(item.id))[0], original, 'unchanged after invalid edits');
 
-  const same = await app.patch(`/api/comments/${original.id}`, { body: '  draft text \n' });
+  const same = await author.patch(`/api/comments/${original.id}`, { body: '  draft text \n' });
   assert.equal(same.status, 200);
   assert.equal(same.body.updated_at, null, 'same text after trim: no edit recorded');
 
-  const res = await app.patch(`/api/comments/${original.id}`, { body: '  final text ', author_id: users[0].id, issue_id: 1 });
+  const res = await author.patch(`/api/comments/${original.id}`, { body: '  final text ', author_id: users[0].id, issue_id: 1 });
   assert.equal(res.status, 200);
   assert.equal(res.body.body, 'final text');
   assert.match(res.body.updated_at, ISO_UTC);
@@ -151,10 +196,10 @@ test('edit: changes body and updated_at only; invalid and same-text edits; unkno
   assert.deepEqual((await thread(item.id))[0], res.body, 'edit persists');
 
   // Re-sending the stored text leaves updated_at as it was.
-  const again = await app.patch(`/api/comments/${original.id}`, { body: 'final text' });
+  const again = await author.patch(`/api/comments/${original.id}`, { body: 'final text' });
   assert.equal(again.body.updated_at, res.body.updated_at);
 
-  assert.equal((await app.patch('/api/comments/999999', { body: 'x' })).status, 404);
+  assert.equal((await author.patch('/api/comments/999999', { body: 'x' })).status, 404);
 });
 
 test('delete removes the message; unknown id returns 404 (AC 25, 26)', async () => {

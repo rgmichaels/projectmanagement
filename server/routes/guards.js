@@ -1,4 +1,5 @@
-// Shared route guards: loading records by id and the archived read-only rule.
+// Shared route guards: loading records by id, the archived read-only rule and
+// ownership. Permission checks (later) belong here too, next to these.
 const projects = require('../data/projects');
 const issues = require('../data/issues');
 const comments = require('../data/comments');
@@ -37,4 +38,11 @@ function assertWritable(project) {
   }
 }
 
-module.exports = { loadProject, loadIssue, loadComment, assertWritable };
+// Only a message's author may edit or delete it.
+function assertOwnsComment(user, comment) {
+  if (comment.author_id !== user.id) {
+    throw new ValidationError('You can only change your own messages.', 403);
+  }
+}
+
+module.exports = { loadProject, loadIssue, loadComment, assertWritable, assertOwnsComment };

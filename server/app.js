@@ -6,12 +6,23 @@ const projectRoutes = require('./routes/projects');
 const issueRoutes = require('./routes/issues');
 const metaRoutes = require('./routes/meta');
 const commentRoutes = require('./routes/comments');
+const authRoutes = require('./routes/auth');
+const auth = require('./auth');
 
 function createApp(db) {
   const app = express();
-  app.use(express.json());
+  // Order matters: identity first, then the page gate before the static
+  // files, then the public auth routes, then sign-in for the rest of /api.
+  // The JSON body parser for the rest of /api runs after requireUser, so a
+  // signed-out request gets 401 whatever its body.
+  app.use(auth.authenticate(db));
+  const isApi = (req) => /^\/api(\/|$)/i.test(req.path);
+  app.use((req, res, next) => (isApi(req) ? next() : auth.pageGate(req, res, next)));
   app.use(express.static(path.join(__dirname, '..', 'public')));
 
+  app.use('/api/auth', express.json());
+  app.use('/api', authRoutes(db));
+  app.use('/api', auth.requireUser, express.json());
   app.use('/api', metaRoutes(db), projectRoutes(db), issueRoutes(db), commentRoutes(db));
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 

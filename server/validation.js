@@ -135,20 +135,10 @@ function checkCommentBody(body) {
   return text;
 }
 
-// The author of a new message: an existing user's integer id. Identity is not
-// enforced (no auth yet); anyone may post as any seeded user.
-function checkCommentAuthor(db, authorId) {
-  if (!Number.isInteger(authorId) || authorId <= 0 || !users.getUser(db, authorId)) {
-    throw new ValidationError('author_id must be the id of an existing user.');
-  }
-  return authorId;
-}
-
 module.exports = {
   ValidationError,
   COMMENT_MAX_LENGTH,
   checkCommentBody,
-  checkCommentAuthor,
   checkProjectName,
   checkProjectKey,
   checkProjectStatus,

@@ -10,7 +10,65 @@ function tempDbPath() {
   return path.join(dir, 'app.db');
 }
 
-// Starts a server. Pass an existing dbPath to simulate a restart.
+// The first seeded user; the default client is signed in as them.
+const DEFAULT_USERNAME = 'alex';
+
+// One HTTP call. Bodies are parsed as JSON when the response is JSON and
+// returned as text otherwise; redirects are not followed.
+async function send(base, method, url, body, headers = {}) {
+  const res = await fetch(base + url, {
+    method,
+    redirect: 'manual',
+    headers: body === undefined ? headers : { 'Content-Type': 'application/json', ...headers },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text();
+  const isJson = (res.headers.get('content-type') || '').includes('application/json');
+  return {
+    status: res.status,
+    headers: res.headers,
+    setCookies: res.headers.getSetCookie(),
+    body: text ? (isJson ? JSON.parse(text) : text) : null,
+  };
+}
+
+// A client with its own cookie jar (the pm_session cookie only), like one
+// browser. Signed out until login() is called.
+function makeClient(base) {
+  let cookie = null; // "pm_session=<token>" or null
+  async function request(method, url, body) {
+    const res = await send(base, method, url, body, cookie ? { Cookie: cookie } : {});
+    for (const c of res.setCookies) {
+      const [pair, ...attrs] = c.split(';');
+      const [name, value] = pair.split('=');
+      if (name.trim() !== 'pm_session') continue;
+      const cleared = !value || attrs.some((a) => /^\s*max-age=0\s*$/i.test(a));
+      cookie = cleared ? null : `pm_session=${value}`;
+    }
+    return res;
+  }
+  return {
+    get: (url) => request('GET', url),
+    post: (url, body) => request('POST', url, body),
+    patch: (url, body) => request('PATCH', url, body),
+    del: (url) => request('DELETE', url),
+    // Sends any method with this client's cookie.
+    request,
+    async login(username) {
+      const res = await request('POST', '/api/auth/login', { username });
+      if (res.status !== 200) throw new Error(`login ${username} failed: ${JSON.stringify(res.body)}`);
+      return res.body;
+    },
+    logout: () => request('POST', '/api/auth/logout'),
+    get cookie() { return cookie; },
+    set cookie(value) { cookie = value; },
+  };
+}
+
+// Starts a server. Pass an existing dbPath to simulate a restart. The
+// returned app is a client signed in as `alex`; app.client() makes another,
+// independent one (signed in when given a username) and app.raw sends a
+// request with no cookie at all.
 async function startServer(dbPath = tempDbPath()) {
   const db = openDb(dbPath);
   const server = await new Promise((resolve) => {
@@ -18,29 +76,25 @@ async function startServer(dbPath = tempDbPath()) {
   });
   const base = `http://127.0.0.1:${server.address().port}`;
 
-  async function request(method, url, body) {
-    const res = await fetch(base + url, {
-      method,
-      headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    const text = await res.text();
-    return { status: res.status, body: text ? JSON.parse(text) : null };
+  async function client(username) {
+    const c = makeClient(base);
+    if (username) await c.login(username);
+    return c;
   }
 
-  return {
+  const app = makeClient(base);
+  await app.login(DEFAULT_USERNAME);
+  return Object.assign(app, {
     base,
     db,
     dbPath,
-    get: (url) => request('GET', url),
-    post: (url, body) => request('POST', url, body),
-    patch: (url, body) => request('PATCH', url, body),
-    del: (url) => request('DELETE', url),
+    client,
+    raw: (method, url, body, headers) => send(base, method, url, body, headers),
     async close() {
       await new Promise((resolve) => server.close(resolve));
       db.close();
     },
-  };
+  });
 }
 
 let keyCounter = 0;
@@ -68,4 +122,4 @@ async function createItem(app, projectId, fields = {}) {
   return res.body;
 }
 
-module.exports = { startServer, tempDbPath, createProject, createItem, uniqueKey };
+module.exports = { startServer, tempDbPath, createProject, createItem, uniqueKey, DEFAULT_USERNAME };

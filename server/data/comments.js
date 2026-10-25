@@ -1,6 +1,6 @@
 // Data access for discussion messages (table `comments`). All SQL for
-// comments lives here. Validation (trimmed 1-2000 chars, author exists,
-// archived guard) happens in the routes; these functions assume valid input.
+// comments lives here. Validation (trimmed 1-2000 chars, author from the
+// session, ownership, archived guard) happens in the routes; these functions assume valid input.
 
 const SELECT = `
   SELECT c.id, c.issue_id, c.author_id, u.name AS author_name, c.body, c.body_format,

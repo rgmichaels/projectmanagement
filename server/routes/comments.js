@@ -1,11 +1,12 @@
 // Discussion message routes (table and API name: comments). Routes validate
 // input and call the data-access layer only. Writes are refused for work
-// items in an archived project; reading the thread always works.
+// items in an archived project; reading the thread always works. The author
+// is always the signed-in user (req.user); only the author may edit or delete.
 const express = require('express');
 const projects = require('../data/projects');
 const comments = require('../data/comments');
-const { checkCommentBody, checkCommentAuthor } = require('../validation');
-const { loadIssue, loadComment, assertWritable } = require('./guards');
+const { checkCommentBody } = require('../validation');
+const { loadIssue, loadComment, assertWritable, assertOwnsComment } = require('./guards');
 
 function commentRoutes(db) {
   const router = express.Router();
@@ -21,14 +22,15 @@ function commentRoutes(db) {
   router.post('/issues/:id/comments', (req, res) => {
     const issue = loadIssue(db, req.params.id);
     assertWritable(projects.getProject(db, issue.project_id));
-    const body = req.body || {};
-    const authorId = checkCommentAuthor(db, body.author_id);
-    const text = checkCommentBody(body.body);
-    res.status(201).json(comments.createComment(db, issue.id, authorId, text));
+    // Any author_id in the body is ignored.
+    const text = checkCommentBody((req.body || {}).body);
+    res.status(201).json(comments.createComment(db, issue.id, req.user.id, text));
   });
 
   router.patch('/comments/:id', (req, res) => {
+    // Order: not found (404), not the author (403), archived (409).
     const comment = loadComment(db, req.params.id);
+    assertOwnsComment(req.user, comment);
     assertWritable(projectOfComment(comment));
     const text = checkCommentBody((req.body || {}).body);
     res.json(comments.updateComment(db, comment.id, text));
@@ -36,6 +38,7 @@ function commentRoutes(db) {
 
   router.delete('/comments/:id', (req, res) => {
     const comment = loadComment(db, req.params.id);
+    assertOwnsComment(req.user, comment);
     assertWritable(projectOfComment(comment));
     comments.deleteComment(db, comment.id);
     res.status(204).end();

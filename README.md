@@ -2,7 +2,7 @@
 
 A proof-of-concept, Jira-style project management tool: work items, a kanban board, and swimlanes (by assignee, epic or priority), built because Jira is too expensive for a personal project.
 
-Status: board MVP implemented (spec: `docs/specs/board-mvp.md`), plus a Discussion thread on each work item (spec: `docs/specs/ticket-discussion.md`) and a Resolution on done work items (spec: `docs/specs/resolution-and-comments.md`).
+Status: board MVP implemented (spec: `docs/specs/board-mvp.md`), plus a Discussion thread on each work item (spec: `docs/specs/ticket-discussion.md`) a Resolution on done work items (spec: `docs/specs/resolution-and-comments.md`), and a username sign-in (spec: `docs/specs/username-login.md`).
 
 ## Run
 
@@ -15,7 +15,15 @@ npm start
 
 Then open http://localhost:3000. If port 3000 is taken, run `PORT=3001 npm start` instead.
 
-The database is a single local SQLite file, `data/app.db` (git-ignored). It is created with an empty schema and the seeded users on first start. New tables (such as `comments` for the Discussion) and columns (such as `issues.resolution`) are added to an existing database automatically on the next start; when the `resolution` column is added, work items already in the last status get the default resolution. Delete it and restart to start fresh. Set `DB_PATH` to use a different file.
+The database is a single local SQLite file, `data/app.db` (git-ignored). It is created with an empty schema and the seeded users on first start. New tables (such as `comments` for the Discussion and `sessions` for sign-in) and columns (such as `issues.resolution`, `users.username` and `issues.reporter_id`) are added to an existing database automatically on the next start; when the `resolution` column is added, work items already in the last status get the default resolution, and existing users get a username from the first word of their name (`Alex Morgan` becomes `alex`; duplicates get `2`, `3`, ...). Delete it and restart to start fresh. Set `DB_PATH` to use a different file.
+
+## Signing in
+
+**This sign-in is not secure, on purpose.** There is no password: anyone who can reach the server can sign in as any user. It only tells the app who is acting (comment authors, who may edit a message, who reported a work item). Do not expose the server to the internet or use it with real or sensitive data. There is no HTTPS, no CSRF token (only `SameSite=Lax`) and no rate limiting.
+
+Opening any page sends you to `/login.html`. Pick a user (`alex`, `blake`, `casey` or `dana`, the seeded users) and press Sign in; you land on the page you asked for. The header shows "Signed in as ..." and a Sign out button; to switch users, sign out first.
+
+The session is a random token in the `pm_session` cookie (HttpOnly, discarded when the browser closes) backed by a row in the `sessions` table, so it survives a server restart. A session unused for 12 hours expires. Every API route except `POST /api/auth/login`, `GET /api/auth/users` and `POST /api/auth/logout` returns 401 when signed out. All identity code is in `server/auth.js`, which is the piece to replace for SSO later; routes only read `req.user`.
 
 ## Tests
 
@@ -23,7 +31,7 @@ The database is a single local SQLite file, `data/app.db` (git-ignored). It is c
 npm test
 ```
 
-Tests use the built-in `node:test` runner against the API, each with its own temporary database. `public/js/time.js` (Discussion timestamps) is also unit tested directly.
+Tests use the built-in `node:test` runner against the API, each with its own temporary database. The test client in `tests/helpers.js` is signed in as `alex`; `app.client(username)` gives a second, independent signed-in client and `app.raw(...)` sends requests with no cookie. `public/js/time.js` (Discussion timestamps) and `public/js/redirect.js` (the sign-in `next` rule) are also unit tested directly. There are no browser (UI) tests.
 
 ## Stack
 
@@ -36,14 +44,15 @@ Tests use the built-in `node:test` runner against the API, each with its own tem
 - `server/types.js`: the single list of work item types, with display metadata, the default flag and the `isEpic` flag.
 - `server/resolutions.js`: the single list of resolutions, in display order, with the default flag.
 - `server/priorities.js`, `server/projectStatuses.js`: the priority list and the project status list.
-- `server/db.js`: schema and seed users. `server/data/`: the data-access layer; all SQL lives in these two places.
+- `server/auth.js`: sign-in sessions and the `pm_session` cookie; sets `req.user`.
+- `server/db.js`: schema, migrations and seed users. `server/data/`: the data-access layer; all SQL lives in these two places.
 - `server/routes/`: REST API (validation, archived read-only guard); routes call the data-access layer only.
-- `public/`: project list (`index.html`), board (`board.html`), scripts in `public/js/`.
+- `public/`: sign-in (`login.html`), project list (`index.html`), board (`board.html`), scripts in `public/js/`.
 - `tests/`: API and source checks.
 
 ## Discussion
 
-Open a work item to see its Discussion after the Description: post plain-text messages (newest first), and edit or delete your own. There is no login yet, so a temporary "Posting as" dropdown picks the author from the seeded users; it is remembered in this browser and provides no security (the API accepts any user). Cards show each item's message count. Archived projects show discussions read-only.
+Open a work item to see its Discussion after the Description: post plain-text messages (newest first) as the signed-in user, and edit or delete your own; the server refuses changes to other people's messages (403). Cards show each item's message count. The detail view also shows the work item's Reporter (who created it; empty for items created before sign-in existed). Archived projects show discussions read-only.
 
 ## Resolution
 

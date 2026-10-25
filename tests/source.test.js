@@ -115,7 +115,7 @@ test('a fresh database file gets the schema and seed users (AC 38)', () => {
   assert.ok(!fs.existsSync(dbPath));
   const db = openDb(dbPath);
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name);
-  assert.deepEqual(tables.sort(), ['comments', 'issues', 'projects', 'users']);
+  assert.deepEqual(tables.sort(), ['comments', 'issues', 'projects', 'sessions', 'users']);
   const users = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
   db.close();
   assert.ok(users >= 3);
@@ -123,4 +123,67 @@ test('a fresh database file gets the schema and seed users (AC 38)', () => {
   const again = openDb(dbPath);
   assert.equal(again.prepare('SELECT COUNT(*) AS n FROM users').get().n, users);
   again.close();
+});
+
+// ---------- username login (docs/specs/username-login.md AC 8, 9, 26) ----------
+
+const read = (f) => fs.readFileSync(f, 'utf8');
+const offendersOf = (pattern, allowed) =>
+  sourceFiles.filter((f) => !allowed.has(rel(f)) && pattern.test(read(f))).map(rel);
+
+test('users, sessions and reporter SQL appear only in the data-access layer (login AC 26)', () => {
+  const checks = [
+    [/\b(FROM\s+users|INSERT\s+INTO\s+users|UPDATE\s+users|JOIN\s+users)\b/i, ['server/data/users.js', 'server/data/sessions.js', 'server/data/comments.js', 'server/data/issues.js']],
+    [/\b(FROM\s+sessions|INSERT\s+INTO\s+sessions|UPDATE\s+sessions|JOIN\s+sessions)\b/i, ['server/data/sessions.js']],
+    [/\breporter_id\s*=|reporter_name/i, ['server/data/issues.js', 'public/js/board.js']],
+  ];
+  for (const [pattern, files] of checks) {
+    assert.deepEqual(offendersOf(pattern, new Set(['server/db.js', ...files])), [], String(pattern));
+  }
+  assert.match(read(path.join(root, 'server/data/sessions.js')), /INSERT\s+INTO\s+sessions/);
+});
+
+test('the session cookie and table are used only by server/auth.js (login AC 8)', () => {
+  const authOnly = new Set(['server/auth.js']);
+  assert.deepEqual(offendersOf(/pm_session/, authOnly), [], 'cookie name');
+  assert.deepEqual(offendersOf(/headers\.cookie|req\.cookies|get\(\s*['"]cookie['"]/i, authOnly), [], 'cookie header');
+  assert.deepEqual(offendersOf(/require\([^)]*data\/sessions/, authOnly), [], 'sessions data module');
+  assert.match(read(path.join(root, 'server/auth.js')), /pm_session/);
+  for (const name of ['authenticate', 'requireUser']) {
+    assert.equal(typeof require('../server/auth')[name], 'function', name);
+  }
+});
+
+test('no route reads the acting user from the request (login AC 9)', () => {
+  const routes = walk(path.join(root, 'server/routes')).filter((f) => f.endsWith('.js'));
+  assert.ok(routes.length > 0);
+  const pattern =
+    /\b(body|query|headers|params)\s*(\.|\[\s*['"])\s*(author_id|reporter_id|user_id|userId)\b|\{[^}]*\b(author_id|reporter_id)\b[^}]*\}\s*=\s*(req\.)?(body|query)/;
+  assert.deepEqual(routes.filter((f) => pattern.test(read(f))).map(rel), []);
+  // Comments and work items take the user from req.user.
+  assert.match(read(path.join(root, 'server/routes/comments.js')), /req\.user\.id/);
+  assert.match(read(path.join(root, 'server/routes/projects.js')), /reporter_id: req\.user\.id/);
+});
+
+test('seed user names appear only in the seed list (login implementation rules)', () => {
+  const { SEED_USERS } = require('../server/db');
+  const offenders = [];
+  for (const file of sourceFiles) {
+    if (rel(file) === 'server/db.js') continue;
+    const text = read(file);
+    for (const u of SEED_USERS) {
+      for (const value of [u.name, u.username]) {
+        if (new RegExp(`(['"\`]${value}['"\`])|(>\\s*${value}\\s*<)`).test(text)) offenders.push(`${rel(file)}: ${value}`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, []);
+});
+
+test('the "Posting as" control and its storage key are gone (login AC 17)', () => {
+  const html = read(path.join(root, 'public/board.html'));
+  const js = read(path.join(root, 'public/js/board.js'));
+  assert.doesNotMatch(html, /<select[^>]*id="posting-as"/);
+  assert.doesNotMatch(js, /pm\.postingAs|POSTING_AS|localStorage\.(get|set)Item\(\s*POSTING/);
+  assert.doesNotMatch(js, /author_id:/, 'the client never sends an author');
 });

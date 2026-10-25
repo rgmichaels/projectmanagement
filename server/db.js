@@ -1,5 +1,5 @@
-// Opens the SQLite database (better-sqlite3), creates the schema and seeds the
-// fixed user list on first start. This is the single schema/setup file.
+// Opens the SQLite database (better-sqlite3), creates the schema, applies the
+// additive migrations and seeds the fixed user list on first start. This is the single schema/setup file.
 // Status, type and resolution columns deliberately have no CHECK constraints:
 // their valid values come from server/statuses.js, server/types.js and
 // server/resolutions.js.
@@ -12,9 +12,12 @@ const { defaultResolution } = require('./resolutions');
 const DEFAULT_DB_PATH = path.join(__dirname, '..', 'data', 'app.db');
 
 const SCHEMA = `
+-- username is the sign-in name (unique, case-insensitive: see the index made
+-- in migrateUsername). Databases created before it get it via migrateUsername.
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL
+  name TEXT NOT NULL,
+  username TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -43,6 +46,7 @@ CREATE TABLE IF NOT EXISTS issues (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   resolution TEXT,
+  reporter_id INTEGER REFERENCES users(id),
   UNIQUE (project_id, number)
 );
 
@@ -62,10 +66,64 @@ CREATE TABLE IF NOT EXISTS comments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_comments_issue ON comments(issue_id);
+
+-- Sign-in sessions (server/auth.js, server/data/sessions.js). token is the
+-- opaque cookie value; times are UTC ISO 8601 set in code.
+CREATE TABLE IF NOT EXISTS sessions (
+  token TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 `;
 
-// Seed data: a small fixed list of placeholder people (no user management in the UI).
-const SEED_USERS = ['Alex Morgan', 'Blake Chen', 'Casey Rivera', 'Dana Patel'];
+// Seed data: a small fixed list of placeholder people (no user management in
+// the UI). `name` is the display name, `username` the sign-in name.
+const SEED_USERS = [
+  { name: 'Alex Morgan', username: 'alex' },
+  { name: 'Blake Chen', username: 'blake' },
+  { name: 'Casey Rivera', username: 'casey' },
+  { name: 'Dana Patel', username: 'dana' },
+];
+
+// The username derived from a display name: its first word, lower-cased
+// (`Alex Morgan` -> `alex`), made unique against `taken` with 2, 3, ...
+function deriveUsername(name, taken) {
+  const base = (String(name).trim().split(/\s+/)[0] || 'user').toLowerCase();
+  let candidate = base;
+  for (let n = 2; taken.has(candidate); n += 1) candidate = `${base}${n}`;
+  taken.add(candidate);
+  return candidate;
+}
+
+// Databases created before the username-login spec lack users.username. Add
+// it (idempotent), backfill rows without one, and enforce uniqueness
+// case-insensitively. Existing user ids are kept, so comments, assignees and
+// work items are untouched.
+function migrateUsername(db) {
+  const columns = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+  db.transaction(() => {
+    if (!columns.includes('username')) db.exec('ALTER TABLE users ADD COLUMN username TEXT');
+    const rows = db.prepare('SELECT id, name, username FROM users ORDER BY id').all();
+    const missing = rows.filter((r) => !r.username);
+    if (missing.length) {
+      const taken = new Set(rows.filter((r) => r.username).map((r) => r.username.toLowerCase()));
+      const update = db.prepare('UPDATE users SET username = ? WHERE id = ?');
+      for (const r of missing) update.run(deriveUsername(r.name, taken), r.id);
+    }
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(lower(username))');
+  })();
+}
+
+// Databases created before the username-login spec lack issues.reporter_id.
+// Existing work items keep a null reporter.
+function migrateReporter(db) {
+  const columns = db.prepare('PRAGMA table_info(issues)').all().map((c) => c.name);
+  if (columns.includes('reporter_id')) return;
+  db.exec('ALTER TABLE issues ADD COLUMN reporter_id INTEGER REFERENCES users(id)');
+}
 
 // Databases created before the resolution spec lack issues.resolution. Add it
 // (idempotent: only when missing) and give work items already in the terminal
@@ -87,10 +145,12 @@ function openDb(dbPath = DEFAULT_DB_PATH) {
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
   migrateResolution(db);
+  migrateUsername(db);
+  migrateReporter(db);
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
   if (n === 0) {
-    const insert = db.prepare('INSERT INTO users (name) VALUES (?)');
-    db.transaction(() => SEED_USERS.forEach((name) => insert.run(name)))();
+    const insert = db.prepare('INSERT INTO users (name, username) VALUES (?, ?)');
+    db.transaction(() => SEED_USERS.forEach((u) => insert.run(u.name, u.username)))();
   }
   return db;
 }

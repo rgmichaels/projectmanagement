@@ -71,6 +71,7 @@ function projectRoutes(db) {
       priority: DEFAULT_PRIORITY,
       ...fields,
       status: defaultStatus(),
+      reporter_id: req.user.id, // never from the body
     });
     res.status(201).json(created);
   });

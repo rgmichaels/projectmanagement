@@ -120,6 +120,7 @@
 
   (async () => {
     try {
+      await session.ready; // the header is filled before the list loads
       projectStatuses = await api.get('/api/project-statuses');
     } catch (err) {
       els.listError.textContent = err.message;

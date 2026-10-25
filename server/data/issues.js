@@ -8,23 +8,28 @@ const { defaultResolution } = require('../resolutions');
 
 const RANK_STEP = 1000;
 
-const COLUMNS =
-  'id, project_id, number, key, type, title, description, status, priority, assignee_id, epic_id, rank, resolution, created_at, updated_at';
+// reporter_id is set once on create and never updated; reporter_name comes
+// from users (both null for work items created before the reporter existed).
+const SELECT = `
+  SELECT i.id, i.project_id, i.number, i.key, i.type, i.title, i.description, i.status, i.priority,
+         i.assignee_id, i.epic_id, i.rank, i.resolution, i.reporter_id, r.name AS reporter_name,
+         i.created_at, i.updated_at`;
+const FROM = 'FROM issues i LEFT JOIN users r ON r.id = i.reporter_id';
 
 // Each item carries comment_count (number of discussion messages) so the
 // board needs no extra request per card.
 function listIssues(db, projectId) {
   return db
     .prepare(
-      `SELECT ${COLUMNS},
-         (SELECT COUNT(*) FROM comments c WHERE c.issue_id = issues.id) AS comment_count
-       FROM issues WHERE project_id = ? ORDER BY rank, id`
+      `${SELECT},
+         (SELECT COUNT(*) FROM comments c WHERE c.issue_id = i.id) AS comment_count
+       ${FROM} WHERE i.project_id = ? ORDER BY i.rank, i.id`
     )
     .all(projectId);
 }
 
 function getIssue(db, id) {
-  return db.prepare(`SELECT ${COLUMNS} FROM issues WHERE id = ?`).get(id);
+  return db.prepare(`${SELECT} ${FROM} WHERE i.id = ?`).get(id);
 }
 
 function countChildren(db, epicId) {
@@ -66,7 +71,8 @@ function resolutionFor(status, supplied, current, entering) {
 }
 
 // Creates a work item, allocating the next per-project number. Numbers are
-// never reused because next_issue_number only ever increases.
+// never reused because next_issue_number only ever increases. fields.reporter_id
+// is the signed-in user, supplied by the route.
 function createIssue(db, project, fields) {
   return db.transaction(() => {
     const { next_issue_number: number } = db
@@ -76,8 +82,8 @@ function createIssue(db, project, fields) {
     const info = db
       .prepare(
         `INSERT INTO issues (project_id, number, key, type, title, description, status, priority,
-           assignee_id, epic_id, rank, resolution, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           assignee_id, epic_id, rank, resolution, reporter_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         project.id,
@@ -92,6 +98,7 @@ function createIssue(db, project, fields) {
         fields.epic_id ?? null,
         bottomRank(db, project.id, fields.status),
         resolutionFor(fields.status, fields.resolution, null, true),
+        fields.reporter_id ?? null,
         now,
         now
       );

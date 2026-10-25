@@ -5,7 +5,6 @@
 // named here. The terminal status and the default resolution are the server's.
 (() => {
   const GROUP_BY_STORAGE_KEY = 'pm.groupBy';
-  const POSTING_AS_STORAGE_KEY = 'pm.postingAs';
   const COMMENT_MAX_LENGTH = 2000;
   const RELATIVE_REFRESH_MS = 60 * 1000;
   const RANK_STEP = 1000;
@@ -21,6 +20,7 @@
     priorities: [],
     defaultPriority: null,
     users: [],
+    me: null, // the signed-in user { id, name, username }
     items: [],
     groupBy: localStorage.getItem(GROUP_BY_STORAGE_KEY) || 'none',
     collapsed: new Set(),
@@ -51,6 +51,7 @@
     discussionHeading: document.getElementById('discussion-heading'),
     commentForm: document.getElementById('comment-form'),
     postingAs: document.getElementById('posting-as'),
+    reporter: document.getElementById('reporter'),
     commentBody: document.getElementById('comment-body'),
     commentError: document.getElementById('comment-error'),
     commentPost: document.getElementById('comment-post'),
@@ -378,11 +379,17 @@
       // The server sets or clears the resolution; show its answer at once.
       Object.assign(item, await api.patch(`/api/issues/${item.id}`, patch));
       render();
-      await reloadItems();
     } catch (err) {
       Object.assign(item, snapshot);
       render();
       showMessage(`Could not move ${item.key}: ${err.message}`);
+      return;
+    }
+    // The move is saved; a failed refresh must not roll the card back.
+    try {
+      await reloadItems();
+    } catch (err) {
+      showMessage(`${item.key} was moved, but the board could not be refreshed: ${err.message}`);
     }
   }
 
@@ -423,6 +430,10 @@
     els.detailTitle.textContent = item ? `${item.key}` : 'Create work item';
     els.detailError.textContent = '';
     els.epicLabel.textContent = epicLabel();
+
+    // Read-only; set by the server from whoever created the item.
+    els.reporter.hidden = !(item && item.reporter_name);
+    els.reporter.textContent = item && item.reporter_name ? `Reporter: ${item.reporter_name}` : '';
 
     f.title.value = item ? item.title : '';
     f.description.value = item ? item.description : '';
@@ -520,16 +531,6 @@
     loadSeq: 0,
   };
 
-  const postingAsId = () => Number(els.postingAs.value);
-
-  // Selected user: the one remembered in this browser if it still exists,
-  // otherwise the first user in the list.
-  function fillPostingAs() {
-    const stored = localStorage.getItem(POSTING_AS_STORAGE_KEY);
-    const selected = state.users.some((u) => String(u.id) === stored) ? stored : state.users[0] && String(state.users[0].id);
-    fillSelect(els.postingAs, state.users.map((u) => ({ value: String(u.id), label: u.name })), selected || '');
-  }
-
   // Client-side copy of the server rule: trimmed, 1-2000 characters.
   function commentTextError(text) {
     if (text.length < 1) return 'Message is required.';
@@ -558,7 +559,9 @@
 
   function renderMessage(comment) {
     const ro = readOnly();
-    const own = !ro && comment.author_id === postingAsId();
+    // Edit and Delete only on the signed-in user's messages; the server
+    // refuses the others' (403) as well.
+    const own = !ro && Boolean(state.me) && comment.author_id === state.me.id;
     const head = el(
       'div',
       { class: 'message-head' },
@@ -622,7 +625,7 @@
     els.commentError.textContent = '';
     els.commentPost.disabled = false;
     discussion.posting = false;
-    fillPostingAs();
+    els.postingAs.textContent = `Posting as ${state.me.name}`;
     renderThread();
     loadThread(item.id);
 
@@ -663,7 +666,7 @@
     discussion.posting = true;
     els.commentPost.disabled = true;
     try {
-      const created = await api.post(`/api/issues/${issueId}/comments`, { author_id: postingAsId(), body: text });
+      const created = await api.post(`/api/issues/${issueId}/comments`, { body: text });
       if (discussion.issueId === issueId) {
         discussion.comments.unshift(created);
         els.commentBody.value = '';
@@ -719,14 +722,6 @@
     }
   }
 
-  // Changing the user only affects later posts; it also cancels an open edit
-  // and updates which messages offer Edit and Delete.
-  els.postingAs.addEventListener('change', () => {
-    localStorage.setItem(POSTING_AS_STORAGE_KEY, els.postingAs.value);
-    discussion.editingId = null;
-    renderThread();
-  });
-
   // Covers Close, Save and Escape: stop the relative-time refresh and drop
   // any open message edit.
   els.dialog.addEventListener('close', () => {
@@ -752,6 +747,12 @@
   els.createBtn.addEventListener('click', () => openDetail(null));
 
   (async () => {
+    try {
+      state.me = await session.ready; // the header is filled before the board loads
+    } catch (err) {
+      showMessage(err.message);
+      return;
+    }
     if (!projectId) {
       showMessage('No project selected.');
       return;

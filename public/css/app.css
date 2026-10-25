@@ -41,6 +41,19 @@ button[hidden] { display: none; }
   align-items: center;
 }
 .topbar .brand { color: #fff; font-weight: 600; text-decoration: none; }
+.topbar .session { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.topbar .session button { padding: 3px 10px; }
+
+/* Sign-in page */
+.login { max-width: 420px; margin: 40px auto; }
+.login h1 { margin-bottom: 12px; }
+.user-list { border: none; padding: 0; margin: 0 0 8px; }
+.user-list legend { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+label.user-option { flex-direction: row; align-items: center; gap: 8px; font-size: 14px; color: var(--text); margin: 0; padding: 6px 4px; cursor: pointer; }
+.user-username { color: var(--muted); font-size: 12px; }
+.hint { color: var(--muted); font-size: 12px; }
+.reporter { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+.reporter[hidden] { display: none; }
 
 .page { padding: 20px; }
 .toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -183,8 +196,7 @@ dialog input, dialog textarea { width: 100%; }
 .discussion[hidden], .comment-form[hidden], .thread-empty[hidden] { display: none; }
 .discussion h3 { font-size: 14px; margin: 0 0 8px; }
 .comment-form { margin-bottom: 8px; }
-.posting-as { flex-direction: row; align-items: center; gap: 6px; flex-wrap: wrap; }
-.posting-as .hint { font-style: italic; }
+.posting-as { color: var(--muted); font-size: 12px; margin: 0 0 4px; }
 .thread-empty { color: var(--muted); margin: 4px 0; }
 /* The thread scrolls inside the dialog so the form above stays in reach. */
 .thread { list-style: none; margin: 0; padding: 0; max-height: 40vh; overflow-y: auto; }

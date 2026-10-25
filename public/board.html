@@ -44,13 +44,13 @@
         <label id="epic-field"><span id="epic-label"></span> <select name="epic_id"></select></label>
       </div>
       <label>Description <textarea name="description" rows="5"></textarea></label>
+      <p class="reporter" id="reporter" hidden></p>
       <!-- Discussion: not part of the work item's Save. Its buttons are
            type="button" so they never submit the method="dialog" form. -->
       <section id="discussion" class="discussion" hidden>
         <h3 id="discussion-heading">Discussion (0)</h3>
         <div id="comment-form" class="comment-form">
-          <label class="posting-as">Posting as <select id="posting-as"></select>
-            <span class="hint">Temporary until sign-in is added</span></label>
+          <p class="posting-as" id="posting-as"></p>
           <textarea id="comment-body" rows="3" placeholder="Write a message" aria-label="Message"></textarea>
           <p class="error" id="comment-error" role="alert"></p>
           <div class="actions"><button type="button" id="comment-post" class="primary">Post</button></div>
@@ -67,7 +67,9 @@
     </form>
   </dialog>
 
+  <script src="js/redirect.js"></script>
   <script src="js/api.js"></script>
+  <script src="js/session.js"></script>
   <script src="js/time.js"></script>
   <script src="js/board.js"></script>
 </body>
