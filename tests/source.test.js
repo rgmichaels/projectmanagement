@@ -508,3 +508,92 @@ test('every write route calls assertCan before loading records (permission group
   }
   assert.deepEqual(offenders, []);
 });
+
+// ---------- search and filters (docs/specs/search-and-filters.md AC 8, 14, 23, 25, 26, 27) ----------
+
+const filterSources = () => {
+  const html = read(path.join(root, 'public/board.html'));
+  const open = html.indexOf('<div id="filter-bar"');
+  const notice = html.indexOf('<div id="filter-notice"');
+  return [
+    ['public/js/filters.js', read(path.join(root, 'public/js/filters.js'))],
+    ['public/js/board.js (filters section)', boardSection('// ---------- filters ----------')],
+    ['public/board.html (filter bar)', html.slice(open, html.indexOf('</div>', open))],
+    ['public/board.html (filter notice)', html.slice(notice, html.indexOf('</div>', notice))],
+  ];
+};
+
+test('filter code names no status, type, priority or resolution (search AC 9, 25)', () => {
+  const { STATUSES } = require('../server/statuses');
+  const { TYPES } = require('../server/types');
+  const { PRIORITIES } = require('../server/priorities');
+  const { RESOLUTIONS } = require('../server/resolutions');
+  const names = new Set([...STATUSES, ...TYPES.flatMap((t) => [t.name, t.label]), ...PRIORITIES, ...RESOLUTIONS.map((r) => r.name)]);
+  const offenders = [];
+  for (const [file, text] of filterSources()) {
+    assert.ok(text.length > 0, `${file} found`);
+    for (const name of names) if (quoted(name).test(text)) offenders.push(`${file}: ${name}`);
+  }
+  assert.deepEqual(offenders, []);
+  // Options are built from the loaded lists.
+  const section = boardSection('// ---------- filters ----------');
+  for (const list of ['state.users', 'state.types', 'state.priorities', 'state.statuses', 'state.resolutions']) {
+    assert.match(section, new RegExp(`${list.replace('.', '\\.')}\\.map\\(`), list);
+  }
+});
+
+test('filters.js is pure and matches text literally (search AC 6)', () => {
+  const src = read(path.join(root, 'public/js/filters.js'));
+  assert.doesNotMatch(src, /\bdocument\b|\bwindow\b|localStorage|fetch\(|\bapi\./, 'no DOM, storage or network');
+  assert.doesNotMatch(src, /new RegExp|\.match\(|\.search\(|\.test\(/, 'no pattern built from user input');
+  assert.match(src, /\.includes\(/);
+});
+
+test('the filter UI renders text only, has labels and cannot submit anything (search AC 8, 14, 26)', () => {
+  const html = read(path.join(root, 'public/board.html'));
+  for (const [file, text] of filterSources()) {
+    assert.doesNotMatch(text, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/, file);
+    if (file.startsWith('public/board.html')) {
+      assert.doesNotMatch(text, /<form\b/i, `${file}: no form`);
+      for (const b of text.match(/<button\b[^>]*>/gi) || []) assert.match(b, /type="button"/, b);
+    }
+  }
+  for (const call of boardSection('// ---------- filters ----------').match(/el\(\s*'button',\s*\{[^}]*\}/g) || []) {
+    assert.match(call, /type: 'button'/, call);
+  }
+  // Every control is inside a <label>, in the order search, five dropdowns, Clear, count.
+  const bar = filterSources().find(([f]) => f === 'public/board.html (filter bar)')[1];
+  const order = ['filter-text', 'filter-assignee', 'filter-type', 'filter-priority', 'filter-status', 'filter-resolution', 'filter-clear', 'filter-count'];
+  const positions = order.map((id) => bar.indexOf(`id="${id}"`));
+  assert.ok(positions.every((p) => p !== -1), 'all controls present');
+  assert.deepEqual([...positions].sort((a, b) => a - b), positions, 'in spec order');
+  for (const id of order.slice(0, 6)) assert.match(bar, new RegExp(`<label[^>]*>[^<]+<(input|select)[^>]*id="${id}"`), id);
+  // The filter bar sits in the toolbar, after Group by; filters.js loads before board.js.
+  assert.ok(html.indexOf('id="group-by"') < html.indexOf('<div id="filter-bar"'));
+  assert.ok(html.indexOf('js/filters.js') < html.indexOf('js/board.js'));
+});
+
+test('filters are read-only UI, stored per project with try/catch (search AC 15, 17, 23, 24)', () => {
+  const section = boardSection('// ---------- filters ----------');
+  assert.doesNotMatch(section, /api\.(post|patch|put|del)\(/, 'no write endpoint');
+  assert.doesNotMatch(section, /readOnly\(\)|session\.can\(/, 'no permission or archive check');
+  assert.doesNotMatch(section, /localStorage\./, 'storage goes through the try/catch helpers');
+  const js = boardJs();
+  assert.match(js, /FILTERS_STORAGE_PREFIX = 'pm\.filters\.'/);
+  assert.match(section, /\$\{FILTERS_STORAGE_PREFIX\}\$\{state\.project\.id\}/);
+  const helpers = js.slice(js.indexOf('function storageGet'), js.indexOf('const state = {'));
+  assert.equal((helpers.match(/try \{/g) || []).length, 2, 'reads and writes wrapped');
+  assert.equal((js.match(/localStorage\./g) || []).length, (helpers.match(/localStorage\./g) || []).length, 'no unguarded localStorage use');
+});
+
+test('lanes come from every item and drag ranks from the full column (search AC 18, 19)', () => {
+  const js = boardJs();
+  const lanes = js.slice(js.indexOf('function computeLanes('), js.indexOf('// ---------- rendering ----------'));
+  assert.match(lanes, /const items = state\.items;/, 'lane list from the unfiltered set');
+  assert.match(lanes, /visible\.filter\(/, 'lane contents from the filtered set');
+  const rank = js.slice(js.indexOf('function computeRank('), js.indexOf('async function moveItem('));
+  assert.match(rank, /const column = state\.items\.filter\(/, 'neighbours from the unfiltered column');
+  const render = js.slice(js.indexOf('function render()'), js.indexOf('function renderHeader()'));
+  assert.match(render, /visibleItems\(\)/);
+  assert.doesNotMatch(render, /state\.items\.filter\(/, 'column counts use the filtered items');
+});

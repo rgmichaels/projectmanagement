@@ -87,6 +87,16 @@ table.projects tr.is-archived td { color: var(--muted); background: #fafbfc; }
 .badge.archived { background: #fff0b3; color: #172b4d; }
 .badge[hidden] { display: none; }
 
+/* Board search and filters */
+.filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; flex-basis: 100%; }
+label.filter { flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text); }
+label.filter[hidden] { display: none; }
+label.filter input[type="search"] { width: 220px; max-width: 100%; }
+.filter-bar button[disabled] { opacity: 0.5; cursor: default; }
+.filter-count { color: var(--muted); font-size: 13px; }
+.notice { display: flex; align-items: center; gap: 12px; background: #deebff; border: 1px solid #4c9aff; color: var(--text); padding: 8px 12px; border-radius: 3px; margin-bottom: 12px; }
+.notice[hidden] { display: none; }
+
 .message { background: #ffebe6; border: 1px solid var(--danger); color: var(--danger); padding: 8px 12px; border-radius: 3px; margin-bottom: 12px; }
 .message[hidden] { display: none; }
 

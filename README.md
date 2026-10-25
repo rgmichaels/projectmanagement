@@ -75,6 +75,10 @@ Tests use the built-in `node:test` runner against the API, each with its own tem
 - `public/`: sign-in (`login.html`), project list (`index.html`), board (`board.html`), users and groups (`users.html`, Admin only), scripts in `public/js/`.
 - `tests/`: API and source checks.
 
+## Search and filters
+
+The board toolbar has a search box (key, title or description, ignoring case) and Assignee, Type, Priority, Status and Resolution dropdowns; all active criteria must match, and "Showing n of m" gives the count. Filtering happens in the browser on the items the board already loaded (no server request), and the choices are remembered per project in the browser's localStorage (`pm.filters.<projectId>`) until you press Clear. Dropdown options come from the server lists. Filters are read-only, so they work for every group and on archived projects.
+
 ## Discussion
 
 Open a work item to see its Discussion after the Description: post plain-text messages (newest first) as the signed-in user, and edit or delete your own; the server refuses changes to other people's messages (403). Cards show each item's message count. The detail view also shows the work item's Reporter (who created it; empty for items created before sign-in existed). Archived projects show discussions read-only.

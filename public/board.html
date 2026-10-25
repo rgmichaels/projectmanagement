@@ -20,7 +20,24 @@
       <span class="badge archived" id="archived-badge" hidden>Archived (read-only)</span>
       <label class="group-by">Group by <select id="group-by"></select></label>
       <button type="button" id="create-item" class="primary" hidden>Create work item</button>
+      <!-- Search and filters: client-side, remembered per project. Options
+           come from the lists the board loads; none are named here. -->
+      <div id="filter-bar" class="filter-bar" role="search">
+        <label class="filter">Search <input type="search" id="filter-text" maxlength="200" placeholder="Key, title or description" autocomplete="off"></label>
+        <label class="filter">Assignee <select id="filter-assignee"></select></label>
+        <label class="filter">Type <select id="filter-type"></select></label>
+        <label class="filter">Priority <select id="filter-priority"></select></label>
+        <label class="filter">Status <select id="filter-status"></select></label>
+        <label class="filter" id="filter-resolution-field">Resolution <select id="filter-resolution"></select></label>
+        <button type="button" id="filter-clear" disabled>Clear</button>
+        <span id="filter-count" class="filter-count" aria-live="polite"></span>
+      </div>
     </section>
+
+    <div id="filter-notice" class="notice" role="status" hidden>
+      <span id="filter-notice-text"></span>
+      <button type="button" id="filter-notice-dismiss" class="link">Dismiss</button>
+    </div>
 
     <div id="message" class="message" role="alert" hidden></div>
 
@@ -165,6 +182,7 @@
   <script src="js/time.js"></script>
   <script src="js/historyFormat.js"></script>
   <script src="js/richText.js"></script>
+  <script src="js/filters.js"></script>
   <script src="js/board.js"></script>
 </body>
 </html>

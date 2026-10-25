@@ -4,7 +4,7 @@ Rewritten 2026-10-25 ~10:35 EDT. Pipeline per CLAUDE.md: product-manager (Sonnet
 
 ## Git state
 
-Pushed to `origin/main`: board MVP `09d3bf3`, discussion `fffe1cb`, resolution `31e8d02`, login `8ba2c08`, history `6876f3a`, handoff `1969f57`, links `67dd20a`, attachments `b91e72d`, epic view `fd1b833`.
+Pushed to `origin/main`: board MVP `09d3bf3`, discussion `fffe1cb`, resolution `31e8d02`, login `8ba2c08`, history `6876f3a`, handoff `1969f57`, links `67dd20a`, attachments `b91e72d`, epic view `fd1b833`, permission groups `92da2ab`, search and filters (see `git log`; QA GO 27/27, client-side only, filters remembered per project in localStorage).
 
 **Permission groups: see "Status of permission groups" below.** Check `git status` and `git log` first; do not trust this file over them.
 
@@ -38,7 +38,7 @@ Re-run QA gave **GO** (`docs/qa/permission-groups.md`, 260/260 tests, browser pa
 
 1. Project-level authentication / per-project membership (hook exists: `assertCan(user, permission, project)` ignores `project` today).
 2. Project-level activity feed (archive, status, create/delete). Ask what "work item history" meant beyond per-item history.
-3. Search and filters (Claude's suggested next pick), then backlog and sprints, labels/components/due dates, subtasks, reports.
+3. Backlog and sprints, labels/components/due dates, subtasks, reports. (Search and filters is done. Possible follow-ups: multi-select filters, epic/reporter/"assigned to me" filters, global cross-project search.)
 4. Configurable workflow (custom statuses and transitions).
 - Dropped by the owner: BOE hosting, SSO.
 

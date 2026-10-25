@@ -8,13 +8,35 @@
 // API; none are named here. The terminal status and the default resolution are the server's.
 // What the signed-in user may change comes from their group's permission
 // names (session.can); the board never looks at a group name.
+// Search and filters (js/filters.js) narrow what is drawn; state.items stays
+// the full list, so lanes and drag ranks are computed from every item.
 (() => {
   const GROUP_BY_STORAGE_KEY = 'pm.groupBy';
+  const FILTERS_STORAGE_PREFIX = 'pm.filters.';
+  const NOTICE_MS = 8000;
   const COMMENT_MAX_LENGTH = 2000;
   const RELATIVE_REFRESH_MS = 60 * 1000;
   const RANK_STEP = 1000;
 
   const projectId = new URLSearchParams(location.search).get('project');
+
+  // localStorage may be missing or throw (private mode, blocked storage);
+  // the board works without it.
+  function storageGet(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+  function storageSet(key, value) {
+    try {
+      if (value === null) localStorage.removeItem(key);
+      else localStorage.setItem(key, value);
+    } catch {
+      // not saved; nothing to tell the user
+    }
+  }
 
   const state = {
     project: null,
@@ -30,7 +52,8 @@
     attachmentTypes: { types: [], max_bytes: 0, max_per_item: 0 }, // GET /api/attachment-types
     me: null, // the signed-in user { id, name, username, group, permissions }
     items: [],
-    groupBy: localStorage.getItem(GROUP_BY_STORAGE_KEY) || 'none',
+    groupBy: storageGet(GROUP_BY_STORAGE_KEY) || 'none',
+    filters: boardFilters.emptyFilters(), // search text and dropdowns, per project
     collapsed: new Set(),
     dragId: null,
   };
@@ -115,6 +138,20 @@
     epicAdd: document.getElementById('epic-add'),
     epicCreateChild: document.getElementById('epic-create-child'),
     epicAddError: document.getElementById('epic-add-error'),
+    filterText: document.getElementById('filter-text'),
+    filterSelects: {
+      assignee: document.getElementById('filter-assignee'),
+      type: document.getElementById('filter-type'),
+      priority: document.getElementById('filter-priority'),
+      status: document.getElementById('filter-status'),
+      resolution: document.getElementById('filter-resolution'),
+    },
+    filterResolutionField: document.getElementById('filter-resolution-field'),
+    filterClear: document.getElementById('filter-clear'),
+    filterCount: document.getElementById('filter-count'),
+    filterNotice: document.getElementById('filter-notice'),
+    filterNoticeText: document.getElementById('filter-notice-text'),
+    filterNoticeDismiss: document.getElementById('filter-notice-dismiss'),
   };
 
   // ---------- helpers ----------
@@ -182,8 +219,10 @@
     return field ? item[field] ?? null : null;
   }
 
-  // Lanes are computed client-side from the full work item list.
-  function computeLanes() {
+  // Lanes are computed client-side from the full work item list, so an epic
+  // that is filtered out still has its lane; each lane then holds only the
+  // `visible` items. While a search or filter is active, empty lanes are hidden.
+  function computeLanes(visible) {
     const items = state.items;
     const lanes = [];
     if (state.groupBy === 'assignee') {
@@ -207,7 +246,10 @@
       lanes.push({ key: 'all', label: null, value: null });
     }
     for (const lane of lanes) {
-      lane.items = state.groupBy === 'none' ? items : items.filter((i) => laneValueOf(i) === lane.value);
+      lane.items = state.groupBy === 'none' ? visible : visible.filter((i) => laneValueOf(i) === lane.value);
+    }
+    if (state.groupBy !== 'none' && boardFilters.isActive(state.filters)) {
+      return lanes.filter((lane) => lane.items.length > 0);
     }
     return lanes;
   }
@@ -332,10 +374,12 @@
   }
 
   function render() {
-    const lanes = computeLanes();
+    const visible = visibleItems();
+    renderFilterCount(visible.length);
+    const lanes = computeLanes(visible);
     const header = el('div', { class: 'board-header', style: gridStyle() });
     for (const status of state.statuses) {
-      const count = state.items.filter((i) => i.status === status).length;
+      const count = visible.filter((i) => i.status === status).length;
       header.append(
         el('div', { class: 'col-header' }, el('span', {}, status), el('span', { class: 'count' }, String(count)))
       );
@@ -422,7 +466,9 @@
 
   // Rank for placing `item` in `status` before `beforeId` (or at the end of
   // the lane). Ranks are per status column across the whole project, so the
-  // neighbours are looked up in the full column, not just the lane.
+  // neighbours are looked up in the full column, not just the lane, and
+  // including cards hidden by search and filters (`lane.items` holds only the
+  // visible ones, so "end of the lane" is just after the last visible card).
   function computeRank(item, status, lane, beforeId) {
     const column = state.items.filter((i) => i.status === status && i.id !== item.id).sort(byRank);
     if (beforeId !== null) {
@@ -598,21 +644,24 @@
       els.detailError.textContent = 'Title is required.';
       return;
     }
+    let created = null;
     try {
       if (editing) {
         await api.patch(`/api/issues/${editing.id}`, values);
         historySaved(editing.id);
       } else {
-        await api.post(`/api/projects/${state.project.id}/issues`, values);
+        created = await api.post(`/api/projects/${state.project.id}/issues`, values);
         // Created from an epic's Create child: go back to that epic.
         const epic = epicView.returnTo !== null && (await reloadThenFind(epicView.returnTo));
         if (epic) {
+          noticeIfHidden(created);
           openDetail(epic);
           return;
         }
       }
       els.dialog.close();
       await reloadItems();
+      if (created) noticeIfHidden(created);
     } catch (err) {
       els.detailError.textContent = err.message;
     }
@@ -1739,8 +1788,109 @@
   });
   els.description.addEventListener('input', renderDescriptionImages);
 
+  // ---------- filters ----------
+  // Search text and single-select dropdowns, applied client-side to the items
+  // already loaded (js/filters.js). Saved per project in the browser. Read
+  // only: they work the same for every group and on archived projects.
+
+  const filterStorageKey = () => `${FILTERS_STORAGE_PREFIX}${state.project.id}`;
+  const visibleItems = () => state.items.filter((i) => boardFilters.matches(i, state.filters));
+
+  // The current lists, for dropping stale saved values.
+  function filterMeta() {
+    return {
+      users: state.users.map((u) => u.id),
+      types: state.types.map((t) => t.name),
+      priorities: state.priorities,
+      statuses: state.statuses,
+      resolutions: state.resolutions.map((r) => r.name),
+    };
+  }
+
+  // Options come from the loaded lists, in their order; "Any" is first.
+  function fillFilterControls() {
+    const any = () => el('option', { value: boardFilters.ANY }, 'Any');
+    const options = {
+      assignee: [
+        { value: boardFilters.UNASSIGNED, label: 'Unassigned' },
+        ...state.users.map((u) => ({ value: String(u.id), label: u.name })),
+      ],
+      type: state.types.map((t) => ({ value: t.name, label: t.label || t.name })),
+      priority: state.priorities.map((p) => ({ value: p, label: p })),
+      status: state.statuses.map((s) => ({ value: s, label: s })),
+      resolution: state.resolutions.map((r) => ({ value: r.name, label: r.name })),
+    };
+    for (const [field, select] of Object.entries(els.filterSelects)) {
+      select.replaceChildren(any(), ...options[field].map((o) => el('option', { value: o.value }, o.label)));
+    }
+    // Only "Any" would be left: hide the dropdown instead (AC 13).
+    els.filterResolutionField.hidden = state.resolutions.length === 0;
+    let saved = null;
+    try {
+      saved = JSON.parse(storageGet(filterStorageKey()));
+    } catch {
+      saved = null; // malformed: start from "Any"
+    }
+    state.filters = boardFilters.sanitize(saved, filterMeta());
+    syncFilterControls();
+  }
+
+  function syncFilterControls() {
+    els.filterText.value = state.filters.text;
+    for (const [field, select] of Object.entries(els.filterSelects)) select.value = state.filters[field];
+    els.filterClear.disabled = !boardFilters.isActive(state.filters);
+  }
+
+  function renderFilterCount(shown) {
+    els.filterCount.textContent = `Showing ${shown} of ${state.items.length}`;
+  }
+
+  function filtersChanged() {
+    hideFilterNotice();
+    els.filterClear.disabled = !boardFilters.isActive(state.filters);
+    storageSet(filterStorageKey(), boardFilters.isActive(state.filters) ? JSON.stringify(state.filters) : null);
+    render();
+  }
+
+  let noticeTimer = null;
+  function hideFilterNotice() {
+    clearTimeout(noticeTimer);
+    els.filterNotice.hidden = true;
+  }
+
+  // A newly created item that the active filters hide gets a notice; the
+  // filters stay as they are (AC 21).
+  function noticeIfHidden(created) {
+    const item = itemById(created.id) || created;
+    if (boardFilters.matches(item, state.filters)) return;
+    els.filterNoticeText.textContent = `Created ${item.key}, hidden by the current filters.`;
+    els.filterNotice.hidden = false;
+    clearTimeout(noticeTimer);
+    noticeTimer = setTimeout(hideFilterNotice, NOTICE_MS);
+  }
+
+  els.filterText.addEventListener('input', () => {
+    state.filters.text = els.filterText.value;
+    filtersChanged();
+  });
+  // There is no form here, but keep Enter from doing anything (AC 14).
+  els.filterText.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+  for (const [field, select] of Object.entries(els.filterSelects)) {
+    select.addEventListener('change', () => {
+      state.filters[field] = select.value;
+      filtersChanged();
+    });
+  }
+  els.filterClear.addEventListener('click', () => {
+    state.filters = boardFilters.emptyFilters();
+    syncFilterControls();
+    filtersChanged(); // also removes the saved entry
+  });
+  els.filterNoticeDismiss.addEventListener('click', hideFilterNotice);
+
   // ---------- loading ----------
 
+  // render() applies the active search and filters to the fresh items.
   async function reloadItems() {
     state.items = await api.get(`/api/projects/${state.project.id}/issues`);
     render();
@@ -1748,7 +1898,7 @@
 
   els.groupBy.addEventListener('change', () => {
     state.groupBy = els.groupBy.value;
-    localStorage.setItem(GROUP_BY_STORAGE_KEY, state.groupBy);
+    storageSet(GROUP_BY_STORAGE_KEY, state.groupBy);
     render();
   });
 
@@ -1793,6 +1943,7 @@
       });
       renderHeader();
       fillHistoryFilter();
+      fillFilterControls();
       await reloadItems();
     } catch (err) {
       showMessage(err.message);
