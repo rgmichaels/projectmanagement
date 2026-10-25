@@ -9,11 +9,12 @@ Each role uses the cheapest model that can do the job:
 | Role | Agent | Model | Job |
 |---|---|---|---|
 | Product manager | `product-manager` | Sonnet | Rough idea → spec in `docs/specs/` |
+| Designer | `designer` | Sonnet | UI-facing specs → mockups and style guide in `docs/design/` |
 | Developer | `developer` | Opus | Implements one spec, with tests |
 | QA | `qa` | Haiku | Re-runs tests, checks acceptance criteria, gives GO/NO-GO in `docs/qa/` |
 
-Pipeline: product-manager → (owner reviews the spec) → developer → qa → owner commits.
-If QA says NO-GO, send the report back to developer. The orchestrating session routes work through the team instead of implementing features directly.
+Pipeline: product-manager → (owner reviews the spec) → designer, for specs that add or change screens, dialogs or controls → (owner picks a design) → developer → qa → owner commits. Skip the designer for server-only work.
+If QA says NO-GO, send the report back to developer. The developer builds to the chosen design in `docs/design/<feature>/` and `docs/design/STYLE.md`, and QA checks the UI against the design's README. The orchestrating session routes work through the team instead of implementing features directly.
 
 ## Decisions from the owner
 
