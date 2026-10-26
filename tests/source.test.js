@@ -324,8 +324,10 @@ test('Links renders text only and its buttons cannot submit the form (links AC 2
   assert.ok(open !== -1 && markup.length > 0);
   assert.doesNotMatch(markup, /<form\b/i, 'no nested form');
   for (const b of markup.match(/<button\b[^>]*>/gi) || []) assert.match(b, /type="button"/, b);
-  // Between the description and the Discussion/History tabs (AC 20).
-  assert.ok(html.indexOf('name="description"') < open && open < html.indexOf('<div id="activity-tabs"'));
+  // A tab panel after the description and the tab bar (task-dialog-redesign AC 14, 21).
+  const tabs = html.indexOf('<div id="activity-tabs"');
+  assert.ok(html.indexOf('name="description"') < tabs && tabs < open);
+  assert.match(markup, /role="tabpanel" aria-labelledby="tab-links"/);
 });
 
 // ---------- attachments (docs/specs/attachments-and-pasted-images.md AC 1, 5, 11, 29, 36) ----------
@@ -472,8 +474,12 @@ test('the epic view renders text only and its buttons cannot submit the form (ep
   assert.ok(open !== -1 && markup.length > 0);
   assert.doesNotMatch(markup, /<form\b/i, 'no nested form');
   for (const b of markup.match(/<button\b[^>]*>/gi) || []) assert.match(b, /type="button"/, b);
-  // The Epic field's link to the epic is a button too.
-  assert.match(html, /<button type="button" id="epic-open"/);
+  // The link to a child's epic is a button in the dialog's band, not beside
+  // the Epic dropdown (task-dialog-redesign AC 3, Decision 7).
+  const band = html.slice(html.indexOf('<div class="band">'), html.indexOf('<div class="detail-body">'));
+  assert.match(band, /<button type="button" id="epic-open" class="epicchip"/);
+  const epicField = html.slice(html.indexOf('id="epic-field"'), html.indexOf('</label>', html.indexOf('id="epic-field"')));
+  assert.doesNotMatch(epicField, /epic-open/);
 });
 
 // ---------- permission groups (docs/specs/permission-groups.md AC 2) ----------
@@ -596,4 +602,111 @@ test('lanes come from every item and drag ranks from the full column (search AC 
   const render = js.slice(js.indexOf('function render()'), js.indexOf('function renderHeader()'));
   assert.match(render, /visibleItems\(\)/);
   assert.doesNotMatch(render, /state\.items\.filter\(/, 'column counts use the filtered items');
+});
+
+// ---------- task dialog redesign (docs/specs/task-dialog-redesign.md AC 7, 14-16, 31, 33, 35, 38) ----------
+
+function detailSection() {
+  const js = boardJs();
+  const start = js.indexOf('// ---------- detail view ----------');
+  assert.ok(start !== -1, 'board.js has a detail view section');
+  const end = js.indexOf('// ---------- discussion ----------', start);
+  return js.slice(start, end);
+}
+const detailMarkup = () => {
+  const html = read(path.join(root, 'public/board.html'));
+  return html.slice(html.indexOf('<dialog id="detail"'), html.indexOf('</dialog>'));
+};
+
+test('the status track is built from the server list and names no status (redesign AC 7, 38)', () => {
+  const { STATUSES } = require('../server/statuses');
+  const { TYPES } = require('../server/types');
+  const { PRIORITIES } = require('../server/priorities');
+  const { RESOLUTIONS } = require('../server/resolutions');
+  const names = new Set([...STATUSES, ...TYPES.flatMap((t) => [t.name, t.label]), ...PRIORITIES, ...RESOLUTIONS.map((r) => r.name)]);
+  const offenders = [];
+  for (const [file, text] of [['board.js (detail view)', detailSection()], ['board.html (dialog)', detailMarkup()]]) {
+    for (const name of names) if (quoted(name).test(text)) offenders.push(`${file}: ${name}`);
+  }
+  assert.deepEqual(offenders, []);
+  const js = detailSection();
+  assert.match(js, /state\.statuses\.map\(/, 'one step per server status');
+  assert.match(js, /type: 'radio', name: 'status'/, 'radios named status');
+  assert.match(js, /isTerminal\(selectedStatus\(\)\)/, 'resolution follows the terminal-status rule');
+  const html = detailMarkup();
+  assert.match(html, /<fieldset id="status-field" class="track">\s*<legend>Status<\/legend>/);
+  assert.doesNotMatch(html, /<select name="status"/, 'the select is replaced');
+});
+
+test('the dialog has one tab bar with five tabs and a panel for each (redesign AC 14-16)', () => {
+  const html = detailMarkup();
+  const open = html.indexOf('<div id="activity-tabs"');
+  const bar = html.slice(open, html.indexOf('</div>', open));
+  assert.match(bar, /role="tablist" aria-label="Activity"/);
+  const tabs = bar.match(/<button\b[^>]*>/gi) || [];
+  assert.deepEqual(
+    tabs.map((b) => b.match(/id="([^"]+)"/)[1]),
+    ['tab-children', 'tab-discussion', 'tab-history', 'tab-links', 'tab-attachments'],
+    'in spec order'
+  );
+  const panels = { 'tab-children': 'epic-view', 'tab-discussion': 'discussion', 'tab-history': 'history', 'tab-links': 'links', 'tab-attachments': 'attachments' };
+  for (const b of tabs) {
+    assert.match(b, /type="button"/, b);
+    assert.match(b, /role="tab"/, b);
+    assert.match(b, /aria-selected="(true|false)"/, b);
+    const id = b.match(/id="([^"]+)"/)[1];
+    assert.match(b, new RegExp(`aria-controls="${panels[id]}"`), b);
+    assert.match(html, new RegExp(`<section id="${panels[id]}"[^>]*role="tabpanel" aria-labelledby="${id}"`), id);
+    assert.match(bar, new RegExp(`id="${id}"[^>]*>[^<]*<span class="n"`), `${id} has a count pill`);
+  }
+  assert.match(tabs[0], /\shidden>/, 'Children only for epic types');
+  // Default tab per open; errors open their tab.
+  const js = detailSection();
+  assert.match(js, /selectTab\(item && isEpicItem\(item\) \? 'children' : 'discussion'\)/);
+  for (const id of ['linkError', 'attachmentError', 'epicViewError', 'epicAddError', 'commentError']) {
+    assert.match(js, new RegExp(`\\[els\\.${id}, '`), id);
+  }
+});
+
+test('the dialog renders text only and only Save submits (redesign AC 13, 31, 33)', () => {
+  assert.doesNotMatch(detailSection(), /innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
+  for (const call of detailSection().match(/el\(\s*'button',\s*\{[^}]*\}/g) || []) assert.match(call, /type: 'button'/, call);
+  const html = detailMarkup();
+  const buttons = html.match(/<button\b[^>]*>/gi) || [];
+  const submits = buttons.filter((b) => !/type="button"/.test(b));
+  assert.deepEqual(submits, ['<button type="submit" value="save" id="detail-save" class="primary">']);
+  assert.match(html, /<dialog id="detail" aria-labelledby="detail-heading">/);
+  assert.match(html, /<button type="button" id="detail-x" class="x" aria-label="Close">/);
+  assert.match(html, /<textarea name="title"[^>]*maxlength="200"[^>]*aria-label="Title"/);
+  assert.match(html, /<p class="error" id="title-error" role="alert"/);
+  assert.match(html, /<p id="detail-banner" class="banner" role="status"/);
+  assert.match(detailSection(), /'Title is required\. Enter a title and save again\.'/);
+});
+
+test('the dialog palette is scoped to dialog#detail, not :root (redesign AC 35)', () => {
+  const css = read(path.join(root, 'public/css/app.css'));
+  const rootBlock = css.slice(css.indexOf(':root {'), css.indexOf('}', css.indexOf(':root {')));
+  for (const token of ['--teal', '--navy', '--gold', '--linkblue', '#0b5d66', '#face00']) {
+    assert.ok(!rootBlock.includes(token), `${token} not in :root`);
+  }
+  const scoped = css.slice(css.indexOf('dialog#detail {'), css.indexOf('}', css.indexOf('dialog#detail {')));
+  for (const decl of ['--teal: #0b5d66', '--teal-soft: #e5eded', '--navy: #154973', '--linkblue: #004dd1', '--gold: #face00', '--danger: #c0300b']) {
+    assert.ok(scoped.includes(decl), decl);
+  }
+  // Gold appears only on the band and the dark summary panel.
+  for (const line of css.split('\n').filter((l) => /var\(--gold\)/.test(l))) {
+    assert.match(line, /\.band|\.epicchip|\.x:hover|\.title-in:focus|\.darkpanel/, line);
+  }
+  assert.doesNotMatch(css, /@import|url\(\s*['"]?https?:/, 'no external fonts or images');
+});
+
+test('description image thumbnails show under the read view too (redesign AC 12)', () => {
+  const js = boardJs();
+  const fn = js.slice(js.indexOf('function setDescriptionEditing('), js.indexOf('function renderDescriptionView('));
+  assert.match(fn, /renderDescriptionImages\(\);/, 'the strip is rendered in both views');
+  assert.doesNotMatch(fn, /descriptionImages\.hidden = true/, 'the read view does not hide the strip');
+  const strip = js.slice(js.indexOf('function renderDescriptionImages('), js.indexOf("els.descriptionEdit.addEventListener('click'"));
+  assert.match(strip, /editing\.description/, 'read view uses the saved text');
+  assert.match(strip, /els\.description\.value/, 'edit view uses the textarea');
+  assert.doesNotMatch(strip, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
 });

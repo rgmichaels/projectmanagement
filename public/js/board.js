@@ -1,7 +1,8 @@
 // Board page: columns from the status list, cards styled from the type list,
 // swimlanes (assignee / epic / priority), drag-and-drop and the detail view
-// with its Epic (for epic types), Links and Attachments sections and
-// Discussion and History tabs.
+// (docs/specs/task-dialog-redesign.md): a band with the key and title, a
+// status track, properties and description, then one tab bar for Children
+// (epic types only), Discussion, History, Links and Attachments.
 // Comments and the description are shown through js/richText.js (plain text
 // plus pasted-image tokens); pasting an image uploads it as an attachment.
 // Status, type, priority, resolution and link type names all come from the
@@ -69,8 +70,15 @@
     board: document.getElementById('board'),
     dialog: document.getElementById('detail'),
     form: document.getElementById('detail-form'),
-    detailTitle: document.getElementById('detail-title'),
+    detailHeading: document.getElementById('detail-heading'),
+    keychip: document.getElementById('detail-keychip'),
+    newLabel: document.getElementById('detail-new-label'),
+    closeX: document.getElementById('detail-x'),
+    titleInput: document.getElementById('title-input'),
+    titleError: document.getElementById('title-error'),
+    banner: document.getElementById('detail-banner'),
     statusField: document.getElementById('status-field'),
+    statusSteps: document.getElementById('status-steps'),
     resolutionField: document.getElementById('resolution-field'),
     epicField: document.getElementById('epic-field'),
     epicLabel: document.getElementById('epic-label'),
@@ -79,7 +87,6 @@
     deleteBtn: document.getElementById('detail-delete'),
     closeBtn: document.getElementById('detail-close'),
     discussion: document.getElementById('discussion'),
-    discussionHeading: document.getElementById('discussion-heading'),
     commentForm: document.getElementById('comment-form'),
     postingAs: document.getElementById('posting-as'),
     reporter: document.getElementById('reporter'),
@@ -89,8 +96,18 @@
     thread: document.getElementById('thread'),
     threadEmpty: document.getElementById('thread-empty'),
     activityTabs: document.getElementById('activity-tabs'),
+    tabChildren: document.getElementById('tab-children'),
     tabDiscussion: document.getElementById('tab-discussion'),
     tabHistory: document.getElementById('tab-history'),
+    tabLinks: document.getElementById('tab-links'),
+    tabAttachments: document.getElementById('tab-attachments'),
+    counts: {
+      children: document.getElementById('count-children'),
+      discussion: document.getElementById('count-discussion'),
+      history: document.getElementById('count-history'),
+      links: document.getElementById('count-links'),
+      attachments: document.getElementById('count-attachments'),
+    },
     history: document.getElementById('history'),
     historyField: document.getElementById('history-field'),
     historyNote: document.getElementById('history-note'),
@@ -127,6 +144,7 @@
     epicView: document.getElementById('epic-view'),
     epicViewHeading: document.getElementById('epic-view-heading'),
     epicViewError: document.getElementById('epic-view-error'),
+    epicSummary: document.getElementById('epic-summary'),
     epicProgressBar: document.getElementById('epic-progress-bar'),
     epicProgressFill: document.getElementById('epic-progress-fill'),
     epicProgressText: document.getElementById('epic-progress-text'),
@@ -186,6 +204,17 @@
     const r = state.resolutions.find((x) => x.isDefault) || state.resolutions[0];
     return r ? r.name : '';
   };
+
+  // A dot in the type's colour (dialog rows); the type name is its label.
+  function typeDot(type, name) {
+    return el('span', {
+      class: 'type-dot',
+      style: type && type.color ? `--tc: ${type.color}` : undefined,
+      role: 'img',
+      'aria-label': (type && type.label) || name,
+      title: (type && type.label) || name,
+    });
+  }
 
   function initials(name) {
     return name.split(/\s+/).filter(Boolean).map((p) => p[0].toUpperCase()).slice(0, 2).join('');
@@ -524,19 +553,57 @@
   }
 
   // ---------- detail view ----------
+  // The work item dialog: a dark band (key chip, epic link, Close, title), the
+  // status track, properties and description, then one tab bar for Children
+  // (epic types only), Discussion, History, Links and Attachments. Only the
+  // band, track, properties and description are part of Save.
 
   let editing = null; // the item being edited, or null when creating
+
+  const TITLE_REQUIRED = 'Title is required. Enter a title and save again.';
 
   function fillSelect(select, options, value) {
     select.replaceChildren(...options.map((o) => el('option', { value: o.value }, o.label)));
     select.value = value;
   }
 
-  // The resolution control is shown only while the status field is the
+  // ----- status track -----
+  // One radio per server status, in board order (name="status"). Nothing is
+  // saved until Save, as with the select it replaces.
+
+  const statusRadios = () => [...els.statusSteps.querySelectorAll('input[type="radio"]')];
+  function selectedStatus() {
+    const radio = statusRadios().find((r) => r.checked);
+    return radio ? radio.value : '';
+  }
+
+  function fillStatusTrack(value) {
+    els.statusSteps.replaceChildren(
+      ...state.statuses.map((s) =>
+        el('label', { class: 'step' }, el('input', { type: 'radio', name: 'status', value: s }), el('span', {}, s))
+      )
+    );
+    for (const radio of statusRadios()) radio.checked = radio.value === value;
+    syncTrack();
+  }
+
+  // Steps before the selected one read as finished, the selected one as current.
+  function syncTrack() {
+    const radios = statusRadios();
+    const current = radios.findIndex((r) => r.checked);
+    radios.forEach((radio, i) => {
+      const step = radio.closest('.step');
+      step.classList.toggle('past', i < current);
+      step.classList.toggle('now', i === current);
+    });
+    els.statusSteps.classList.toggle('locked', readOnly());
+  }
+
+  // The resolution control is shown only while the selected status is the
   // terminal status. Entering it from another status selects the default.
   function syncResolutionField() {
     const f = els.form.elements;
-    const show = Boolean(editing) && isTerminal(f.status.value);
+    const show = Boolean(editing) && isTerminal(selectedStatus());
     if (show && els.resolutionField.hidden) {
       const current = editing && isTerminal(editing.status) ? editing.resolution : null;
       const names = state.resolutions.map((r) => r.name);
@@ -551,13 +618,88 @@
     els.epicField.hidden = !epicType() || Boolean(type && type.isEpic);
   }
 
-  // A link to the saved epic of the open item, beside the dropdown.
+  // ----- band -----
+
+  // The key chip (type name and key, with a dot in the type's colour) or, for
+  // a new item, "Create work item". The hidden heading names the dialog.
+  function syncBand(item) {
+    els.keychip.hidden = !item;
+    els.newLabel.hidden = Boolean(item);
+    els.detailHeading.textContent = item ? item.key : 'Create work item';
+    if (!item) return;
+    const type = typeOf(item.type);
+    els.keychip.textContent = `${(type && type.label) || item.type} ${item.key}`; // text, never parsed as HTML
+    if (type && type.color) els.keychip.style.setProperty('--tc', type.color);
+    else els.keychip.style.removeProperty('--tc');
+  }
+
+  // The open item's epic as a link in the band; it opens the epic here.
   function syncEpicOpen(item) {
-    const epic = item && item.epic_id ? itemById(item.epic_id) : null;
+    const epic = item && item.epic_id && !isEpicItem(item) ? itemById(item.epic_id) : null;
     els.epicOpen.hidden = !epic;
     els.epicOpen.textContent = epic ? `${epic.key} ${epic.title}` : ''; // text, never parsed as HTML
+    els.epicOpen.title = epic ? `Open ${epic.key} ${epic.title}` : '';
     els.epicOpen.onclick = epic ? () => openLinked(epic.id, els.detailError) : null;
   }
+
+  // Why nothing can be changed; the archived text wins over view-only.
+  function syncBanner() {
+    let text = '';
+    if (state.project && state.project.archived) text = 'This project is archived. You can read this work item but not change it.';
+    else if (readOnly()) text = 'You have view-only access. You can read this work item but not change it.';
+    els.banner.textContent = text;
+    els.banner.hidden = !text;
+  }
+
+  function setTitleError(text) {
+    els.titleError.textContent = text;
+    els.titleError.hidden = !text;
+    els.titleInput.classList.toggle('bad', Boolean(text));
+    if (text) {
+      els.titleInput.setAttribute('aria-invalid', 'true');
+      els.titleInput.setAttribute('aria-describedby', 'title-error');
+    } else {
+      els.titleInput.removeAttribute('aria-invalid');
+      els.titleInput.removeAttribute('aria-describedby');
+    }
+  }
+
+  // The title grows with its text (it is a textarea so long titles wrap).
+  // CSS field-sizing does it where supported; otherwise size it here.
+  const cssGrows = typeof CSS !== 'undefined' && CSS.supports && CSS.supports('field-sizing', 'content');
+  function growTitle() {
+    if (cssGrows) return;
+    const t = els.titleInput;
+    t.style.height = 'auto';
+    if (t.scrollHeight) t.style.height = `${t.scrollHeight + t.offsetHeight - t.clientHeight}px`;
+  }
+  window.addEventListener('resize', () => { if (els.dialog.open) growTitle(); });
+
+  // The title never holds a line break: Enter saves, and pasted or dropped
+  // line breaks become spaces.
+  els.titleInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    e.preventDefault();
+    els.form.requestSubmit();
+  });
+  els.titleInput.addEventListener('paste', (e) => {
+    const text = e.clipboardData ? e.clipboardData.getData('text/plain') : '';
+    if (!/[\r\n]/.test(text)) return;
+    e.preventDefault();
+    const t = els.titleInput;
+    const room = t.maxLength - (t.value.length - (t.selectionEnd - t.selectionStart));
+    t.setRangeText(text.replace(/\r\n|[\r\n]/g, ' ').slice(0, Math.max(0, room)), t.selectionStart, t.selectionEnd, 'end');
+    t.dispatchEvent(new Event('input'));
+  });
+  els.titleInput.addEventListener('input', () => {
+    const t = els.titleInput;
+    if (/[\r\n]/.test(t.value)) {
+      const pos = t.selectionStart;
+      t.value = t.value.replace(/[\r\n]/g, ' ');
+      t.selectionStart = t.selectionEnd = pos;
+    }
+    growTitle();
+  });
 
   function openDetail(item) {
     editing = item || null;
@@ -566,7 +708,9 @@
     const ro = readOnly();
     const defaultType = state.types.find((t) => t.isDefault) || state.types[0];
 
-    els.detailTitle.textContent = item ? `${item.key}` : 'Create work item';
+    syncBand(item);
+    syncBanner();
+    setTitleError('');
     els.detailError.textContent = '';
     els.epicLabel.textContent = epicLabel();
 
@@ -577,7 +721,7 @@
     f.title.value = item ? item.title : '';
     f.description.value = item ? item.description : '';
     fillSelect(f.type, state.types.map((t) => ({ value: t.name, label: t.label || t.name })), item ? item.type : defaultType.name);
-    fillSelect(f.status, state.statuses.map((s) => ({ value: s, label: s })), item ? item.status : state.statuses[0]);
+    fillStatusTrack(item ? item.status : state.statuses[0]);
     fillSelect(f.priority, state.priorities.map((p) => ({ value: p, label: p })), item ? item.priority : state.defaultPriority);
     fillSelect(
       f.assignee_id,
@@ -602,6 +746,7 @@
     els.saveBtn.textContent = item ? 'Save' : 'Create';
     els.deleteBtn.hidden = ro || !item || !canDeleteItems();
     els.activityTabs.hidden = !item;
+    els.tabChildren.hidden = !(item && isEpicItem(item));
     // Attachments first: the description and the thread render image tokens
     // against this item's attachment list.
     openAttachments(item);
@@ -610,38 +755,46 @@
     openLinks(item);
     openDiscussion(item);
     openHistory(item);
-    selectTab('discussion'); // the default each time a dialog opens
+    // The default each time a dialog opens or is re-pointed; not remembered.
+    selectTab(item && isEpicItem(item) ? 'children' : 'discussion');
     // A linked item re-points the dialog that is already open.
     if (!els.dialog.open) els.dialog.showModal();
+    growTitle();
+    (els.titleInput.disabled ? els.closeX : els.titleInput).focus();
   }
 
   function formValues() {
     const f = els.form.elements;
     const type = typeOf(f.type.value);
     const values = {
-      title: f.title.value.trim(),
+      title: f.title.value.replace(/[\r\n]+/g, ' ').trim(),
       type: f.type.value,
       priority: f.priority.value,
       assignee_id: f.assignee_id.value ? Number(f.assignee_id.value) : null,
       epic_id: type && type.isEpic ? null : f.epic_id.value ? Number(f.epic_id.value) : null,
       description: f.description.value,
     };
-    if (editing) values.status = f.status.value;
+    if (editing) values.status = selectedStatus();
     // Left out for other statuses: the server clears it.
     if (editing && isTerminal(values.status)) values.resolution = f.resolution.value;
     return values;
   }
 
   els.form.elements.type.addEventListener('change', syncEpicField);
-  els.form.elements.status.addEventListener('change', syncResolutionField);
+  els.statusSteps.addEventListener('change', () => {
+    syncTrack();
+    syncResolutionField();
+  });
 
   els.form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (readOnly() || pasteUploads.description > 0) return; // Save waits for a pasted image
     els.detailError.textContent = '';
+    setTitleError('');
     const values = formValues();
     if (!values.title) {
-      els.detailError.textContent = 'Title is required.';
+      setTitleError(TITLE_REQUIRED);
+      els.titleInput.focus();
       return;
     }
     let created = null;
@@ -680,6 +833,76 @@
   });
 
   els.closeBtn.addEventListener('click', () => els.dialog.close());
+  els.closeX.addEventListener('click', () => els.dialog.close());
+
+  // ----- tabs -----
+  // One tab bar for a saved item; a new item has none. Only one panel shows
+  // at a time; History loads the first time it is shown.
+
+  const tabList = () => [
+    { name: 'children', tab: els.tabChildren, panel: els.epicView },
+    { name: 'discussion', tab: els.tabDiscussion, panel: els.discussion },
+    { name: 'history', tab: els.tabHistory, panel: els.history },
+    { name: 'links', tab: els.tabLinks, panel: els.links },
+    { name: 'attachments', tab: els.tabAttachments, panel: els.attachments },
+  ];
+  let selectedTab = 'discussion';
+
+  function selectTab(name) {
+    selectedTab = name;
+    const hasItem = editing !== null;
+    for (const t of tabList()) {
+      const on = t.name === name;
+      t.tab.setAttribute('aria-selected', String(on));
+      t.tab.classList.toggle('active', on);
+      t.tab.tabIndex = on ? 0 : -1;
+      if (hasItem) t.panel.hidden = !on || t.tab.hidden;
+    }
+    historyView.selected = hasItem && name === 'history';
+    if (historyView.selected && historyView.issueId !== null && !historyView.loaded && !historyView.loading) loadHistory(true);
+  }
+
+  for (const t of tabList()) t.tab.addEventListener('click', () => selectTab(t.name));
+  // Left and Right Arrow (and Home and End) move between the visible tabs.
+  els.activityTabs.addEventListener('keydown', (e) => {
+    const shown = tabList().filter((t) => !t.tab.hidden);
+    const i = shown.findIndex((t) => t.name === selectedTab);
+    let next = null;
+    if (e.key === 'ArrowRight') next = shown[(i + 1) % shown.length];
+    else if (e.key === 'ArrowLeft') next = shown[(i - 1 + shown.length) % shown.length];
+    else if (e.key === 'Home') next = shown[0];
+    else if (e.key === 'End') next = shown[shown.length - 1];
+    if (!next) return;
+    e.preventDefault();
+    selectTab(next.name);
+    next.tab.focus();
+  });
+
+  // Count pill on a tab; null hides it (not loaded yet).
+  function setCount(name, value) {
+    const pill = els.counts[name];
+    pill.textContent = value === null ? '' : String(value);
+    pill.hidden = value === null;
+  }
+
+  // An error that appears in a tab's panel opens that tab, whichever code
+  // set it (load, add, remove, upload, post). Clearing an error never
+  // switches back. History errors stay on History.
+  const ERROR_TABS = [
+    [els.linkError, 'links'],
+    [els.attachmentError, 'attachments'],
+    [els.epicViewError, 'children'],
+    [els.epicAddError, 'children'],
+    [els.commentError, 'discussion'],
+  ];
+  for (const [errorEl, name] of ERROR_TABS) {
+    new MutationObserver(() => showTabFor(errorEl, name)).observe(errorEl, { childList: true, characterData: true, subtree: true });
+  }
+  function showTabFor(errorEl, name) {
+    const target = tabList().find((t) => t.name === name);
+    if (!errorEl.textContent || editing === null || !els.dialog.open || target.tab.hidden || selectedTab === name) return;
+    selectTab(name);
+  }
 
   // ---------- discussion ----------
   // Messages on the open work item. Kept apart from the work item form: none
@@ -690,6 +913,7 @@
     comments: [], // newest first
     editingId: null, // message in edit mode, or null
     editDraft: '',
+    loaded: false, // the thread has been fetched for this dialog
     posting: false,
     timer: null,
     loadSeq: 0,
@@ -781,7 +1005,7 @@
 
   function renderThread() {
     const n = discussion.comments.length;
-    els.discussionHeading.textContent = `Discussion (${n})`;
+    setCount('discussion', discussion.loaded ? n : null);
     els.threadEmpty.hidden = n > 0;
     els.thread.replaceChildren(...discussion.comments.map(renderMessage));
   }
@@ -791,6 +1015,7 @@
   function openDiscussion(item) {
     discussion.issueId = item ? item.id : null;
     discussion.comments = [];
+    discussion.loaded = false;
     discussion.editingId = null;
     els.discussion.hidden = !item;
     if (!item) return;
@@ -816,6 +1041,7 @@
       const comments = await api.get(`/api/issues/${issueId}/comments`);
       if (seq !== discussion.loadSeq || discussion.issueId !== issueId) return; // a newer dialog is open
       discussion.comments = comments;
+      discussion.loaded = true;
       renderThread();
     } catch (err) {
       if (discussion.issueId === issueId) els.commentError.textContent = `Could not load messages: ${err.message}`;
@@ -928,32 +1154,8 @@
     loading: false,
     loadSeq: 0, // ignores responses for an older dialog, filter or page
     field: '', // '' = all fields
-    selected: false, // the History tab is the visible one
+    selected: false, // the History tab is the visible one (set by selectTab)
   };
-
-  function selectTab(name) {
-    const showHistory = name === 'history';
-    historyView.selected = showHistory;
-    els.tabDiscussion.setAttribute('aria-selected', String(!showHistory));
-    els.tabHistory.setAttribute('aria-selected', String(showHistory));
-    els.tabDiscussion.classList.toggle('active', !showHistory);
-    els.tabHistory.classList.toggle('active', showHistory);
-    const hasItem = discussion.issueId !== null;
-    els.discussion.hidden = !hasItem || showHistory;
-    els.history.hidden = !hasItem || !showHistory;
-    if (showHistory && hasItem && !historyView.loaded && !historyView.loading) loadHistory(true);
-  }
-
-  els.tabDiscussion.addEventListener('click', () => selectTab('discussion'));
-  els.tabHistory.addEventListener('click', () => selectTab('history'));
-  // Arrow keys move between the two tabs (both are also in the Tab order).
-  els.activityTabs.addEventListener('keydown', (e) => {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-    e.preventDefault();
-    const target = historyView.selected ? els.tabDiscussion : els.tabHistory;
-    selectTab(target === els.tabHistory ? 'history' : 'discussion');
-    target.focus();
-  });
 
   function fillHistoryFilter() {
     els.historyField.replaceChildren(
@@ -987,6 +1189,8 @@
     els.historyMore.hidden = !v.hasMore;
     els.historyMore.disabled = v.loading;
     els.historyMore.textContent = v.loading && v.events.length ? 'Loading...' : 'Show more';
+    // No count until the first page is in; "+" while more can be shown.
+    if (v.loaded && !v.loading) setCount('history', `${v.events.length}${v.hasMore ? '+' : ''}`);
   }
 
   // Resets the tab for a newly opened dialog; nothing is fetched until the
@@ -1003,6 +1207,7 @@
     historyView.loadSeq += 1;
     els.historyField.value = '';
     els.historyError.hidden = true;
+    setCount('history', null);
     renderHistory();
   }
 
@@ -1104,20 +1309,10 @@
     const li = el(
       'li',
       { class: 'epic-child', 'data-id': child.id },
-      el(
-        'span',
-        {
-          class: 'type-icon epic-child-type',
-          style: type && type.color ? `--type-color: ${type.color}` : undefined,
-          title: (type && type.label) || child.type,
-          'aria-hidden': 'true',
-        },
-        (type && type.icon) || '□'
-      ),
+      typeDot(type, child.type),
       el('button', { type: 'button', class: 'link epic-child-key', onclick: open }, child.key), // text, never parsed as HTML
       el('button', { type: 'button', class: 'link epic-child-title', onclick: open }, child.title),
-      el('span', { class: 'epic-child-status' }, child.status),
-      el('span', { class: 'epic-child-assignee' }, child.assignee_name || 'Unassigned'),
+      el('span', { class: 'epic-child-status' }, `${child.status} · ${child.assignee_name || 'Unassigned'}`),
       el('span', { class: 'priority epic-child-priority', title: `Priority: ${child.priority}` }, child.priority)
     );
     if (!readOnly()) {
@@ -1139,8 +1334,11 @@
         el('li', { class: `epic-count${s.count ? '' : ' zero'}` }, el('span', {}, s.status), ' ', el('strong', {}, String(s.count)))
       )
     );
+    // The dark summary panel only once there is something to summarise.
+    els.epicSummary.hidden = !epicView.data || total === 0;
     els.epicEmpty.hidden = !epicView.data || data.items.length > 0;
     els.epicChildren.replaceChildren(...data.items.map(renderEpicChild));
+    setCount('children', epicView.data ? data.items.length : null);
   }
 
   // Shows the section when `item` is a saved epic-type work item and loads
@@ -1158,7 +1356,7 @@
     const type = typeOf(item.type);
     const label = (type && type.label) || item.type;
     els.epicViewHeading.textContent = label;
-    els.epicEmpty.textContent = `No items in this ${label.toLowerCase()} yet.`;
+    els.epicEmpty.textContent = 'No child work items yet. Add an existing item or create a new one.';
     els.epicActions.hidden = readOnly();
     els.epicAddTarget.value = '';
     fillEpicAddTarget();
@@ -1294,16 +1492,7 @@
     const li = el(
       'li',
       { class: 'links-row', 'data-id': link.id },
-      el(
-        'span',
-        {
-          class: 'type-icon links-type',
-          style: type && type.color ? `--type-color: ${type.color}` : undefined,
-          title: (type && type.label) || link.other.type,
-          'aria-hidden': 'true',
-        },
-        (type && type.icon) || '□'
-      ),
+      typeDot(type, link.other.type),
       el('button', { type: 'button', class: 'link links-key', onclick: open }, link.other.key), // text, never parsed as HTML
       el('button', { type: 'button', class: 'link links-title', onclick: open }, link.other.title),
       el('span', { class: 'links-status' }, link.other.status)
@@ -1321,6 +1510,7 @@
       groups.get(link.label).push(link);
     }
     els.linksEmpty.hidden = linksView.links.length > 0;
+    setCount('links', linksView.links.length);
     els.linksList.replaceChildren(
       ...[...groups].map(([label, list]) =>
         el('div', { class: 'links-group' }, el('h4', {}, label), el('ul', {}, ...list.map(renderLinkRow)))
@@ -1344,6 +1534,7 @@
     syncLinkAdd();
     els.linksEmpty.hidden = true;
     els.linksList.replaceChildren();
+    setCount('links', null);
     loadLinks(item.id);
   }
 
@@ -1535,7 +1726,7 @@
 
   function renderAttachments() {
     const v = attachmentsView;
-    els.attachmentsHeading.textContent = `Attachments (${v.list.length})`;
+    setCount('attachments', v.issueId !== null && v.loaded ? v.list.length : null);
     els.attachmentsEmpty.hidden = v.issueId === null || !v.loaded || v.list.length > 0 || v.pending.length > 0;
     els.attachmentList.replaceChildren(
       ...v.pending.map((p) =>
@@ -1555,7 +1746,17 @@
   function openAttachments(item) {
     Object.assign(attachmentsView, { issueId: item ? item.id : null, list: [], pending: [], loaded: false, lookups: new Map() });
     attachmentsView.loadSeq += 1;
+    // A saved item's attachments are a tab panel (selectTab shows it); a new
+    // item shows this as a plain section below the description.
     els.attachments.hidden = false;
+    if (item) {
+      els.attachments.setAttribute('role', 'tabpanel');
+      els.attachments.setAttribute('aria-labelledby', 'tab-attachments');
+    } else {
+      els.attachments.removeAttribute('role');
+      els.attachments.removeAttribute('aria-labelledby');
+    }
+    els.attachmentsHeading.hidden = Boolean(item);
     els.attachmentsNote.hidden = Boolean(item);
     els.attachmentControls.hidden = !item || readOnly();
     els.attachmentError.textContent = '';
@@ -1747,9 +1948,8 @@
     els.descriptionView.hidden = editingText;
     els.descriptionEdit.hidden = editingText || readOnly();
     els.description.hidden = !editingText;
-    if (editingText) renderDescriptionImages();
-    else renderDescriptionView();
-    if (!editingText) els.descriptionImages.hidden = true;
+    if (!editingText) renderDescriptionView();
+    renderDescriptionImages();
   }
 
   function renderDescriptionView() {
@@ -1760,15 +1960,16 @@
       els.descriptionView.replaceChildren(...richNodes(text));
     } else {
       els.descriptionView.classList.add('empty-text');
-      els.descriptionView.textContent = readOnly() ? 'No description.' : 'No description. Click Edit to add one.';
+      els.descriptionView.textContent = readOnly() ? 'No description.' : 'No description. Select Edit to add one.';
     }
   }
 
-  // Thumbnails of the images whose tokens are in the textarea, so the author
-  // sees that a paste worked.
+  // Thumbnails of the images whose tokens are in the description: under the
+  // read view from the saved text, and while editing from the textarea (so
+  // the author sees that a paste worked).
   function renderDescriptionImages() {
-    if (els.description.hidden) return;
-    const ids = richText.tokenIds(els.description.value).filter((id) => resolveToken(id) === 'image');
+    const text = els.description.hidden ? (editing ? editing.description : '') : els.description.value;
+    const ids = richText.tokenIds(text || '').filter((id) => resolveToken(id) === 'image');
     els.descriptionImages.hidden = ids.length === 0;
     els.descriptionThumbs.replaceChildren(
       ...ids.map((id) =>

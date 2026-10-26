@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Option A: Rail - work item dialog</title>
+<style>
+:root{
+  --ink:#000; --muted:#62666a; --mist:#e5eded; --line:#d0d0ce; --line2:#e4e4e4; --page:#f8fafa;
+  --teal:#0b5d66; --teal-mid:#65999e; --teal-soft:#e5eded; --navy:#154973; --linkblue:#004dd1; --gold:#face00; --danger:#c0300b; --primary:#0b5d66;
+  --epic:#904ee2; --task:#4bade8; --defect:#e5493a; --issue:#f5a623;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  font-family:"Proxima Nova","Helvetica Neue",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:14px;color:var(--ink);
+}
+*{box-sizing:border-box}
+body{margin:0;background:#b9c1c1;min-height:100vh}
+button,select,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+button{border:1px solid var(--navy);color:var(--navy);background:#fff;border-radius:4px;padding:6px 12px;cursor:pointer}
+button.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+button.danger{color:var(--danger);border-color:var(--line)}
+button.link{border:none;background:none;padding:0;color:var(--linkblue);font-size:12px;text-decoration:underline;text-underline-offset:2px}
+button[disabled]{cursor:default;opacity:.6}
+input,select,textarea{border:1px solid var(--navy);border-radius:4px;padding:6px 8px;background:#fff;width:100%}
+select[disabled],input[disabled],textarea[disabled]{background:var(--mist);color:var(--ink);opacity:1;-webkit-text-fill-color:var(--ink)}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:#000;font-weight:700}
+.error{color:var(--danger);margin:4px 0;min-height:0;font-size:13px}
+.hint{color:var(--muted);font-size:12px}
+.muted{color:var(--muted)}
+.mono{font-family:var(--mono)}
+
+/* demo chrome, not part of the design */
+.demo{position:sticky;top:0;z-index:20;background:#06383e;color:#fff;padding:8px 12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px}
+.demo b{margin-right:6px}
+.demo button{background:transparent;color:#fff;border-color:var(--teal-mid);padding:3px 9px;font-size:12px}
+.demo button[aria-pressed=true]{background:var(--teal-soft);color:var(--ink);border-color:var(--teal-soft)}
+.board-ghost{position:fixed;inset:44px 0 0 0;display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:20px;opacity:.5}
+.board-ghost div{background:#a9b3b3;border-radius:4px}
+
+/* modal parts */
+.modal{background:var(--page);border-radius:8px;box-shadow:0 12px 36px rgba(9,30,40,.35);color:var(--ink)}
+.top{display:flex;align-items:center;gap:8px;min-width:0}
+.keychip{display:inline-flex;align-items:center;gap:6px;font:600 12px var(--mono);color:#000;background:#fff;border-radius:4px;padding:2px 8px;white-space:nowrap}
+.keychip::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--tc,#8993a4)}
+.epicchip{background:#eae6ff;color:#403294;border-radius:4px;padding:2px 7px;font-size:12px;font-weight:600;border:none;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.epicchip:hover{background:#c0b6f2}
+.x{margin-left:auto;border:none;background:none;font-size:20px;line-height:1;padding:2px 8px;color:#fff}
+.banner{background:var(--mist);border:1px solid var(--teal-mid);border-radius:4px;padding:6px 10px;font-size:13px;margin:0 0 12px}
+.title-in{font-size:22px;line-height:1.25;font-weight:700;border:1px solid transparent;padding:4px 8px;margin-left:-8px;width:calc(100% + 16px);resize:none;field-sizing:content;min-height:2em;display:block;overflow-wrap:anywhere;background:transparent}
+.title-in{color:#fff}
+.title-in::placeholder{color:#cfe3e5}
+.title-in:hover:not([disabled]){border-color:var(--teal-mid)}
+.title-in:focus{border-color:var(--gold);background:rgba(255,255,255,.1);outline:none}
+.title-in[disabled]{background:transparent;-webkit-text-fill-color:#fff}
+.title-in.bad{border:2px solid #fff}
+/* the dark teal top band; gold appears only here */
+.band{background:var(--teal);color:#fff;padding:14px 24px 14px;border-radius:8px 8px 0 0}
+.band :focus-visible{outline-color:var(--gold)}
+.band .error{display:inline-block;background:#fff;color:#a82a08;border-radius:3px;padding:2px 8px;margin:6px 0 0}
+.band .epicchip{background:none;color:var(--gold);text-transform:uppercase;font-weight:700;font-size:12px;letter-spacing:.02em;text-decoration:underline;text-underline-offset:3px;padding:2px 0}
+.band .epicchip::after{content:" \2192"}
+.band .epicchip:hover{color:#fff}
+.band .x:hover{color:var(--gold)}
+
+/* signature: the status track */
+fieldset.track{border:0;margin:0;padding:0;min-width:0}
+.track legend{font-size:12px;font-weight:700;color:#000;padding:0;margin-bottom:4px}
+.steps{display:flex;border:1px solid var(--teal-mid);border-radius:6px;overflow:hidden;background:#fff}
+.step{flex:1;position:relative;text-align:center;padding:7px 8px;font-weight:600;font-size:13px;color:var(--muted);cursor:pointer;border-left:1px solid var(--line);user-select:none;white-space:nowrap}
+.step:first-child{border-left:0}
+.step input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
+.step.past{background:var(--teal-soft);color:#000}
+.step.now{background:var(--teal);color:#fff}
+.step.now::before{content:"\25CF\00a0";font-size:9px;vertical-align:1px}
+.step:focus-within{outline:2px solid var(--navy);outline-offset:-3px}
+.steps.locked .step{cursor:default}.steps.locked .step input{cursor:default}
+.steps.locked .step:not(.now):not(.past){background:var(--mist)}
+
+.desc-view{white-space:pre-wrap;overflow-wrap:anywhere;padding:8px 10px;border:1px solid var(--line);border-radius:4px;min-height:2.6em;background:#fff}
+.desc-view.empty-text{color:var(--muted)}
+.field-head{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+.field-head h3,.sec-h{font-size:13px;margin:0;font-weight:700;color:var(--teal)}
+.imgs{margin-top:6px;font-size:12px;color:var(--muted)}
+.imgs i{display:inline-block;width:44px;height:44px;border:1px solid var(--line);border-radius:3px;background:repeating-linear-gradient(45deg,var(--mist),var(--mist) 6px,#fff 6px,#fff 12px);margin:4px 6px 0 0}
+
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tab{border:none;border-bottom:2px solid transparent;border-radius:0;background:none;padding:7px 10px;color:var(--muted);font-weight:600;white-space:nowrap;margin-bottom:-1px}
+.tab[aria-selected=true]{color:var(--teal);border-bottom-color:var(--teal)}
+.tab .n{background:var(--line2);color:#000;border-radius:9px;padding:0 6px;margin-left:5px;font-size:11px}
+.tab[aria-selected=true] .n{background:var(--teal-soft)}
+.pad{padding-top:10px}
+
+.thread,.hist,.rows,.kids{list-style:none;margin:0;padding:0}
+.msg{padding:8px 0;border-top:1px solid var(--line)}.msg:first-child{border-top:0}
+.mh{display:flex;gap:8px;flex-wrap:wrap;align-items:baseline;font-size:12px;color:var(--muted)}
+.mh b{color:var(--ink)}
+.mb{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:3px}
+.composer{margin-bottom:8px}.composer textarea{display:block}
+.composer .row{display:flex;align-items:center;gap:8px;margin-top:6px}
+.empty-line{color:var(--muted);margin:6px 0}
+.hist li{padding:7px 0;border-top:1px solid var(--line)}.hist li:first-child{border-top:0}
+.hist .ch{margin-top:3px;overflow-wrap:anywhere}
+.hist .ch s{color:var(--muted)}
+
+.row-i{display:flex;gap:8px;align-items:baseline;padding:5px 0;border-top:1px solid var(--line);min-width:0}
+.row-i:first-child{border-top:0}
+.row-i .k{font:600 12px var(--mono);white-space:nowrap}
+.row-i .t{flex:1;min-width:0;overflow-wrap:anywhere;text-align:left;border:0;background:none;padding:0}
+.row-i .s{font-size:11px;color:var(--muted);white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--tc,#8993a4);flex:none;align-self:center}
+.rel{font-size:12px;font-weight:600;color:var(--muted);margin:8px 0 0}
+.addrow{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.addrow select{flex:1;min-width:120px;width:auto}
+
+.prog{display:flex;align-items:center;gap:8px}
+.bar{flex:1;height:8px;background:var(--line2);border-radius:4px;overflow:hidden}
+.bar>div{height:100%;background:var(--teal)}
+.counts{display:flex;gap:4px 14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:6px 0;padding:0;list-style:none}
+.counts strong{color:var(--ink)}
+.file{display:flex;gap:8px;align-items:center;padding:5px 0;border-top:1px solid var(--line)}.file:first-child{border-top:0}
+.file .th{width:40px;height:40px;border:1px solid var(--line);border-radius:3px;flex:none;background:repeating-linear-gradient(45deg,var(--mist),var(--mist) 6px,#fff 6px,#fff 12px)}
+.file .nm{flex:1;min-width:0;overflow-wrap:anywhere}.file small{display:block;color:var(--muted);font-size:12px}
+.drop{border:1px dashed var(--line);border-radius:4px;padding:8px;display:flex;gap:8px;align-items:center;margin-top:8px}
+.foot{display:flex;gap:8px;align-items:center}
+.foot .sp{margin-left:auto}
+.reporter{font-size:12px;color:var(--muted);margin:0}
+details.acc{border:1px solid var(--line);border-radius:6px;background:#fff}
+details.acc>summary{color:var(--teal)}
+details.acc>summary{cursor:pointer;padding:8px 10px;font-weight:700;font-size:13px;list-style:none;display:flex;align-items:center;gap:6px}
+details.acc>summary::-webkit-details-marker{display:none}
+details.acc>summary::before{content:"\25B8";color:var(--muted);font-size:11px;transition:none}
+details.acc[open]>summary::before{content:"\25BE"}
+details.acc>summary .n{background:var(--line2);color:#000;border-radius:9px;padding:0 6px;font-size:11px;font-weight:600}
+details.acc>div{padding:0 10px 10px}
+
+button.navy{background:var(--navy);border-color:var(--navy);color:#fff;font-weight:700}
+.darkpanel{background:var(--teal);color:#fff;border:1px solid var(--teal-mid);border-radius:16px;padding:14px 18px;margin-bottom:10px}
+.darkpanel .big{font-size:18px;font-weight:700}
+.darkpanel .bar{background:rgba(255,255,255,.25)}.darkpanel .bar>div{background:var(--gold)}
+.darkpanel .counts{color:#fff;margin:8px 0 0}.darkpanel .counts strong{color:#fff}
+.sec-title,.rail h2{font-weight:700}
+.tab{font-weight:700}
+
+.wrap{position:relative;z-index:1;display:grid;place-items:start center;padding:28px 12px}
+.modal{width:min(900px,100%)}
+.mhead{padding:12px 24px;border-bottom:1px solid var(--line)}
+.band{padding-bottom:16px}.band .title-in{margin-top:10px}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) 260px}
+.main{padding:18px 24px;display:grid;gap:18px;align-content:start;min-width:0}
+.rail{background:var(--mist);border-left:1px solid var(--line);padding:18px 16px;display:grid;gap:12px;align-content:start;border-radius:0 0 8px 0}
+.rail h2{margin:0;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.rail .epicopen{justify-self:start}
+.mfoot{padding:12px 24px;border-top:1px solid var(--line)}
+section.epic-sec{border:1px solid var(--line);border-radius:6px;padding:12px;background:#fff}
+section.epic-sec h3{margin:0 0 8px;font-size:13px}
+@media (max-width:760px){.cols{grid-template-columns:1fr}.rail{border-left:0;border-top:1px solid var(--line);order:-1;border-radius:0;grid-template-columns:1fr 1fr}.rail h2{grid-column:1/-1}}
+</style></head><body>
+<div class="board-ghost" aria-hidden="true"><div></div><div></div><div></div></div>
+<div class="wrap"><form id="root" novalidate onsubmit="return false"></form></div>
+<script>
+const HOSTILE='<img src=x onerror=alert(1)>';
+const STATUSES=['To Do','In Progress','Done'];
+const PRIOS=['Highest','High','Medium','Low','Lowest'];
+const TYPES={Defect:'#e5493a',Task:'#4bade8',Issue:'#f5a623',Epic:'#904ee2'};
+const RESOLUTIONS=['Fixed',"Won't Do",'Duplicate','Cannot Reproduce'];
+const USERS=['Unassigned','Priya Nair','Sam Okafor','Alex Chen'];
+const EPICS=['None','PM-12 Onboarding revamp','PM-30 Reporting'];
+
+function h(tag,attrs,...kids){
+  const e=document.createElement(tag);
+  for(const k in (attrs||{})){const v=attrs[k];if(v===false||v==null)continue;
+    if(k==='on')for(const ev in v)e.addEventListener(ev,v[ev]);
+    else if(v===true)e.setAttribute(k,'');else e.setAttribute(k,v);}
+  for(const c of kids.flat())if(c!=null&&c!==false)e.append(c.nodeType?c:document.createTextNode(String(c)));
+  return e;
+}
+const KIDS=[
+ {key:'PM-21',title:'Write welcome email copy',type:'Task',status:'Done',who:'Priya Nair'},
+ {key:'PM-22',title:'Build checklist component',type:'Task',status:'Done',who:'Sam Okafor'},
+ {key:'PM-23',title:'Checklist does not save on slow networks',type:'Defect',status:'Done',who:'Alex Chen'},
+ {key:'PM-24',title:'Decide which steps are required',type:'Issue',status:'In Progress',who:'Priya Nair'},
+ {key:'PM-25',title:'Add progress ring to the home page',type:'Task',status:'In Progress',who:null},
+ {key:'PM-26',title:'Translate checklist into Spanish',type:'Task',status:'To Do',who:null}];
+const HISTORY=[
+ {who:'Priya Nair',when:'2 hours ago',ch:[['Status','To Do','In Progress']]},
+ {who:'Sam Okafor',when:'yesterday',ch:[['Assignee','Unassigned','Priya Nair'],['Priority','Low','Medium']]},
+ {who:'Sam Okafor',when:'3 days ago',ch:[['Created',null,null]]}];
+const COMMENTS=[
+ {who:'Sam Okafor',when:'3 days ago',body:'Can we ship this before the pilot starts?\nI would like the checklist to cover the first three steps only.'},
+ {who:'Priya Nair',when:'yesterday',edited:true,body:'Yes. I will start with the email copy and move on to the component once PM-139 lands.'},
+ {who:'Alex Chen',when:'2 hours ago',body:'Looks good. Moving to In Progress.'}];
+function scenario(n){
+  const s={name:n,key:'PM-142',type:'Task',status:'In Progress',priority:'Medium',assignee:'Priya Nair',epic:'PM-12 Onboarding revamp',
+   reporter:'Sam Okafor',title:'Add a getting-started checklist to the home page',
+   desc:'New users land on an empty home page and do not know what to do first.\n\nShow a checklist of the first three steps:\n1. Create a project\n2. Invite a teammate\n3. Add a work item',
+   imgs:1,resolution:'',isNew:false,ro:null,errors:{},tab:'discussion',edit:false,
+   links:[{rel:'is blocked by',key:'PM-139',title:'Fix empty-state layout',type:'Defect',status:'In Progress'},{rel:'relates to',key:'PM-150',title:'Home page analytics',type:'Task',status:'To Do'}],
+   files:[{name:'checklist-wireframe.png',meta:'182 KB, Sam Okafor, yesterday',img:true},{name:'copy-draft.pdf',meta:'44 KB, Priya Nair, 3 days ago'}],
+   comments:COMMENTS,history:HISTORY,children:[],candidates:['PM-31 Update the help page','PM-32 Remove old banner']};
+  if(n==='epic')Object.assign(s,{key:'PM-12',type:'Epic',epic:null,title:'Onboarding revamp',assignee:'Sam Okafor',status:'In Progress',desc:'Make the first ten minutes in the app obvious: checklist, welcome email and a progress ring.',imgs:0,links:[{rel:'blocks',key:'PM-30',title:'Reporting',type:'Epic',status:'To Do'}],files:[],children:KIDS});
+  if(n==='archived')Object.assign(s,{ro:'archived'});
+  if(n==='viewer')Object.assign(s,{ro:'viewer'});
+  if(n==='hostile')Object.assign(s,{type:'Defect',key:'PM-77',status:'Done',resolution:"Won't Do",
+    title:HISTORY.length&&'Checkout page crashes when the customer name contains '+HOSTILE+' and the postcode field is left blank after changing the delivery country twice in a row, then pressing back',
+    desc:'Steps: type '+HOSTILE+' into the name field.\nA_very_long_unbroken_string_that_must_wrap_without_breaking_the_layout_0123456789_0123456789_0123456789_0123456789',imgs:0,
+    reporter:HOSTILE,assignee:'Alex Chen',epic:'PM-30 Reporting',
+    links:[{rel:'duplicates',key:'PM-9',title:HOSTILE,type:'Defect',status:'Done'}],
+    files:[{name:HOSTILE+'.png',meta:'12 KB, Sam Okafor, today'}],
+    comments:[{who:'Sam Okafor',when:'today',body:'Repro: '+HOSTILE+'\nNo alert should appear.'}],
+    history:[{who:'Alex Chen',when:'today',ch:[['Title','Checkout crash',HOSTILE]]},...HISTORY]});
+  if(n==='empty')Object.assign(s,{desc:'',imgs:0,links:[],files:[],comments:[],assignee:'Unassigned',epic:'None',history:[HISTORY[2]],type:'Task',status:'To Do',title:'Draft the release notes'});
+  if(n==='new')Object.assign(s,{isNew:true,title:'',key:'',type:'Task',status:'To Do',assignee:'Unassigned',epic:'None',desc:'',imgs:0,links:[],files:[],comments:[],history:[],reporter:''});
+  if(n==='error')Object.assign(s,{errors:{title:'Title is required. Enter a title and save again.',link:'Choose a work item to link, then select Add link.',save:'Could not save. Check the fields marked above and try again.'},title:'',files:[],edit:true});
+  s.isEpic=s.type==='Epic';
+  return s;
+}
+const NAMES=[['task','Task'],['epic','Epic with children'],['archived','Archived project'],['viewer','Viewer'],['hostile','Long and hostile text'],['empty','Empty sections'],['new','New item'],['error','Errors']];
+
+/* --- builders shared by all options --- */
+function select(label,opts,val,S,id){
+  return h('label',{class:'f'},label,h('select',{name:id||label.toLowerCase(),disabled:!!S.ro},opts.map(o=>h('option',{selected:o===val},o))));
+}
+function banner(S){
+  if(!S.ro)return null;
+  return h('p',{class:'banner',role:'status'},S.ro==='archived'?'This project is archived. You can read this work item but not change it.':'You have view-only access. You can read this work item but not change it.');
+}
+function titleField(S){
+  const t=h('textarea',{class:'title-in'+(S.errors.title?' bad':''),name:'title',rows:'1','aria-label':'Title',maxlength:'200',required:true,disabled:!!S.ro,placeholder:'What needs to be done?','aria-describedby':S.errors.title?'title-err':null});
+  t.value=S.title;
+  return [t,S.errors.title?h('p',{class:'error',id:'title-err',role:'alert'},S.errors.title):null];
+}
+function track(S){
+  const cur=STATUSES.indexOf(S.status);
+  const name='status';
+  return h('fieldset',{class:'track'},h('legend',null,'Status'),
+    h('div',{class:'steps'+(S.ro?' locked':'')},STATUSES.map((st,i)=>
+      h('label',{class:'step'+(i===cur?' now':i<cur?' past':'')},
+        h('input',{type:'radio',name,value:st,checked:i===cur,disabled:!!S.ro,on:{change:()=>{S.status=st;if(st!=='Done')S.resolution='';else S.resolution=S.resolution||'Fixed';S.focus='r'+i;render();}},id:'r'+i}),st))));
+}
+function resolution(S){
+  if(S.status!=='Done'||S.isNew)return null;
+  return select('Resolution',RESOLUTIONS,S.resolution||'Fixed',S);
+}
+function epicField(S){
+  if(S.isEpic)return null;
+  return h('div',null,select('Epic',EPICS,S.epic||'None',S,'epic_id'),
+    null);
+}
+function typeField(S){return select('Type',Object.keys(TYPES),S.type,S)}
+function descBlock(S){
+  const out=[];
+  const head=h('div',{class:'field-head'},h('h3',null,h('label',{for:'desc'},'Description')),
+    (!S.isNew&&!S.ro&&!S.edit)?h('button',{type:'button',class:'link',on:{click:()=>{S.edit=true;S.focus='desc';render()}}},'Edit'):null);
+  out.push(head);
+  if(S.isNew||S.edit){
+    const ta=h('textarea',{id:'desc',name:'description',rows:'5',placeholder:'Describe the work. Paste a screenshot to attach it.'});ta.value=S.desc;out.push(ta);
+  }else{
+    out.push(h('div',{class:'desc-view'+(S.desc?'':' empty-text'),id:'desc',tabindex:'0'},S.desc||(S.ro?'No description.':'No description. Select Edit to add one.')));
+    if(S.imgs)out.push(h('div',{class:'imgs'},'Images in this description',h('br'),h('i'),));
+  }
+  return h('div',null,out);
+}
+function reporterLine(S){return S.reporter?h('p',{class:'reporter'},'Reporter: '+S.reporter):null}
+
+function epicBody(S){
+  const kids=S.children,tot=kids.length,done=kids.filter(k=>k.status==='Done').length;
+  const out=[];
+  if(S.errors.epic)out.push(h('p',{class:'error',role:'alert'},S.errors.epic));
+  if(!tot){
+    out.push(h('p',{class:'empty-line'},'No child work items yet. Add an existing item or create a new one.'));
+  }else{
+    out.push(h('div',{class:'darkpanel'},h('div',{class:'big'},done+' of '+tot+' done'),h('div',{class:'prog',style:'margin-top:6px'},h('div',{class:'bar',role:'progressbar','aria-label':'Progress','aria-valuemin':'0','aria-valuemax':String(tot),'aria-valuenow':String(done)},h('div',{style:'width:'+Math.round(done/tot*100)+'%'}))),
+      h('ul',{class:'counts'},STATUSES.map(st=>h('li',null,st+' ',h('strong',null,kids.filter(k=>k.status===st).length))))));
+    out.push(h('ul',{class:'kids'},kids.map(k=>h('li',{class:'row-i',style:'--tc:'+TYPES[k.type]},h('span',{class:'dot',title:k.type}),h('span',{class:'k'},k.key),h('button',{type:'button',class:'t'},k.title),h('span',{class:'s'},k.status+' · '+(k.who||'Unassigned'))))));
+  }
+  if(!S.ro)out.push(h('div',{class:'addrow'},h('select',{'aria-label':'Existing work item to add'},S.candidates.map(c=>h('option',null,c))),h('button',{type:'button',class:'navy'},'Add'),h('button',{type:'button'},'Create child')));
+  return h('div',null,out);
+}
+function linksBody(S){
+  const out=[];
+  if(!S.links.length)out.push(h('p',{class:'empty-line'},'No links.'));
+  else{const groups={};S.links.forEach(l=>(groups[l.rel]=groups[l.rel]||[]).push(l));
+    for(const rel in groups){out.push(h('p',{class:'rel'},rel));out.push(h('ul',{class:'rows'},groups[rel].map(l=>h('li',{class:'row-i',style:'--tc:'+TYPES[l.type]},h('span',{class:'dot',title:l.type}),h('span',{class:'k'},l.key),h('button',{type:'button',class:'t'},l.title),h('span',{class:'s'},l.status),S.ro?null:h('button',{type:'button',class:'link danger','aria-label':'Remove link to '+l.key},'Remove')))));}}
+  if(!S.ro){
+    out.push(h('div',{class:'addrow'},h('select',{'aria-label':'Relationship'},['blocks','is blocked by','relates to','duplicates','is duplicated by'].map(o=>h('option',null,o))),h('select',{'aria-label':'Work item to link'},[h('option',null,'Choose a work item'),...S.candidates.map(c=>h('option',null,c))]),h('button',{type:'button',class:'navy'},'Add link')));
+    out.push(h('p',{class:'error',role:'alert'},S.errors.link||''));
+  }
+  return h('div',null,out);
+}
+function filesBody(S){
+  if(S.isNew)return h('p',{class:'hint'},'Save the work item first.');
+  const out=[];
+  if(!S.files.length)out.push(h('p',{class:'empty-line'},'No attachments.'));
+  else out.push(h('ul',{class:'rows'},S.files.map(f=>h('li',{class:'file'},h('span',{class:'th'}),h('div',{class:'nm'},f.name,h('small',null,f.meta)),h('button',{type:'button',class:'link'},'Download'),S.ro?null:h('button',{type:'button',class:'link danger','aria-label':'Delete '+f.name},'Delete')))));
+  if(!S.ro)out.push(h('div',{class:'drop'},h('button',{type:'button',class:'navy'},'Add files'),h('span',{class:'hint'},'or drop files here')));
+  return h('div',null,out);
+}
+function composer(S){
+  if(S.ro)return null;
+  return h('div',{class:'composer'},h('p',{class:'hint',style:'margin:0 0 4px'},'Posting as Alex Chen'),
+    h('textarea',{rows:'2','aria-label':'Message',placeholder:'Write a message'}),
+    h('div',{class:'row'},h('button',{type:'button',class:'navy'},'Post'),h('span',{class:'hint'},'Paste a screenshot to attach it.')));
+}
+function thread(S){
+  if(!S.comments.length)return h('p',{class:'empty-line'},'No messages yet. Be the first to post.');
+  return h('ul',{class:'thread'},S.comments.map(c=>h('li',{class:'msg'},h('div',{class:'mh'},h('b',null,c.who),c.when,c.edited?h('i',null,'edited'):null,(!S.ro&&c.who==='Alex Chen')?[h('button',{type:'button',class:'link'},'Edit'),h('button',{type:'button',class:'link danger'},'Delete')]:null),h('div',{class:'mb'},c.body))));
+}
+function historyBody(S){
+  const out=[h('label',{class:'f',style:'flex-direction:row;align-items:center;gap:6px;justify-content:flex-end;margin-bottom:4px'},'Show',h('select',{'aria-label':'Filter history by field',style:'width:auto'},h('option',null,'All fields')))];
+  out.push(h('ul',{class:'hist'},S.history.map(e=>h('li',null,h('div',{class:'mh'},h('b',null,e.who),e.when),e.ch.map(c=>h('div',{class:'ch'},c[1]===null?'created this work item':[c[0]+': ',h('s',null,c[1]),' to ',h('b',null,c[2])]))))));
+  return h('div',null,out);
+}
+function footer(S){
+  return h('div',{class:'foot'},
+    S.errors.save?h('p',{class:'error',role:'alert',style:'margin:0'},S.errors.save):null,
+    h('span',{class:'sp'}),
+    (!S.ro&&!S.isNew)?h('button',{type:'button',class:'danger'},'Delete'):null,
+    h('button',{type:'button'},'Close'),
+    S.ro?null:h('button',{type:'submit',class:'primary'},'Save'));
+}
+function band(S){
+  return h('div',{class:'band'},topRow(S),h('h2',{id:'dt',style:'position:absolute;left:-9999px'},S.isNew?'Create work item':S.key),titleField(S));
+}
+function topRow(S){
+  return h('div',{class:'top'},
+    S.isNew?h('b',{style:'color:#fff;font-size:14px'},'Create work item'):h('span',{class:'keychip',style:'--tc:'+TYPES[S.type]},S.type,' ',S.key),
+    (!S.isNew&&S.epic&&S.epic!=='None'&&!S.isEpic)?h('button',{type:'button',class:'epicchip',title:S.epic},S.epic):null,
+    h('button',{type:'button',class:'x','aria-label':'Close'},'×'));
+}
+function tabsEl(items,S,key){
+  const tl=h('div',{class:'tabs',role:'tablist'},items.map(([k,label,n])=>h('button',{type:'button',role:'tab',class:'tab','aria-selected':String(S[key]===k),on:{click:()=>{S[key]=k;S.focus='tab-'+k;render()}},id:'tab-'+k},label,n!=null?h('span',{class:'n'},n):null)));
+  return tl;
+}
+
+/* --- page shell --- */
+const START=(location.hash||'#task').slice(1);let S=scenario(NAMES.some(n=>n[0]===START)?START:'task'),root;
+function render(){
+  const y=window.scrollY;
+  root.replaceChildren(COMPOSE(S));
+  if(S.focus){const f=document.getElementById(S.focus);if(f)f.focus({preventScroll:true});S.focus=null}
+}
+function boot(){
+  const demo=h('div',{class:'demo',role:'toolbar','aria-label':'Demo state'},h('b',null,document.title.split(':')[0]),
+   NAMES.map(([k,l])=>h('button',{type:'button','aria-pressed':String(k===S.name),on:{click:e=>{S=scenario(k);if(typeof S0==='function')S0(S);document.querySelectorAll('.demo button').forEach(b=>b.setAttribute('aria-pressed','false'));e.target.setAttribute('aria-pressed','true');render()}}},l)));
+  document.body.prepend(demo);
+  root=document.getElementById('root');
+  if(typeof S0==='function')S0(S);
+  render();
+}
+
+function COMPOSE(S){
+  const open=(k)=>S.acc&&S.acc[k];
+  const acc=(k,label,n,body,auto)=>h('details',{class:'acc',open:open(k)||auto||false,on:{toggle:e=>{S.acc=S.acc||{};S.acc[k]=e.target.open}}},h('summary',null,label,n!=null?h('span',{class:'n'},n):null),body);
+  const main=[banner(S),descBlock(S)];
+  if(S.isEpic&&!S.isNew)main.push(h('section',{class:'epic-sec'},h('h3',null,'Child work items ('+S.children.length+')'),epicBody(S)));
+  if(!S.isNew){
+    S.tab=S.tab||'discussion';
+    main.push(h('div',null,tabsEl([['discussion','Discussion',S.comments.length],['history','History',S.history.length]],S,'tab'),
+      h('div',{class:'pad',role:'tabpanel'},S.tab==='discussion'?[composer(S),thread(S)]:historyBody(S))));
+  }
+  const rail=[h('h2',null,'Details'),
+    typeField(S),select('Priority',PRIOS,S.priority,S),select('Assignee',USERS,S.assignee,S),epicField(S),resolution(S),reporterLine(S),
+    S.isNew?null:acc('links','Links',S.links.length,linksBody(S),!!S.errors.link),
+    acc('files','Attachments',S.isNew?null:S.files.length,filesBody(S),S.isNew)];
+  return h('div',{class:'modal',role:'dialog','aria-modal':'true','aria-labelledby':'dt'},
+    band(S),S.isNew?null:h('div',{class:'mhead'},track(S)),
+    h('div',{class:'cols'},h('div',{class:'main'},main),h('aside',{class:'rail','aria-label':'Details'},rail)),
+    h('div',{class:'mfoot'},footer(S)));
+}
+boot();
+</script></body></html>

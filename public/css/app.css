@@ -203,9 +203,7 @@ dialog input, dialog textarea { width: 100%; }
 .comment-icon { font-size: 11px; }
 
 /* Discussion section in the detail dialog. */
-.discussion { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 10px; }
 .discussion[hidden], .comment-form[hidden], .thread-empty[hidden] { display: none; }
-.discussion h3 { font-size: 14px; margin: 0 0 8px; }
 .comment-form { margin-bottom: 8px; }
 .posting-as { color: var(--muted); font-size: 12px; margin: 0 0 4px; }
 .thread-empty { color: var(--muted); margin: 4px 0; }
@@ -216,21 +214,19 @@ dialog input, dialog textarea { width: 100%; }
 .message-head { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; font-size: 12px; color: var(--muted); }
 .message-author { font-weight: 600; color: var(--text); }
 .message-edited { font-style: italic; }
-.message-body { white-space: pre-wrap; word-break: break-word; margin-top: 4px; }
+.message-body { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; }
 .message-editor { margin-top: 4px; }
 .message-actions { margin-top: 4px; }
 button.link { border: none; background: none; padding: 0; color: var(--primary); font-size: 12px; }
 button.link.danger { color: var(--danger); }
 
-/* Discussion | History tabs in the detail dialog. */
-.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-top: 6px; }
+/* The tab bar in the detail dialog (Children, Discussion, History, Links, Attachments). */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); overflow-x: auto; }
 .tabs[hidden] { display: none; }
-.tab { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 6px 10px; color: var(--muted); font-weight: 600; }
+.tab { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 7px 10px; color: var(--muted); font-weight: 700; white-space: nowrap; margin-bottom: -1px; }
 .tab.active, .tab[aria-selected="true"] { color: var(--primary); border-bottom-color: var(--primary); }
-.tabs + .discussion { border-top: none; margin-top: 0; }
 
 /* History tab: read-only list, newest first, scrolling like the thread. */
-.history { padding-top: 10px; }
 .history[hidden], .history-note[hidden], .history-error[hidden] { display: none; }
 .history-toolbar { display: flex; justify-content: flex-end; margin-bottom: 6px; }
 label.history-filter { flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 12px; }
@@ -242,26 +238,23 @@ label.history-filter { flex-direction: row; align-items: center; gap: 6px; margi
 .history-changes { list-style: none; margin: 4px 0 0; padding: 0; word-break: break-word; }
 .history + .actions, .history .actions { margin-top: 6px; }
 
-/* Links section in the detail dialog, between Description and the tabs. */
-.links { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 10px; }
+/* Links tab in the detail dialog. */
 .links[hidden], .links-empty[hidden], .link-form[hidden] { display: none; }
-.links h3 { font-size: 14px; margin: 0 0 8px; }
 .links h4 { font-size: 12px; color: var(--muted); font-weight: 600; margin: 6px 0 2px; }
 .links-empty { color: var(--muted); margin: 4px 0; }
 .links-group ul { list-style: none; margin: 0; padding: 0; }
-.links-row { display: flex; align-items: baseline; gap: 6px; padding: 3px 0; }
-.links-row .links-type { color: var(--type-color, var(--muted)); }
-.links-row .links-key { font-weight: 600; }
-.links-row .links-title { flex: 1; min-width: 0; text-align: left; color: var(--text); word-break: break-word; }
+.links-row { display: flex; align-items: baseline; gap: 6px; padding: 5px 0; border-top: 1px solid var(--border); min-width: 0; }
+.links-row:first-child { border-top: none; }
+.links-row .links-key { font-weight: 600; white-space: nowrap; }
+.links-row .links-title { flex: 1; min-width: 0; text-align: left; color: var(--text); overflow-wrap: anywhere; }
 .links-row .links-status { font-size: 11px; color: var(--muted); white-space: nowrap; }
-.link-form { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
-.link-form select { flex: 1; min-width: 0; }
+.link-form { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.link-form select { flex: 1; min-width: 120px; }
 
 /* Description: read view (rendered text with inline images) and edit view. */
-.description-field { margin-bottom: 10px; }
 .field-head { display: flex; align-items: baseline; gap: 8px; }
 .field-head label { margin: 0 0 4px; }
-.description-view { white-space: pre-wrap; word-break: break-word; padding: 6px 8px; border: 1px solid var(--border); border-radius: 3px; min-height: 2.5em; }
+.description-view { white-space: pre-wrap; overflow-wrap: anywhere; padding: 6px 8px; border: 1px solid var(--border); border-radius: 3px; min-height: 2.5em; }
 .description-view.empty-text { color: var(--muted); }
 .description-view[hidden], .description-field textarea[hidden], .paste-note[hidden], .image-strip[hidden] { display: none; }
 .paste-note { color: var(--muted); font-size: 12px; margin: 4px 0; }
@@ -272,34 +265,27 @@ label.history-filter { flex-direction: row; align-items: center; gap: 6px; margi
 .inline-image-link { display: inline-block; max-width: 100%; vertical-align: top; }
 .inline-image { display: block; max-width: 100%; max-height: 400px; border: 1px solid var(--border); border-radius: 3px; }
 
-/* Attachments section in the detail dialog, after Links. */
-.attachments { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 10px; }
+/* Attachments tab in the detail dialog (a plain section for a new item). */
 .attachments[hidden], .attachments-note[hidden], .attachments-empty[hidden], .attachment-controls[hidden] { display: none; }
-.attachments h3 { font-size: 14px; margin: 0 0 8px; }
+.attachments h3 { font-size: 13px; margin: 0 0 6px; }
+.attachments h3[hidden] { display: none; }
 .attachments.drop-target { outline: 2px dashed var(--primary); outline-offset: 2px; }
 .attachments-note, .attachments-empty { color: var(--muted); margin: 4px 0; }
-.attachment-controls { display: flex; align-items: center; gap: 8px; }
+.attachment-controls { display: flex; align-items: center; gap: 8px; border: 1px dashed var(--border); border-radius: 4px; padding: 8px; margin-bottom: 8px; }
 .attachment-error { white-space: pre-line; }
 .attachment-list { list-style: none; margin: 0; padding: 0; max-height: 30vh; overflow-y: auto; }
 .attachment-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid var(--border); }
 .attachment-row:first-child { border-top: none; }
 .attachment-row.pending { color: var(--muted); }
 .attachment-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.attachment-name { word-break: break-all; }
+.attachment-name { overflow-wrap: anywhere; }
 .attachment-meta { font-size: 12px; color: var(--muted); }
 .attachment-download { font-size: 12px; }
 .attachment-thumb-link { flex: none; }
 .attachment-thumb { display: block; width: 48px; height: 48px; object-fit: cover; border: 1px solid var(--border); border-radius: 3px; }
 
-/* Epic field in a child's dialog: the dropdown plus a link to the epic. */
-.epic-field { display: flex; flex-direction: column; }
-.epic-field[hidden], .epic-open[hidden] { display: none; }
-.epic-open { align-self: flex-start; text-align: left; margin: -6px 0 10px; word-break: break-word; }
-
-/* Epic view in the detail dialog (epic types only), before Links. */
-.epic-view { border-top: 1px solid var(--border); margin-top: 6px; padding-top: 10px; }
+/* Children tab in the detail dialog (epic types only). */
 .epic-view[hidden], .epic-empty[hidden], .epic-actions[hidden] { display: none; }
-.epic-view h3 { font-size: 14px; margin: 0 0 8px; }
 .epic-progress { display: flex; align-items: center; gap: 8px; }
 .progress-bar { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
 .progress-fill { height: 100%; width: 0; background: #36b37e; transition: width 0.2s; }
@@ -309,17 +295,152 @@ label.history-filter { flex-direction: row; align-items: center; gap: 6px; margi
 .epic-count.zero strong { color: var(--muted); font-weight: normal; }
 .epic-empty { color: var(--muted); margin: 4px 0; }
 .epic-children { list-style: none; margin: 0; padding: 0; max-height: 30vh; overflow-y: auto; }
-.epic-child { display: flex; align-items: baseline; gap: 6px; padding: 3px 0; border-top: 1px solid var(--border); }
+.epic-child { display: flex; align-items: baseline; gap: 6px; padding: 5px 0; border-top: 1px solid var(--border); min-width: 0; }
 .epic-child:first-child { border-top: none; }
-.epic-child .epic-child-type { color: var(--type-color, var(--muted)); }
-.epic-child .epic-child-key { font-weight: 600; }
-.epic-child .epic-child-title { flex: 1; min-width: 0; text-align: left; color: var(--text); word-break: break-word; }
-.epic-child .epic-child-status, .epic-child .epic-child-assignee, .epic-child .epic-child-priority { font-size: 11px; color: var(--muted); white-space: nowrap; }
-.epic-actions { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
-.epic-actions select { flex: 1; min-width: 0; }
+.epic-child .epic-child-key { font-weight: 600; white-space: nowrap; }
+.epic-child .epic-child-title { flex: 1; min-width: 0; text-align: left; color: var(--text); overflow-wrap: anywhere; }
+.epic-child .epic-child-status, .epic-child .epic-child-priority { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.epic-actions { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.epic-actions select { flex: 1; min-width: 120px; }
 
 /* Permission groups: header Users link and the Users page */
 .topbar .nav-link { color: #fff; text-decoration: none; font-weight: 600; }
 .topbar .nav-link:hover { text-decoration: underline; }
 table.users .save-status { color: var(--muted); font-size: 0.9em; }
 table[hidden] { display: none; }
+
+/* ---------- Work item dialog (docs/specs/task-dialog-redesign.md) ----------
+   Palette from docs/design/STYLE.md part 2, scoped to this dialog only: the
+   board, project list, Users and login pages keep the :root palette above.
+   Gold and mid teal are never text on a light background. */
+dialog#detail {
+  --teal: #0b5d66;
+  --teal-mid: #65999e;
+  --teal-soft: #e5eded;
+  --page: #f8fafa;
+  --navy: #154973;
+  --linkblue: #004dd1;
+  --gold: #face00;
+  --ink: #000000;
+  --line: #d0d0ce;
+  --line2: #e4e4e4;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* The app variables the shared rules above read, re-pointed in here. */
+  --text: var(--ink);
+  --muted: #62666a;
+  --border: var(--line);
+  --primary: var(--teal);
+  --danger: #c0300b;
+  font-family: "Proxima Nova", "Helvetica Neue", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--ink);
+  background: var(--page);
+  width: min(660px, 95vw);
+  padding: 0;
+  border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(9, 30, 40, 0.35);
+  overflow-x: hidden;
+}
+dialog#detail [hidden] { display: none !important; }
+dialog#detail button, dialog#detail select, dialog#detail input, dialog#detail textarea { color: inherit; }
+dialog#detail :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* Buttons: secondary white with navy, primary (Save) deep teal, action navy. */
+dialog#detail button { border: 1px solid var(--navy); color: var(--navy); background: #fff; border-radius: 4px; font-weight: 700; }
+dialog#detail button.primary { background: var(--teal); border-color: var(--teal); color: #fff; }
+dialog#detail button.navy { background: var(--navy); border-color: var(--navy); color: #fff; }
+dialog#detail button.danger { color: var(--danger); border-color: var(--line); }
+dialog#detail button.link { border: none; background: none; padding: 0; color: var(--linkblue); font-size: 12px; font-weight: 400; text-decoration: underline; text-underline-offset: 2px; }
+dialog#detail button.link.danger { color: var(--danger); }
+dialog#detail button[disabled] { cursor: default; opacity: 0.6; }
+dialog#detail a { color: var(--linkblue); }
+
+/* Fields: navy borders; read-only is black on pale teal, not faded grey. */
+dialog#detail input, dialog#detail select, dialog#detail textarea { border: 1px solid var(--navy); border-radius: 4px; background: #fff; max-width: 100%; }
+dialog#detail select { width: 100%; }
+dialog#detail select[disabled], dialog#detail input[disabled], dialog#detail textarea[disabled] { background: var(--teal-soft); color: var(--ink); opacity: 1; -webkit-text-fill-color: var(--ink); }
+dialog#detail label { color: var(--ink); font-weight: 700; margin: 0; }
+dialog#detail .error { color: var(--danger); font-size: 13px; min-height: 0; }
+dialog#detail .error:empty { margin: 0; }
+
+/* The dark teal band: key chip, epic link, Close, title. Gold lives only here
+   and in the epic summary panel. */
+dialog#detail .band { background: var(--teal); color: #fff; padding: 14px 24px; border-radius: 8px 8px 0 0; }
+dialog#detail .band :focus-visible { outline-color: var(--gold); }
+dialog#detail .band-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+dialog#detail .band-new { font-weight: 700; font-size: 14px; }
+dialog#detail .keychip { display: inline-flex; align-items: center; gap: 6px; font: 600 12px var(--mono); color: #000; background: #fff; border-radius: 4px; padding: 2px 8px; white-space: nowrap; flex: none; }
+dialog#detail .keychip::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--tc, #8993a4); }
+dialog#detail .epicchip { border: none; background: none; color: var(--gold); text-transform: uppercase; font-weight: 700; font-size: 12px; letter-spacing: 0.02em; text-decoration: underline; text-underline-offset: 3px; padding: 2px 0; text-align: left; min-width: 0; overflow-wrap: anywhere; }
+dialog#detail .epicchip::after { content: " \2192"; }
+dialog#detail .epicchip:hover { color: #fff; }
+dialog#detail .x { margin-left: auto; border: none; background: none; font-size: 20px; line-height: 1; padding: 2px 8px; color: #fff; flex: none; }
+dialog#detail .x:hover { color: var(--gold); }
+dialog#detail .title-in { display: block; width: calc(100% + 16px); margin: 10px 0 0 -8px; padding: 4px 8px; font-size: 22px; line-height: 1.25; font-weight: 700; color: #fff; background: transparent; border: 1px solid transparent; resize: none; overflow: hidden; overflow-wrap: anywhere; field-sizing: content; min-height: 2em; }
+dialog#detail .title-in::placeholder { color: #cfe3e5; }
+dialog#detail .title-in:hover:not([disabled]) { border-color: var(--teal-mid); }
+dialog#detail .title-in:focus { border-color: var(--gold); background: rgba(255, 255, 255, 0.1); outline: none; }
+dialog#detail .title-in[disabled] { background: transparent; color: #fff; -webkit-text-fill-color: #fff; }
+dialog#detail .title-in.bad { border: 2px solid #fff; }
+dialog#detail .band .error { display: inline-block; background: #fff; color: #a82a08; border-radius: 3px; padding: 2px 8px; margin: 6px 0 0; }
+
+/* Body: banner, status track, properties, reporter, description, tabs. */
+dialog#detail .detail-body { padding: 14px 24px 18px; display: grid; gap: 16px; min-width: 0; }
+dialog#detail .detail-body > * { min-width: 0; margin: 0; }
+dialog#detail .banner { background: var(--teal-soft); border: 1px solid var(--teal-mid); border-radius: 4px; padding: 6px 10px; font-size: 13px; }
+
+/* Signature: the status track (a radio group). */
+dialog#detail fieldset.track { border: 0; margin: 0; padding: 0; min-width: 0; }
+dialog#detail .track legend { font-size: 12px; font-weight: 700; color: var(--ink); padding: 0; margin-bottom: 4px; }
+dialog#detail .steps { display: flex; flex-wrap: wrap; gap: 1px; background: var(--line); border: 1px solid var(--teal-mid); border-radius: 6px; overflow: hidden; }
+dialog#detail label.step { flex: 1 1 8em; position: relative; display: block; text-align: center; padding: 7px 8px; font-weight: 600; font-size: 13px; color: var(--muted); background: #fff; cursor: pointer; user-select: none; overflow-wrap: anywhere; }
+dialog#detail label.step input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+dialog#detail label.step.past { background: var(--teal-soft); color: var(--ink); }
+dialog#detail label.step.now { background: var(--teal); color: #fff; font-weight: 700; }
+dialog#detail label.step.now span::before { content: "\25CF\00a0"; font-size: 9px; vertical-align: 1px; }
+dialog#detail label.step:has(input:focus-visible) { outline: 2px solid var(--navy); outline-offset: -3px; }
+dialog#detail label.step.now:has(input:focus-visible) { outline-color: #fff; box-shadow: inset 0 0 0 4px var(--navy); }
+dialog#detail .steps.locked label.step, dialog#detail .steps.locked label.step input { cursor: default; }
+dialog#detail .steps.locked label.step:not(.now):not(.past) { background: var(--teal-soft); }
+
+dialog#detail .props { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+dialog#detail .props > label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; }
+dialog#detail .reporter { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+dialog#detail .field-head { margin-bottom: 4px; }
+dialog#detail .field-head label { font-size: 13px; color: var(--teal); }
+dialog#detail .description-view { background: #fff; border-color: var(--line); border-radius: 4px; padding: 8px 10px; }
+dialog#detail .description-field textarea { width: 100%; display: block; }
+
+/* Tabs and their panels; the panel keeps a minimum height so switching tabs
+   does not make the footer jump. */
+dialog#detail .tab { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); padding: 7px 10px; }
+dialog#detail .tab[aria-selected="true"] { color: var(--teal); border-bottom-color: var(--teal); }
+dialog#detail .tab:focus-visible { outline-offset: -2px; }
+dialog#detail .tab .n { background: var(--line2); color: #000; border-radius: 9px; padding: 0 6px; margin-left: 5px; font-size: 11px; font-weight: 600; }
+dialog#detail .tab[aria-selected="true"] .n { background: var(--teal-soft); }
+dialog#detail [role="tabpanel"] { min-height: 200px; margin-top: -4px; }
+dialog#detail .posting-as { font-size: 12px; }
+dialog#detail .comment-form textarea { width: 100%; display: block; }
+dialog#detail .comment-form .actions { margin-top: 6px; }
+dialog#detail .links h4 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 8px 0 0; }
+dialog#detail .links-group ul { list-style: none; margin: 0; padding: 0; }
+dialog#detail .type-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tc, #8993a4); flex: none; align-self: center; }
+
+/* Epic summary: dark teal panel with a gold progress fill. */
+dialog#detail .darkpanel { background: var(--teal); color: #fff; border: 1px solid var(--teal-mid); border-radius: 16px; padding: 14px 18px; margin-bottom: 10px; }
+dialog#detail .darkpanel .big { font-size: 18px; font-weight: 700; margin: 0 0 6px; }
+dialog#detail .darkpanel .progress-bar { background: rgba(255, 255, 255, 0.25); }
+dialog#detail .darkpanel .progress-fill { background: var(--gold); }
+dialog#detail .darkpanel .epic-counts { color: #fff; margin: 8px 0 0; }
+dialog#detail .darkpanel .epic-count strong, dialog#detail .darkpanel .epic-count.zero strong { color: #fff; }
+
+/* Footer: stays in view at the bottom of a tall dialog. */
+dialog#detail .detail-foot { position: sticky; bottom: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 24px; border-top: 1px solid var(--line); background: #fff; border-radius: 0 0 8px 8px; }
+dialog#detail .detail-foot .error { margin: 0; flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+dialog#detail .detail-foot .spacer { margin-left: auto; }
+
+@media (max-width: 700px) {
+  dialog#detail .props { grid-template-columns: minmax(0, 1fr); }
+  dialog#detail .band, dialog#detail .detail-body, dialog#detail .detail-foot { padding-left: 14px; padding-right: 14px; }
+  dialog#detail .detail-foot .error:not(:empty) { flex-basis: 100%; }
+}

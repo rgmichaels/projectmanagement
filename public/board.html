@@ -44,134 +44,161 @@
     <div id="board" class="board"></div>
   </main>
 
-  <dialog id="detail">
+  <!-- Work item dialog (docs/specs/task-dialog-redesign.md): a dark teal band
+       (key chip, epic link, Close, title), the body (read-only banner, status
+       track, properties, description), one tab bar with the Children (epic
+       types only), Discussion, History, Links and Attachments panels, and the
+       footer. Only Save submits; every other button is type="button". -->
+  <dialog id="detail" aria-labelledby="detail-heading">
     <form id="detail-form" method="dialog" novalidate>
-      <h2 id="detail-title">Work item</h2>
-      <label>Title <input name="title" maxlength="200" required></label>
-      <div class="form-row">
-        <label>Type <select name="type"></select></label>
-        <label id="status-field">Status <select name="status"></select></label>
-        <label>Priority <select name="priority"></select></label>
-      </div>
-      <div class="form-row">
-        <label id="resolution-field" hidden>Resolution <select name="resolution"></select></label>
-      </div>
-      <div class="form-row">
-        <label>Assignee <select name="assignee_id"></select></label>
-        <!-- The epic dropdown, plus a link that opens the saved epic. -->
-        <div id="epic-field" class="epic-field">
-          <label><span id="epic-label"></span> <select name="epic_id"></select></label>
-          <button type="button" id="epic-open" class="link epic-open" hidden></button>
+      <div class="band">
+        <h2 id="detail-heading" class="visually-hidden">Work item</h2>
+        <div class="band-top">
+          <span id="detail-keychip" class="keychip" hidden></span>
+          <span id="detail-new-label" class="band-new" hidden>Create work item</span>
+          <!-- The open item's epic; opens it in this dialog. -->
+          <button type="button" id="epic-open" class="epicchip" hidden></button>
+          <button type="button" id="detail-x" class="x" aria-label="Close">&times;</button>
         </div>
+        <textarea name="title" id="title-input" class="title-in" rows="1" maxlength="200" required aria-label="Title" placeholder="What needs to be done?"></textarea>
+        <p class="error" id="title-error" role="alert" hidden></p>
       </div>
-      <!-- Description: for a saved work item a read view (plain text with image
-           tokens shown as images, js/richText.js) and Edit; the edit view is a
-           plain textarea showing the raw text. Pasting an image uploads it as
-           an attachment and inserts its token. -->
-      <div class="description-field">
-        <div class="field-head">
-          <label for="description-input">Description</label>
-          <button type="button" id="description-edit" class="link" hidden>Edit</button>
+
+      <div class="detail-body">
+        <p id="detail-banner" class="banner" role="status" hidden></p>
+
+        <!-- One radio per server status, built in board.js. -->
+        <fieldset id="status-field" class="track">
+          <legend>Status</legend>
+          <div id="status-steps" class="steps"></div>
+        </fieldset>
+
+        <div class="props">
+          <label>Assignee <select name="assignee_id"></select></label>
+          <label>Priority <select name="priority"></select></label>
+          <label>Type <select name="type"></select></label>
+          <label id="epic-field" class="epic-field"><span id="epic-label"></span> <select name="epic_id"></select></label>
+          <label id="resolution-field" hidden>Resolution <select name="resolution"></select></label>
         </div>
-        <div id="description-view" class="description-view" hidden></div>
-        <textarea id="description-input" name="description" rows="5"></textarea>
-        <p class="paste-note" id="description-note" role="status" hidden></p>
-        <div id="description-images" class="image-strip" hidden>
-          <span class="image-strip-label">Images in this description</span>
-          <div id="description-thumbs" class="image-strip-thumbs"></div>
-        </div>
-      </div>
-      <p class="reporter" id="reporter" hidden></p>
-      <!-- Epic view: shown only when the open work item is an epic type. Not
-           part of the work item's Save: add and remove use the child's PATCH,
-           and buttons are type="button" so they never submit the
-           method="dialog" form. Status names come from the server. The Add,
-           Remove and Create child controls are hidden when archived. -->
-      <section id="epic-view" class="epic-view" hidden>
-        <h3 id="epic-view-heading"></h3>
-        <p class="error" id="epic-view-error" role="alert"></p>
-        <div class="epic-progress">
-          <div class="progress-bar" id="epic-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-label="Progress">
-            <div class="progress-fill" id="epic-progress-fill"></div>
+        <p class="reporter" id="reporter" hidden></p>
+
+        <!-- Description: for a saved work item a read view (plain text with image
+             tokens shown as images, js/richText.js) and Edit; the edit view is a
+             plain textarea showing the raw text. Pasting an image uploads it as
+             an attachment and inserts its token. -->
+        <div class="description-field">
+          <div class="field-head">
+            <label for="description-input">Description</label>
+            <button type="button" id="description-edit" class="link" hidden>Edit</button>
           </div>
-          <span class="progress-text" id="epic-progress-text"></span>
+          <div id="description-view" class="description-view" hidden></div>
+          <textarea id="description-input" name="description" rows="5"></textarea>
+          <p class="paste-note" id="description-note" role="status" hidden></p>
+          <div id="description-images" class="image-strip" hidden>
+            <span class="image-strip-label">Images in this description</span>
+            <div id="description-thumbs" class="image-strip-thumbs"></div>
+          </div>
         </div>
-        <ul id="epic-counts" class="epic-counts"></ul>
-        <p class="epic-empty" id="epic-empty" hidden></p>
-        <ul id="epic-children" class="epic-children"></ul>
-        <div id="epic-actions" class="epic-actions">
-          <select id="epic-add-target" aria-label="Existing work item to add"></select>
-          <button type="button" id="epic-add">Add</button>
-          <button type="button" id="epic-create-child">Create child</button>
+
+        <!-- Tabs: not part of the work item's Save. Their buttons are
+             type="button" so they never submit the method="dialog" form.
+             Counts come from data the dialog already loads. -->
+        <div id="activity-tabs" class="tabs" role="tablist" aria-label="Activity" hidden>
+          <button type="button" role="tab" id="tab-children" class="tab" aria-controls="epic-view" aria-selected="false" hidden>Children <span class="n" id="count-children" hidden></span></button>
+          <button type="button" role="tab" id="tab-discussion" class="tab" aria-controls="discussion" aria-selected="true">Discussion <span class="n" id="count-discussion" hidden></span></button>
+          <button type="button" role="tab" id="tab-history" class="tab" aria-controls="history" aria-selected="false">History <span class="n" id="count-history" hidden></span></button>
+          <button type="button" role="tab" id="tab-links" class="tab" aria-controls="links" aria-selected="false">Links <span class="n" id="count-links" hidden></span></button>
+          <button type="button" role="tab" id="tab-attachments" class="tab" aria-controls="attachments" aria-selected="false">Attachments <span class="n" id="count-attachments" hidden></span></button>
         </div>
-        <p class="error" id="epic-add-error" role="alert"></p>
-      </section>
-      <!-- Links: not part of the work item's Save. Relationships come from
-           GET /api/link-types; buttons are type="button" so they never submit
-           the method="dialog" form. Add and Remove are hidden when archived. -->
-      <section id="links" class="links" hidden>
-        <h3>Links</h3>
-        <p class="links-empty" id="links-empty" hidden>No links.</p>
-        <div id="links-list" class="links-list"></div>
-        <div id="link-form" class="link-form">
-          <select id="link-relation" aria-label="Relationship"></select>
-          <select id="link-target" aria-label="Work item to link"></select>
-          <button type="button" id="link-add">Add link</button>
-        </div>
-        <p class="error" id="link-error" role="alert"></p>
-      </section>
-      <!-- Attachments: not part of the work item's Save. Allowed types and
-           limits come from GET /api/attachment-types; buttons are type="button"
-           so they never submit the method="dialog" form. Add and Delete are
-           hidden when archived; a new work item must be saved first. -->
-      <section id="attachments" class="attachments" hidden>
-        <h3 id="attachments-heading">Attachments (0)</h3>
-        <p class="attachments-note" id="attachments-note" hidden>Save the work item first.</p>
-        <div id="attachment-controls" class="attachment-controls">
-          <button type="button" id="attachment-add">Add files</button>
-          <input type="file" id="attachment-input" multiple hidden aria-label="Files to attach">
-          <span class="hint">or drop files here</span>
-        </div>
-        <p class="error attachment-error" id="attachment-error" role="alert"></p>
-        <p class="attachments-empty" id="attachments-empty" hidden>No attachments.</p>
-        <ul id="attachment-list" class="attachment-list"></ul>
-      </section>
-      <!-- Discussion and History tabs: not part of the work item's Save. Their
-           buttons are type="button" so they never submit the method="dialog" form. -->
-      <div id="activity-tabs" class="tabs" role="tablist" aria-label="Activity" hidden>
-        <button type="button" role="tab" id="tab-discussion" class="tab" aria-controls="discussion" aria-selected="true">Discussion</button>
-        <button type="button" role="tab" id="tab-history" class="tab" aria-controls="history" aria-selected="false">History</button>
+
+        <!-- Children (epic view): shown only when the open work item is an epic
+             type. Add and remove use the child's PATCH. Status names come from
+             the server. Add, Remove and Create child are hidden when read-only. -->
+        <section id="epic-view" class="epic-view" role="tabpanel" aria-labelledby="tab-children" hidden>
+          <h3 id="epic-view-heading" class="visually-hidden"></h3>
+          <p class="error" id="epic-view-error" role="alert"></p>
+          <div id="epic-summary" class="darkpanel" hidden>
+            <p class="big" id="epic-progress-text"></p>
+            <div class="epic-progress">
+              <div class="progress-bar" id="epic-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-label="Progress">
+                <div class="progress-fill" id="epic-progress-fill"></div>
+              </div>
+            </div>
+            <ul id="epic-counts" class="epic-counts"></ul>
+          </div>
+          <p class="epic-empty" id="epic-empty" hidden></p>
+          <ul id="epic-children" class="epic-children"></ul>
+          <div id="epic-actions" class="epic-actions">
+            <select id="epic-add-target" aria-label="Existing work item to add"></select>
+            <button type="button" id="epic-add" class="navy">Add</button>
+            <button type="button" id="epic-create-child">Create child</button>
+          </div>
+          <p class="error" id="epic-add-error" role="alert"></p>
+        </section>
+
+        <section id="discussion" class="discussion" role="tabpanel" aria-labelledby="tab-discussion" hidden>
+          <div id="comment-form" class="comment-form">
+            <p class="posting-as" id="posting-as"></p>
+            <textarea id="comment-body" rows="3" placeholder="Write a message" aria-label="Message"></textarea>
+            <p class="paste-note" id="comment-note" role="status" hidden></p>
+            <p class="error" id="comment-error" role="alert"></p>
+            <div class="actions"><button type="button" id="comment-post" class="navy">Post</button></div>
+          </div>
+          <p class="thread-empty" id="thread-empty" hidden>No messages yet. Be the first to post.</p>
+          <ul id="thread" class="thread"></ul>
+        </section>
+
+        <!-- History: read-only, newest first; also readable on archived projects. -->
+        <section id="history" class="history" role="tabpanel" aria-labelledby="tab-history" hidden>
+          <div class="history-toolbar">
+            <label class="history-filter">Show <select id="history-field" aria-label="Filter history by field"><option value="">All fields</option></select></label>
+          </div>
+          <p class="history-note" id="history-note" hidden></p>
+          <div class="history-error" id="history-error" hidden>
+            <p class="error" id="history-error-text" role="alert"></p>
+            <button type="button" id="history-retry">Retry</button>
+          </div>
+          <ul id="history-list" class="history-list"></ul>
+          <div class="actions"><button type="button" id="history-more" hidden>Show more</button></div>
+        </section>
+
+        <!-- Links: relationships come from GET /api/link-types. Add and Remove
+             are hidden when read-only. -->
+        <section id="links" class="links" role="tabpanel" aria-labelledby="tab-links" hidden>
+          <p class="links-empty" id="links-empty" hidden>No links.</p>
+          <div id="links-list" class="links-list"></div>
+          <div id="link-form" class="link-form">
+            <select id="link-relation" aria-label="Relationship"></select>
+            <select id="link-target" aria-label="Work item to link"></select>
+            <button type="button" id="link-add" class="navy">Add link</button>
+          </div>
+          <p class="error" id="link-error" role="alert"></p>
+        </section>
+
+        <!-- Attachments: allowed types and limits come from
+             GET /api/attachment-types. Add and Delete are hidden when
+             read-only; a new work item must be saved first (then this is a
+             plain section below the description, not a tab panel). -->
+        <section id="attachments" class="attachments" role="tabpanel" aria-labelledby="tab-attachments" hidden>
+          <h3 id="attachments-heading" hidden>Attachments</h3>
+          <p class="attachments-note" id="attachments-note" hidden>Save the work item first.</p>
+          <div id="attachment-controls" class="attachment-controls">
+            <button type="button" id="attachment-add" class="navy">Add files</button>
+            <input type="file" id="attachment-input" multiple hidden aria-label="Files to attach">
+            <span class="hint">or drop files here</span>
+          </div>
+          <p class="error attachment-error" id="attachment-error" role="alert"></p>
+          <p class="attachments-empty" id="attachments-empty" hidden>No attachments.</p>
+          <ul id="attachment-list" class="attachment-list"></ul>
+        </section>
       </div>
-      <section id="discussion" class="discussion" role="tabpanel" aria-labelledby="tab-discussion" hidden>
-        <h3 id="discussion-heading">Discussion (0)</h3>
-        <div id="comment-form" class="comment-form">
-          <p class="posting-as" id="posting-as"></p>
-          <textarea id="comment-body" rows="3" placeholder="Write a message" aria-label="Message"></textarea>
-          <p class="paste-note" id="comment-note" role="status" hidden></p>
-          <p class="error" id="comment-error" role="alert"></p>
-          <div class="actions"><button type="button" id="comment-post" class="primary">Post</button></div>
-        </div>
-        <p class="thread-empty" id="thread-empty" hidden>No messages yet. Be the first to post.</p>
-        <ul id="thread" class="thread"></ul>
-      </section>
-      <!-- History: read-only, newest first; also readable on archived projects. -->
-      <section id="history" class="history" role="tabpanel" aria-labelledby="tab-history" hidden>
-        <div class="history-toolbar">
-          <label class="history-filter">Show <select id="history-field" aria-label="Filter history by field"><option value="">All fields</option></select></label>
-        </div>
-        <p class="history-note" id="history-note" hidden></p>
-        <div class="history-error" id="history-error" hidden>
-          <p class="error" id="history-error-text" role="alert"></p>
-          <button type="button" id="history-retry">Retry</button>
-        </div>
-        <ul id="history-list" class="history-list"></ul>
-        <div class="actions"><button type="button" id="history-more" hidden>Show more</button></div>
-      </section>
-      <p class="error" id="detail-error" role="alert"></p>
-      <div class="actions">
-        <button type="submit" value="save" id="detail-save" class="primary">Save</button>
+
+      <div class="detail-foot">
+        <p class="error" id="detail-error" role="alert"></p>
+        <span class="spacer"></span>
         <button type="button" id="detail-delete" class="danger">Delete</button>
         <button type="button" id="detail-close">Close</button>
+        <button type="submit" value="save" id="detail-save" class="primary">Save</button>
       </div>
     </form>
   </dialog>
