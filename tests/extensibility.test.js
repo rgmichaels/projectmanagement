@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const { STATUSES } = require('../server/statuses');
 const { TYPES } = require('../server/types');
 
-STATUSES.splice(STATUSES.indexOf('Done'), 0, 'In Review');
+STATUSES.splice(STATUSES.indexOf('Complete'), 0, 'In Review');
 TYPES.push({ name: 'Spike', label: 'Spike' }); // no colour/icon: fallback styling
 
 const { startServer, createProject, createItem } = require('./helpers');
@@ -17,10 +17,10 @@ test.before(async () => { app = await startServer(); });
 test.after(async () => { await app.close(); });
 
 test('an added status appears in order and is accepted on PATCH (AC 28)', async () => {
-  assert.deepEqual((await app.get('/api/statuses')).body, ['To Do', 'In Progress', 'In Review', 'Done']);
+  assert.deepEqual((await app.get('/api/statuses')).body, ['Planning', 'Ready', 'In Progress', 'Internal Testing', 'UAT', 'Go Live', 'In Review', 'Complete']);
   const p = await createProject(app);
   const item = await createItem(app, p.id);
-  assert.equal(item.status, 'To Do');
+  assert.equal(item.status, 'Planning');
   const res = await app.patch(`/api/issues/${item.id}`, { status: 'In Review', rank: 1000 });
   assert.equal(res.status, 200);
   assert.equal((await app.get(`/api/issues/${item.id}`)).body.status, 'In Review');

@@ -1,5 +1,5 @@
-// Project list page: list, create, change status, archive/unarchive.
-// Create, status and archive controls are shown only with the
+// Project list page: list, create, edit (name, status, archived) in a dialog,
+// archive/unarchive. Create, Edit and archive controls are shown only with the
 // `manage-projects` permission (session.can); everyone can list and open.
 (() => {
   const els = {
@@ -13,6 +13,12 @@
     empty: document.getElementById('empty-state'),
     table: document.getElementById('project-table'),
     tbody: document.querySelector('#project-table tbody'),
+    editDialog: document.getElementById('edit-project'),
+    editForm: document.getElementById('edit-form'),
+    editKey: document.getElementById('edit-key'),
+    editHint: document.getElementById('edit-archive-hint'),
+    editError: document.getElementById('edit-error'),
+    editCancel: document.getElementById('edit-cancel'),
   };
 
   let projectStatuses = [];
@@ -31,25 +37,17 @@
 
   const isArchivable = (status) => projectStatuses.some((s) => s.name === status && s.archivable);
 
-  function statusSelect(project) {
-    const select = el('select', { 'aria-label': `Status of ${project.name}` });
-    for (const s of projectStatuses) {
-      const opt = el('option', { value: s.name }, s.name);
-      if (s.name === project.status) opt.selected = true;
-      select.append(opt);
-    }
-    select.addEventListener('change', () => updateProject(project.id, { status: select.value }));
-    return select;
-  }
-
   function renderRow(project) {
     const actions = el('td', { class: 'row-actions' });
-    if (!canManage()) {
-      // Read-only row: the status as text, no archive controls.
-    } else if (project.archived) {
-      actions.append(el('button', { type: 'button', onclick: () => updateProject(project.id, { archived: false }) }, 'Unarchive'));
-    } else if (isArchivable(project.status)) {
-      actions.append(el('button', { type: 'button', onclick: () => updateProject(project.id, { archived: true }) }, 'Archive'));
+    if (canManage()) {
+      // Name and status change in the Edit dialog; Archive/Unarchive stay as
+      // one-click row actions.
+      actions.append(el('button', { type: 'button', 'aria-label': `Edit ${project.name}`, onclick: () => openEdit(project) }, 'Edit'));
+      if (project.archived) {
+        actions.append(el('button', { type: 'button', onclick: () => updateProject(project.id, { archived: false }) }, 'Unarchive'));
+      } else if (isArchivable(project.status)) {
+        actions.append(el('button', { type: 'button', onclick: () => updateProject(project.id, { archived: true }) }, 'Archive'));
+      }
     }
     const nameCell = el('td', {}, el('a', { href: `board.html?project=${project.id}` }, project.name));
     if (project.archived) nameCell.append(' ', el('span', { class: 'badge archived' }, 'Archived'));
@@ -58,7 +56,7 @@
       { class: project.archived ? 'is-archived' : '' },
       nameCell,
       el('td', {}, project.key),
-      el('td', {}, canManage() ? statusSelect(project) : project.status),
+      el('td', {}, el('span', { class: 'badge' }, project.status)),
       actions
     );
   }
@@ -97,6 +95,74 @@
     els.form.reset();
     els.form.hidden = true;
   }
+
+  // ---------- Edit project dialog ----------
+  // Name, status and archived in one PATCH. The archived box is enabled only
+  // for an archivable status (from /api/project-statuses); picking another
+  // status clears it, matching the server's auto-unarchive rule.
+  let editing = null;
+
+  function syncArchivedBox() {
+    const f = els.editForm.elements;
+    const allowed = isArchivable(f.status.value);
+    f.archived.disabled = !allowed;
+    if (!allowed) f.archived.checked = false;
+    const names = projectStatuses.filter((s) => s.archivable).map((s) => s.name);
+    els.editHint.textContent = allowed ? '' : `Only a project in ${names.join(' or ')} status can be archived.`;
+    els.editHint.hidden = allowed;
+  }
+
+  function openEdit(project) {
+    if (!canManage()) return;
+    editing = project;
+    const f = els.editForm.elements;
+    f.status.replaceChildren(...projectStatuses.map((s) => el('option', { value: s.name }, s.name)));
+    f.name.value = project.name;
+    f.status.value = project.status;
+    f.archived.checked = Boolean(project.archived);
+    els.editKey.textContent = project.key;
+    els.editError.textContent = '';
+    syncArchivedBox();
+    els.editDialog.showModal();
+    f.name.focus();
+  }
+
+  function closeEdit() {
+    editing = null;
+    els.editDialog.close();
+  }
+
+  els.editForm.elements.status.addEventListener('change', syncArchivedBox);
+  els.editCancel.addEventListener('click', closeEdit);
+  els.editDialog.addEventListener('close', () => { editing = null; });
+
+  els.editForm.addEventListener('submit', async (e) => {
+    e.preventDefault(); // stay open until the save succeeds
+    if (!editing) return;
+    const f = els.editForm.elements;
+    els.editError.textContent = '';
+    const name = f.name.value.trim();
+    if (!name) {
+      els.editError.textContent = 'Name is required. Enter a name and save again.';
+      f.name.focus();
+      return;
+    }
+    const submit = els.editForm.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    try {
+      await api.patch(`/api/projects/${editing.id}`, {
+        name,
+        status: f.status.value,
+        archived: f.archived.checked,
+      });
+      closeEdit();
+      await load();
+    } catch (err) {
+      els.editError.textContent = err.message;
+    } finally {
+      submit.disabled = false;
+    }
+  });
 
   els.form.elements.key.addEventListener('input', (e) => {
     e.target.value = e.target.value.toUpperCase();

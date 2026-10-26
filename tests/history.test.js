@@ -473,18 +473,20 @@ test('GET /api/history-fields lists the fields in display order (AC 18)', async 
   const res = await app.get('/api/history-fields');
   assert.equal(res.status, 200);
   assert.deepEqual(res.body, publicFields());
-  assert.deepEqual(res.body.map((f) => f.key), ['type', 'title', 'description', 'status', 'priority', 'assignee', 'epic', 'resolution', 'link', 'attachment']);
+  assert.deepEqual(res.body.map((f) => f.key), ['type', 'title', 'description', 'status', 'priority', 'assignee', 'epic', 'sprint', 'resolution', 'link', 'attachment']);
   for (const f of res.body) assert.deepEqual(Object.keys(f).sort(), ['key', 'kind', 'label']);
   assert.ok(!res.body.some((f) => f.key === 'rank'));
 });
 
 // ---------- extensibility ----------
 
-test('every updatable column except rank has a history field (AC 28)', () => {
+// sprint_rank is exempt like rank (docs/specs/sprints-and-backlog.md AC 40).
+test('every updatable column except rank and sprint_rank has a history field (AC 28)', () => {
   const tracked = new Set(HISTORY_FIELDS.map((f) => f.column));
-  const missing = issues.UPDATABLE.filter((c) => c !== 'rank' && !tracked.has(c));
+  const missing = issues.UPDATABLE.filter((c) => c !== 'rank' && c !== 'sprint_rank' && !tracked.has(c));
   assert.deepEqual(missing, []);
   assert.ok(!tracked.has('rank'));
+  assert.ok(!tracked.has('sprint_rank'));
   // A field with no issues column (links, docs/specs/work-item-links.md AC 19)
   // is recorded by its own code and is not required to be updatable.
   for (const f of HISTORY_FIELDS.filter((x) => x.column)) {

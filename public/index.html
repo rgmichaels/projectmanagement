@@ -50,6 +50,30 @@
     </table>
   </main>
 
+  <!-- Edit project (manage-projects only): the same shell as the work item
+       dialog. One PATCH /api/projects/:id saves name, status and archived.
+       Status options and which statuses may be archived come from
+       /api/project-statuses. -->
+  <dialog id="edit-project" class="app-dialog" aria-labelledby="edit-heading">
+    <form id="edit-form" method="dialog" novalidate>
+      <div class="band">
+        <span id="edit-key" class="keychip"></span>
+        <h2 id="edit-heading">Edit project</h2>
+      </div>
+      <div class="dialog-body">
+        <label>Name <input name="name" maxlength="80" required></label>
+        <label>Status <select name="status"></select></label>
+        <label class="toggle"><input type="checkbox" name="archived"> Archived (board becomes read-only)</label>
+        <p class="hint" id="edit-archive-hint"></p>
+      </div>
+      <div class="dialog-foot">
+        <p class="error" id="edit-error" role="alert"></p>
+        <button type="button" id="edit-cancel">Cancel</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="js/redirect.js"></script>
   <script src="js/api.js"></script>
   <script src="js/session.js"></script>

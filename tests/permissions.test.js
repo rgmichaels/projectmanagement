@@ -42,7 +42,7 @@ function resetGroups() {
 test.beforeEach(resetGroups);
 
 // Everything a write could change, to show a denied request changed nothing.
-const TABLES = ['projects', 'issues', 'comments', 'issue_links', 'attachments', 'issue_history_events', 'issue_history_changes', 'users'];
+const TABLES = ['projects', 'issues', 'comments', 'issue_links', 'attachments', 'issue_history_events', 'issue_history_changes', 'users', 'sprints', 'sprint_events', 'sprint_event_changes'];
 const snapshot = () => Object.fromEntries(TABLES.map((t) => [t, app.db.prepare(`SELECT * FROM ${t} ORDER BY rowid`).all()]));
 
 // ---------- groups.js (AC 1, 3) ----------
@@ -91,8 +91,15 @@ async function fixture(username, group) {
   const comment = (await actor.post(`/api/issues/${a.id}/comments`, { body: 'mine' })).body;
   const attachment = (await actor.upload(a.id, 'notes.txt', TEXT, 'text/plain')).body;
   assert.ok(comment.id && attachment.id && link.id);
+  // Sprints (docs/specs/sprints-and-backlog.md AC 47): an active and a
+  // planned sprint in p, and a project with only a planned sprint to start.
+  const active = (await app.post(`/api/projects/${p.id}/sprints`, { name: 'Active one' })).body;
+  await app.post(`/api/sprints/${active.id}/start`);
+  const planned = (await app.post(`/api/projects/${p.id}/sprints`, { name: 'Planned one' })).body;
+  const p2 = await createProject(app);
+  const startable = (await app.post(`/api/projects/${p2.id}/sprints`, { name: 'Startable' })).body;
   setGroup(username, group);
-  return { actor, p, a, b, c, link, comment, attachment };
+  return { actor, p, a, b, c, link, comment, attachment, active, planned, startable };
 }
 
 // Every write route of AC 6: [method, route path as mounted, permission,
@@ -111,6 +118,11 @@ const MATRIX = [
   ['POST', '/api/issues/:id/attachments', 'write', 201, (f) => f.actor.upload(f.a.id, 'more.txt', TEXT, 'text/plain')],
   ['DELETE', '/api/attachments/:id', 'write', 204, (f) => f.actor.del(`/api/attachments/${f.attachment.id}`)],
   ['PATCH', '/api/users/:id', 'manage-users', 200, (f) => f.actor.patch(`/api/users/${ids.dana}`, { group: VIEWER })],
+  ['POST', '/api/projects/:id/sprints', 'write', 201, (f) => f.actor.post(`/api/projects/${f.p.id}/sprints`, { name: 'New sprint' })],
+  ['PATCH', '/api/sprints/:id', 'write', 200, (f) => f.actor.patch(`/api/sprints/${f.planned.id}`, { goal: 'A goal' })],
+  ['DELETE', '/api/sprints/:id', 'write', 204, (f) => f.actor.del(`/api/sprints/${f.planned.id}`)],
+  ['POST', '/api/sprints/:id/start', 'write', 200, (f) => f.actor.post(`/api/sprints/${f.startable.id}/start`)],
+  ['POST', '/api/sprints/:id/complete', 'write', 200, (f) => f.actor.post(`/api/sprints/${f.active.id}/complete`, { disposition: 'backlog' })],
 ];
 
 for (const [method, route, permission, okStatus, send] of MATRIX) {
@@ -250,6 +262,11 @@ test('every GET route answers 200 for a Viewer, downloads and history included (
     '/api/attachments/:id': `/api/attachments/${image.id}`,
     '/api/attachments/:id/download': `/api/attachments/${image.id}/download`,
     '/api/attachments/:id/preview': `/api/attachments/${image.id}/preview`,
+    '/api/sprint-states': '/api/sprint-states',
+    '/api/sprint-event-kinds': '/api/sprint-event-kinds',
+    '/api/projects/:id/sprints': `/api/projects/${p.id}/sprints`,
+    '/api/projects/:id/sprints/next-name': `/api/projects/${p.id}/sprints/next-name`,
+    '/api/projects/:id/sprint-history': `/api/projects/${p.id}/sprint-history`,
   };
   const gets = appRoutes().filter((r) => r.method === 'GET').map((r) => r.path);
   assert.deepEqual(gets.filter((path) => !urls[path]), [], 'every GET route has a URL here');
@@ -392,7 +409,7 @@ test('an old database gains group_name: lowest id Admin, others Member, idempote
   const now = '2026-01-01T00:00:00.000Z';
   old.prepare("INSERT INTO projects (name, key, created_at) VALUES ('Old', 'OLD', ?)").run(now);
   old.prepare(
-    "INSERT INTO issues (project_id, number, key, type, title, status, priority, rank, created_at, updated_at) VALUES (1, 1, 'OLD-1', 'Task', 'Legacy', 'To Do', 'Medium', 1000, ?, ?)"
+    "INSERT INTO issues (project_id, number, key, type, title, status, priority, rank, created_at, updated_at) VALUES (1, 1, 'OLD-1', 'Task', 'Legacy', 'Planning', 'Medium', 1000, ?, ?)"
   ).run(now, now);
   old.prepare("INSERT INTO comments (issue_id, author_id, body, created_at) VALUES (1, 3, 'old note', ?)").run(now);
   const issuesBefore = old.prepare('SELECT * FROM issues').all();

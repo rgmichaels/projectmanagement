@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Backlog</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body data-page="backlog">
+  <header class="topbar">
+    <a class="brand" href="/">Projects</a>
+    <span class="crumb" id="crumb"></span>
+  </header>
+
+  <!-- The Backlog page (docs/specs/sprints-and-backlog.md AC 28-38, 45;
+       docs/design/sprints-and-backlog option A): the active sprint, planned
+       sprints, the Backlog, then Epics, Completed sprints and Sprint history.
+       js/backlog.js draws the sections; js/board.js runs the work item
+       dialog below, which is the same markup as on board.html. -->
+  <main class="page backlog-page">
+    <nav class="subnav" aria-label="Project pages">
+      <a id="nav-board" href="board.html">Board</a>
+      <a id="nav-backlog" href="backlog.html" aria-current="page">Backlog</a>
+    </nav>
+
+    <section class="toolbar">
+      <h1 id="project-title">Backlog</h1>
+      <span class="badge" id="project-status"></span>
+      <span class="badge archived" id="archived-badge" hidden>Archived (read-only)</span>
+      <button type="button" id="create-sprint" class="primary" hidden>Create sprint</button>
+    </section>
+
+    <div id="readonly-notice" class="notice" role="status" hidden></div>
+    <div id="overdue-banner" class="banner-warn" role="status" hidden></div>
+    <div id="message" class="message" role="alert" hidden></div>
+
+    <div id="backlog" class="backlog"></div>
+  </main>
+
+  <!-- Create sprint / Edit sprint (AC 8, 9, 35). Only the primary button submits. -->
+  <dialog id="sprint-dialog" class="app-dialog" aria-labelledby="sprint-dialog-heading">
+    <form id="sprint-form" method="dialog" novalidate>
+      <div class="band"><h2 id="sprint-dialog-heading">Create sprint</h2></div>
+      <div class="dialog-body">
+        <label>Name <span class="counter">(required, up to 80 characters)</span>
+          <input name="name" id="sprint-name" maxlength="80" required autocomplete="off"></label>
+        <p class="field-error" id="sprint-name-error" role="alert"></p>
+        <label>Goal <span class="counter">(optional, up to 500 characters)</span>
+          <textarea name="goal" rows="3" maxlength="500"></textarea></label>
+        <div class="form-row">
+          <label class="grow">Start date <input type="date" name="start_date"></label>
+          <label class="grow">End date <input type="date" name="end_date" id="sprint-end"></label>
+        </div>
+        <p class="field-error" id="sprint-end-error" role="alert"></p>
+        <p class="hint">Dates are for display. Starting and completing a sprint is always done by hand.</p>
+      </div>
+      <div class="dialog-foot">
+        <p class="error" id="sprint-form-error" role="alert"></p>
+        <button type="button" id="sprint-cancel">Cancel</button>
+        <button type="submit" class="primary" id="sprint-save">Create sprint</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Delete a planned sprint (AC 10, 35). -->
+  <dialog id="sprint-delete-dialog" class="app-dialog" aria-labelledby="sprint-delete-heading">
+    <div class="band"><h2 id="sprint-delete-heading">Delete sprint?</h2></div>
+    <div class="dialog-body">
+      <p id="sprint-delete-text"></p>
+      <p class="hint">The deletion stays in Sprint history.</p>
+    </div>
+    <div class="dialog-foot">
+      <p class="error" id="sprint-delete-error" role="alert"></p>
+      <button type="button" id="sprint-delete-cancel">Cancel</button>
+      <button type="button" id="sprint-delete-confirm" class="danger">Delete sprint</button>
+    </div>
+  </dialog>
+
+  <!-- Complete the active sprint (AC 12, 36): no choice is preselected; the
+       Complete button stays disabled until one is made. -->
+  <dialog id="sprint-complete-dialog" class="app-dialog" aria-labelledby="sprint-complete-heading">
+    <div class="band"><h2 id="sprint-complete-heading">Complete sprint</h2></div>
+    <div class="dialog-body">
+      <p class="summary" id="complete-summary"></p>
+      <fieldset class="choices" id="complete-choices">
+        <legend id="complete-legend"></legend>
+        <div class="choice">
+          <input type="radio" name="disposition" id="complete-backlog" value="backlog">
+          <div class="choice-body">
+            <label class="choice-label" for="complete-backlog">Move unfinished items to the backlog</label>
+            <p class="hint">They go to the top of the backlog, in their current order.</p>
+          </div>
+        </div>
+        <div class="choice" id="complete-next-choice">
+          <input type="radio" name="disposition" id="complete-next" value="next-sprint">
+          <div class="choice-body">
+            <label class="choice-label" for="complete-next">Move unfinished items to a planned sprint</label>
+            <select id="complete-next-select" aria-label="Planned sprint"></select>
+            <p class="hint" id="complete-next-hint" hidden>Create a planned sprint first.</p>
+          </div>
+        </div>
+        <div class="choice">
+          <input type="radio" name="disposition" id="complete-new" value="new-sprint">
+          <div class="choice-body">
+            <label class="choice-label" for="complete-new">Create a new sprint and move unfinished items there</label>
+            <input type="text" id="complete-new-name" aria-label="New sprint name" maxlength="80" autocomplete="off">
+            <p class="hint" id="complete-new-hint"></p>
+          </div>
+        </div>
+      </fieldset>
+      <p id="complete-all-done" hidden>All items are done. Done items stay in the sprint as a record.</p>
+      <p class="hint" id="complete-footnote"></p>
+    </div>
+    <div class="dialog-foot">
+      <p class="error" id="complete-error" role="alert"></p>
+      <button type="button" id="complete-cancel">Cancel</button>
+      <button type="button" id="complete-confirm" class="primary" disabled>Complete sprint</button>
+    </div>
+  </dialog>
+
+  <!-- Work item dialog (docs/specs/task-dialog-redesign.md): a dark teal band
+       (key chip, epic link, Close, title), the body (read-only banner, status
+       track, properties, description), one tab bar with the Children (epic
+       types only), Discussion, History, Links and Attachments panels, and the
+       footer. Only Save submits; every other button is type="button". -->
+  <dialog id="detail" aria-labelledby="detail-heading">
+    <form id="detail-form" method="dialog" novalidate>
+      <div class="band">
+        <h2 id="detail-heading" class="visually-hidden">Work item</h2>
+        <div class="band-top">
+          <span id="detail-keychip" class="keychip" hidden></span>
+          <span id="detail-new-label" class="band-new" hidden>Create work item</span>
+          <!-- The open item's epic; opens it in this dialog. -->
+          <button type="button" id="epic-open" class="epicchip" hidden></button>
+          <button type="button" id="detail-x" class="x" aria-label="Close">&times;</button>
+        </div>
+        <textarea name="title" id="title-input" class="title-in" rows="1" maxlength="200" required aria-label="Title" placeholder="What needs to be done?"></textarea>
+        <p class="error" id="title-error" role="alert" hidden></p>
+      </div>
+
+      <div class="detail-body">
+        <p id="detail-banner" class="banner" role="status" hidden></p>
+
+        <!-- One radio per server status, built in board.js. -->
+        <fieldset id="status-field" class="track">
+          <legend>Status</legend>
+          <div id="status-steps" class="steps"></div>
+        </fieldset>
+
+        <div class="props">
+          <label>Assignee <select name="assignee_id"></select></label>
+          <label>Priority <select name="priority"></select></label>
+          <label>Type <select name="type"></select></label>
+          <label id="epic-field" class="epic-field"><span id="epic-label"></span> <select name="epic_id"></select></label>
+          <!-- Sprint: Backlog plus the open sprints (names and states from the
+               server); fixed text for epic types; disabled for a completed sprint. -->
+          <div id="sprint-field" class="sprint-field">
+            <label for="sprint-select">Sprint</label>
+            <select id="sprint-select" name="sprint_id"></select>
+            <p id="sprint-na" class="sprint-na" hidden>Not applicable (epics are not part of a sprint)</p>
+            <p id="sprint-note" class="hint" hidden>Completed sprints are read-only.</p>
+          </div>
+          <label id="resolution-field" hidden>Resolution <select name="resolution"></select></label>
+          <p id="sprint-where" class="sprint-where" role="status" hidden></p>
+        </div>
+        <p class="reporter" id="reporter" hidden></p>
+
+        <!-- Description: for a saved work item a read view (plain text with image
+             tokens shown as images, js/richText.js) and Edit; the edit view is a
+             plain textarea showing the raw text. Pasting an image uploads it as
+             an attachment and inserts its token. -->
+        <div class="description-field">
+          <div class="field-head">
+            <label for="description-input">Description</label>
+            <button type="button" id="description-edit" class="link" hidden>Edit</button>
+          </div>
+          <div id="description-view" class="description-view" hidden></div>
+          <textarea id="description-input" name="description" rows="5"></textarea>
+          <p class="paste-note" id="description-note" role="status" hidden></p>
+          <div id="description-images" class="image-strip" hidden>
+            <span class="image-strip-label">Images in this description</span>
+            <div id="description-thumbs" class="image-strip-thumbs"></div>
+          </div>
+        </div>
+
+        <!-- Tabs: not part of the work item's Save. Their buttons are
+             type="button" so they never submit the method="dialog" form.
+             Counts come from data the dialog already loads. -->
+        <div id="activity-tabs" class="tabs" role="tablist" aria-label="Activity" hidden>
+          <button type="button" role="tab" id="tab-children" class="tab" aria-controls="epic-view" aria-selected="false" hidden>Children <span class="n" id="count-children" hidden></span></button>
+          <button type="button" role="tab" id="tab-discussion" class="tab" aria-controls="discussion" aria-selected="true">Discussion <span class="n" id="count-discussion" hidden></span></button>
+          <button type="button" role="tab" id="tab-history" class="tab" aria-controls="history" aria-selected="false">History <span class="n" id="count-history" hidden></span></button>
+          <button type="button" role="tab" id="tab-links" class="tab" aria-controls="links" aria-selected="false">Links <span class="n" id="count-links" hidden></span></button>
+          <button type="button" role="tab" id="tab-attachments" class="tab" aria-controls="attachments" aria-selected="false">Attachments <span class="n" id="count-attachments" hidden></span></button>
+        </div>
+
+        <!-- Children (epic view): shown only when the open work item is an epic
+             type. Add and remove use the child's PATCH. Status names come from
+             the server. Add, Remove and Create child are hidden when read-only. -->
+        <section id="epic-view" class="epic-view" role="tabpanel" aria-labelledby="tab-children" hidden>
+          <h3 id="epic-view-heading" class="visually-hidden"></h3>
+          <p class="error" id="epic-view-error" role="alert"></p>
+          <div id="epic-summary" class="darkpanel" hidden>
+            <p class="big" id="epic-progress-text"></p>
+            <div class="epic-progress">
+              <div class="progress-bar" id="epic-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-label="Progress">
+                <div class="progress-fill" id="epic-progress-fill"></div>
+              </div>
+            </div>
+            <ul id="epic-counts" class="epic-counts"></ul>
+          </div>
+          <p class="epic-empty" id="epic-empty" hidden></p>
+          <ul id="epic-children" class="epic-children"></ul>
+          <div id="epic-actions" class="epic-actions">
+            <select id="epic-add-target" aria-label="Existing work item to add"></select>
+            <button type="button" id="epic-add" class="navy">Add</button>
+            <button type="button" id="epic-create-child">Create child</button>
+          </div>
+          <p class="error" id="epic-add-error" role="alert"></p>
+        </section>
+
+        <section id="discussion" class="discussion" role="tabpanel" aria-labelledby="tab-discussion" hidden>
+          <div id="comment-form" class="comment-form">
+            <p class="posting-as" id="posting-as"></p>
+            <textarea id="comment-body" rows="3" placeholder="Write a message" aria-label="Message"></textarea>
+            <p class="paste-note" id="comment-note" role="status" hidden></p>
+            <p class="error" id="comment-error" role="alert"></p>
+            <div class="actions"><button type="button" id="comment-post" class="navy">Post</button></div>
+          </div>
+          <p class="thread-empty" id="thread-empty" hidden>No messages yet. Be the first to post.</p>
+          <ul id="thread" class="thread"></ul>
+        </section>
+
+        <!-- History: read-only, newest first; also readable on archived projects. -->
+        <section id="history" class="history" role="tabpanel" aria-labelledby="tab-history" hidden>
+          <div class="history-toolbar">
+            <label class="history-filter">Show <select id="history-field" aria-label="Filter history by field"><option value="">All fields</option></select></label>
+          </div>
+          <p class="history-note" id="history-note" hidden></p>
+          <div class="history-error" id="history-error" hidden>
+            <p class="error" id="history-error-text" role="alert"></p>
+            <button type="button" id="history-retry">Retry</button>
+          </div>
+          <ul id="history-list" class="history-list"></ul>
+          <div class="actions"><button type="button" id="history-more" hidden>Show more</button></div>
+        </section>
+
+        <!-- Links: relationships come from GET /api/link-types. Add and Remove
+             are hidden when read-only. -->
+        <section id="links" class="links" role="tabpanel" aria-labelledby="tab-links" hidden>
+          <p class="links-empty" id="links-empty" hidden>No links.</p>
+          <div id="links-list" class="links-list"></div>
+          <div id="link-form" class="link-form">
+            <select id="link-relation" aria-label="Relationship"></select>
+            <select id="link-target" aria-label="Work item to link"></select>
+            <button type="button" id="link-add" class="navy">Add link</button>
+          </div>
+          <p class="error" id="link-error" role="alert"></p>
+        </section>
+
+        <!-- Attachments: allowed types and limits come from
+             GET /api/attachment-types. Add and Delete are hidden when
+             read-only; a new work item must be saved first (then this is a
+             plain section below the description, not a tab panel). -->
+        <section id="attachments" class="attachments" role="tabpanel" aria-labelledby="tab-attachments" hidden>
+          <h3 id="attachments-heading" hidden>Attachments</h3>
+          <p class="attachments-note" id="attachments-note" hidden>Save the work item first.</p>
+          <div id="attachment-controls" class="attachment-controls">
+            <button type="button" id="attachment-add" class="navy">Add files</button>
+            <input type="file" id="attachment-input" multiple hidden aria-label="Files to attach">
+            <span class="hint">or drop files here</span>
+          </div>
+          <p class="error attachment-error" id="attachment-error" role="alert"></p>
+          <p class="attachments-empty" id="attachments-empty" hidden>No attachments.</p>
+          <ul id="attachment-list" class="attachment-list"></ul>
+        </section>
+      </div>
+
+      <div class="detail-foot">
+        <p class="error" id="detail-error" role="alert"></p>
+        <span class="spacer"></span>
+        <button type="button" id="detail-delete" class="danger">Delete</button>
+        <button type="button" id="detail-close">Close</button>
+        <button type="submit" value="save" id="detail-save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="js/redirect.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/session.js"></script>
+  <script src="js/time.js"></script>
+  <script src="js/historyFormat.js"></script>
+  <script src="js/richText.js"></script>
+  <script src="js/filters.js"></script>
+  <script src="js/sprints.js"></script>
+  <script src="js/backlog.js"></script>
+  <script src="js/board.js"></script>
+</body>
+</html>

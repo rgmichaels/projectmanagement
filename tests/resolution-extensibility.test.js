@@ -21,14 +21,14 @@ test('a status appended after Done becomes the terminal status (AC 2)', async ()
   const p = await createProject(app);
   const item = await createItem(app, p.id);
 
-  let res = await app.patch(`/api/issues/${item.id}`, { status: 'Done' });
+  let res = await app.patch(`/api/issues/${item.id}`, { status: 'Complete' });
   assert.equal(res.status, 200);
   assert.equal(res.body.resolution, null, 'Done is no longer terminal');
   assert.ok((await app.patch(`/api/issues/${item.id}`, { resolution: 'Fixed' })).status >= 400);
 
   res = await app.patch(`/api/issues/${item.id}`, { status: 'Closed' });
   assert.equal(res.body.resolution, 'Fixed');
-  res = await app.patch(`/api/issues/${item.id}`, { status: 'Done' });
+  res = await app.patch(`/api/issues/${item.id}`, { status: 'Complete' });
   assert.equal(res.body.resolution, null);
 });
 

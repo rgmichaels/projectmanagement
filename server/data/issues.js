@@ -5,7 +5,13 @@
 // applied here so the status and resolution are always written together.
 // Every write records history (server/data/history.js) inside its own
 // transaction; `actor` is { id, name } from the route (guards.actorFrom).
+// Sprint membership (docs/specs/sprints-and-backlog.md): sprint_id is the
+// item's sprint (null = the backlog; always null for epics) and sprint_rank
+// its position in that container (null for epics). `rank` stays the position
+// in a board column; the two never touch each other.
 const { STATUSES, isTerminalStatus } = require('../statuses');
+const { isEpicType, epicTypeNames } = require('../types');
+const { activeSprintState } = require('../sprintStates');
 const { defaultResolution } = require('../resolutions');
 const history = require('./history');
 const links = require('./links');
@@ -19,19 +25,55 @@ const RANK_STEP = 1000;
 const SELECT = `
   SELECT i.id, i.project_id, i.number, i.key, i.type, i.title, i.description, i.status, i.priority,
          i.assignee_id, i.epic_id, i.rank, i.resolution, i.reporter_id, r.name AS reporter_name,
-         i.created_at, i.updated_at`;
+         i.sprint_id, i.sprint_rank, i.created_at, i.updated_at`;
 const FROM = 'FROM issues i LEFT JOIN users r ON r.id = i.reporter_id';
 
+// `AND i.type NOT IN (<epic types>)` and its parameters.
+function notEpicClause() {
+  const names = epicTypeNames();
+  return { sql: names.length ? ` AND i.type NOT IN (${names.map(() => '?').join(', ')})` : '', params: names };
+}
+
 // Each item carries comment_count (number of discussion messages) so the
-// board needs no extra request per card.
-function listIssues(db, projectId) {
+// board needs no extra request per card. `sprint` (optional) narrows the list
+// to one container and never returns epics: 'backlog' (no sprint), 'active'
+// (the project's active sprint) or a sprint id. Without it every item of the
+// project is returned, epics included.
+function listIssues(db, projectId, sprint = null) {
+  const where = ['i.project_id = ?'];
+  const params = [projectId];
+  let order = 'i.rank, i.id';
+  if (sprint !== null) {
+    if (sprint === 'backlog') {
+      where.push('i.sprint_id IS NULL');
+    } else if (sprint === 'active') {
+      where.push('i.sprint_id = (SELECT s.id FROM sprints s WHERE s.project_id = i.project_id AND s.state = ?)');
+      params.push(activeSprintState());
+    } else {
+      where.push('i.sprint_id = ?');
+      params.push(sprint);
+    }
+    const ne = notEpicClause();
+    where[where.length - 1] += ne.sql;
+    params.push(...ne.params);
+    order = 'i.sprint_rank, i.id';
+  }
   return db
     .prepare(
       `${SELECT},
          (SELECT COUNT(*) FROM comments c WHERE c.issue_id = i.id) AS comment_count
-       ${FROM} WHERE i.project_id = ? ORDER BY i.rank, i.id`
+       ${FROM} WHERE ${where.join(' AND ')} ORDER BY ${order}`
     )
-    .all(projectId);
+    .all(...params);
+}
+
+// The non-epic items of a container (sprint id, or null for the backlog) in
+// container order.
+function listContainer(db, projectId, sprintId) {
+  const ne = notEpicClause();
+  return db
+    .prepare(`${SELECT} ${FROM} WHERE i.project_id = ? AND i.sprint_id IS ?${ne.sql} ORDER BY i.sprint_rank, i.id`)
+    .all(projectId, sprintId, ...ne.params);
 }
 
 function getIssue(db, id) {
@@ -91,6 +133,46 @@ function bottomRank(db, projectId, status) {
   return row.r === null ? RANK_STEP : row.r + RANK_STEP;
 }
 
+// sprint_rank that places an item at the bottom (or top) of a container: a
+// sprint id, or null for the backlog.
+function bottomSprintRank(db, projectId, sprintId) {
+  const row = db
+    .prepare('SELECT MAX(sprint_rank) AS r FROM issues WHERE project_id = ? AND sprint_id IS ?')
+    .get(projectId, sprintId);
+  return row.r === null ? RANK_STEP : row.r + RANK_STEP;
+}
+
+function topSprintRank(db, projectId, sprintId) {
+  const row = db
+    .prepare('SELECT MIN(sprint_rank) AS r FROM issues WHERE project_id = ? AND sprint_id IS ?')
+    .get(projectId, sprintId);
+  return row.r === null ? RANK_STEP : row.r;
+}
+
+// rebalanceIfNeeded for a container instead of a status column: if two
+// items of the container share a sprint_rank, renumber the container in steps
+// of RANK_STEP with the moved item first among equals.
+function rebalanceSprintRank(db, projectId, sprintId, movedId) {
+  const rows = db
+    .prepare('SELECT id, sprint_rank FROM issues WHERE project_id = ? AND sprint_id IS ? AND sprint_rank IS NOT NULL ORDER BY sprint_rank, id')
+    .all(projectId, sprintId);
+  const ranks = new Set(rows.map((r) => r.sprint_rank));
+  if (ranks.size === rows.length) return;
+  rows.sort((a, b) => a.sprint_rank - b.sprint_rank || (a.id === movedId ? -1 : b.id === movedId ? 1 : a.id - b.id));
+  const update = db.prepare('UPDATE issues SET sprint_rank = ? WHERE id = ?');
+  rows.forEach((r, i) => update.run((i + 1) * RANK_STEP, r.id));
+}
+
+// Moves one item to a container (sprint id or null) at `sprintRank`, as part
+// of a bulk move (sprint delete or complete) inside the caller's transaction,
+// and records the sprint change in its history. Status, resolution, epic and
+// assignee are untouched.
+function moveToContainer(db, id, sprintId, sprintRank, actor, when) {
+  const before = getIssue(db, id);
+  db.prepare('UPDATE issues SET sprint_id = ?, sprint_rank = ?, updated_at = ? WHERE id = ?').run(sprintId, sprintRank, when, id);
+  history.recordChanges(db, id, actor, before, getIssue(db, id), when);
+}
+
 // If the moved item now shares a rank with another item in its column,
 // renumber the column in steps of RANK_STEP. The moved item goes before the
 // other items with the same rank, so a client with no gap left can send the
@@ -126,11 +208,16 @@ function createIssue(db, project, fields, actor) {
       .prepare('SELECT next_issue_number FROM projects WHERE id = ?')
       .get(project.id);
     const now = new Date().toISOString();
+    // Epics are in no container; anything else goes to the bottom of its
+    // sprint, or of the backlog when no sprint is given.
+    const epic = isEpicType(fields.type);
+    const sprintId = epic ? null : fields.sprint_id ?? null;
+    const sprintRank = epic ? null : bottomSprintRank(db, project.id, sprintId);
     const info = db
       .prepare(
         `INSERT INTO issues (project_id, number, key, type, title, description, status, priority,
-           assignee_id, epic_id, rank, resolution, reporter_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           assignee_id, epic_id, rank, resolution, reporter_id, sprint_id, sprint_rank, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         project.id,
@@ -146,6 +233,8 @@ function createIssue(db, project, fields, actor) {
         bottomRank(db, project.id, fields.status),
         resolutionFor(fields.status, fields.resolution, null, true),
         fields.reporter_id ?? null,
+        sprintId,
+        sprintRank,
         now,
         now
       );
@@ -155,7 +244,7 @@ function createIssue(db, project, fields, actor) {
   })();
 }
 
-const UPDATABLE = ['type', 'title', 'description', 'status', 'priority', 'assignee_id', 'epic_id', 'rank', 'resolution'];
+const UPDATABLE = ['type', 'title', 'description', 'status', 'priority', 'assignee_id', 'epic_id', 'rank', 'resolution', 'sprint_id', 'sprint_rank'];
 
 // Clears the epic of every child of `epicId`, recording an epic change on each.
 function releaseChildren(db, epicId, actor, when) {
@@ -180,6 +269,17 @@ function updateIssue(db, id, changes, actor, options = {}) {
       next.rank = bottomRank(db, current.project_id, next.status);
     }
     next.resolution = resolutionFor(next.status ?? current.status, next.resolution, current.resolution, statusChanged);
+    // Sprint membership: an epic is in no container; a non-epic item that
+    // changes container, or has no position yet (it was an epic), goes to the
+    // bottom of its container unless a position is given.
+    const epicAfter = isEpicType(next.type ?? current.type);
+    const sprintAfter = epicAfter ? null : next.sprint_id !== undefined ? next.sprint_id : current.sprint_id;
+    if (epicAfter) {
+      next.sprint_id = null;
+      next.sprint_rank = null;
+    } else if (next.sprint_rank === undefined && (sprintAfter !== current.sprint_id || current.sprint_rank === null)) {
+      next.sprint_rank = bottomSprintRank(db, current.project_id, sprintAfter);
+    }
     const sets = [];
     const params = [];
     for (const field of UPDATABLE) {
@@ -195,6 +295,9 @@ function updateIssue(db, id, changes, actor, options = {}) {
     if (options.clearChildren) releaseChildren(db, id, actor, now);
     if (changes.rank !== undefined) {
       rebalanceIfNeeded(db, current.project_id, next.status ?? current.status, id);
+    }
+    if (!epicAfter && changes.sprint_rank !== undefined) {
+      rebalanceSprintRank(db, current.project_id, sprintAfter, id);
     }
     return getIssue(db, id);
   })();
@@ -233,7 +336,12 @@ module.exports = {
   RANK_STEP,
   UPDATABLE,
   listIssues,
+  listContainer,
   getIssue,
+  bottomSprintRank,
+  topSprintRank,
+  rebalanceSprintRank,
+  moveToContainer,
   countChildren,
   listChildren,
   childSummary,

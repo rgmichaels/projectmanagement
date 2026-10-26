@@ -9,6 +9,7 @@ const TYPES = [
   { name: 'Defect', label: 'Defect', color: '#e5493a', icon: '●' },
   { name: 'Task', label: 'Task', color: '#4bade8', icon: '✓', isDefault: true },
   { name: 'Issue', label: 'Issue', color: '#f5a623', icon: '!' },
+  { name: 'Enhancement', label: 'Enhancement', color: '#2e9e5b', icon: '+' },
   { name: 'Epic', label: 'Epic', color: '#904ee2', icon: '⚡', isEpic: true },
 ];
 

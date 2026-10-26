@@ -7,6 +7,7 @@ const issues = require('../data/issues');
 const comments = require('../data/comments');
 const links = require('../data/links');
 const attachments = require('../data/attachments');
+const sprints = require('../data/sprints');
 const { UNKNOWN_ACTOR } = require('../data/history');
 const { ValidationError } = require('../validation');
 const { can, actionOf } = require('../groups');
@@ -58,6 +59,13 @@ function loadLink(db, rawId, issueId) {
   return link;
 }
 
+function loadSprint(db, rawId) {
+  const id = parseId(rawId);
+  const sprint = id && sprints.getSprint(db, id);
+  if (!sprint) throw new ValidationError('Sprint not found.', 404);
+  return sprint;
+}
+
 // Work items of an archived project are read-only.
 function assertWritable(project) {
   if (project.archived) {
@@ -99,6 +107,7 @@ module.exports = {
   loadComment,
   loadLink,
   loadAttachment,
+  loadSprint,
   assertWritable,
   assertOwnsComment,
   assertOwnsAttachment,

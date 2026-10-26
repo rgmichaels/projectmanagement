@@ -1,0 +1,12 @@
+/* OPTION A: teal chrome, matches the dialog band */
+.topbar{background:var(--teal);color:#fff;padding:10px 20px;display:flex;gap:10px;align-items:center}
+.topbar :focus-visible{outline-color:var(--gold)}
+.topbar .brand{color:#fff;font-weight:700;text-decoration:none;font-size:15px}
+.topbar .crumb{color:#cfe3e5}
+.topbar .nav-link{color:#fff;font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.topbar .session{margin-left:auto;display:flex;align-items:center;gap:12px}
+.topbar .session button{background:transparent;border-color:#fff;color:#fff;padding:3px 10px}
+.topbar .session button:hover{background:#fff;color:var(--teal)}
+.column{background:var(--teal-soft);border-radius:8px}
+.col-header{background:transparent;border-bottom:2px solid var(--teal-mid);margin:0 0 6px}
+.login h1{background:var(--teal);color:#fff;margin:-16px -16px 14px;padding:14px 24px;border-radius:8px 8px 0 0;font-size:22px}

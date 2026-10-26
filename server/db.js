@@ -1,6 +1,7 @@
 // Opens the SQLite database (better-sqlite3), creates the schema, applies the
 // additive migrations and seeds the fixed user list on first start. This is the single schema/setup file.
-// New tables (comments, sessions, work item history, links, attachments) are created with
+// New tables (comments, sessions, work item history, links, attachments,
+// sprints and the sprint audit log) are created with
 // CREATE TABLE IF NOT EXISTS, so existing databases gain them on start.
 // Status, type and resolution columns deliberately have no CHECK constraints:
 // their valid values come from server/statuses.js, server/types.js and
@@ -8,9 +9,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const Database = require('better-sqlite3');
-const { terminalStatus } = require('./statuses');
+const { terminalStatus, defaultStatus } = require('./statuses');
 const { defaultResolution } = require('./resolutions');
 const { defaultGroup, initialAdminGroup } = require('./groups');
+const { activeSprintState, finalSprintState } = require('./sprintStates');
+const { epicTypeNames } = require('./types');
 
 const DEFAULT_DB_PATH = path.join(__dirname, '..', 'data', 'app.db');
 
@@ -154,6 +157,57 @@ CREATE TABLE IF NOT EXISTS attachments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_attachments_issue ON attachments(issue_id, id);
+
+-- Sprints (server/data/sprints.js, docs/specs/sprints-and-backlog.md). state is
+-- a name from server/sprintStates.js (no CHECK constraint); dates are
+-- YYYY-MM-DD or null and are display-only. The one-active-sprint unique index
+-- and the issues.sprint_id / sprint_rank columns are added by migrateSprints.
+CREATE TABLE IF NOT EXISTS sprints (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  name TEXT NOT NULL,
+  goal TEXT NOT NULL DEFAULT '',
+  start_date TEXT,
+  end_date TEXT,
+  state TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  started_at TEXT,
+  completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_sprints_project ON sprints(project_id);
+
+-- Sprint audit log (server/data/sprintHistory.js): append-only. sprint_id,
+-- project_id and actor_id are plain integers with no foreign key and
+-- sprint_name / actor_name are snapshots, so events outlive the sprint and
+-- the user. Kinds and tracked fields come from server/sprintEvents.js.
+CREATE TABLE IF NOT EXISTS sprint_events (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL,
+  sprint_id INTEGER,
+  sprint_name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  actor_id INTEGER,
+  actor_name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  disposition TEXT,
+  done_count INTEGER,
+  item_count INTEGER,
+  target_sprint_id INTEGER,
+  target_sprint_name TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_sprint_events_project ON sprint_events(project_id, id);
+
+CREATE TABLE IF NOT EXISTS sprint_event_changes (
+  id INTEGER PRIMARY KEY,
+  event_id INTEGER NOT NULL REFERENCES sprint_events(id) ON DELETE CASCADE,
+  field TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_sprint_event_changes_event ON sprint_event_changes(event_id);
 `;
 
 // Seed data: a small fixed list of placeholder people (no user management in
@@ -232,6 +286,72 @@ function migrateGroups(db) {
   })();
 }
 
+// Work items created before the status pipeline (To Do / In Progress / Done)
+// move to the nearest new status. In Progress keeps its name. Idempotent.
+function migrateStatuses(db) {
+  const rename = db.prepare('UPDATE issues SET status = ? WHERE status = ?');
+  db.transaction(() => {
+    rename.run(defaultStatus(), 'To Do');
+    rename.run(terminalStatus(), 'Done');
+    // Items that just reached the terminal status carry the default resolution.
+    db.prepare('UPDATE issues SET resolution = ? WHERE status = ? AND resolution IS NULL').run(defaultResolution(), terminalStatus());
+  })();
+}
+
+const SPRINT_RANK_STEP = 1000;
+
+// The partial unique index that allows one sprint per project in the active
+// state. Recreated if the active state's name in server/sprintStates.js changed.
+function ensureOneActiveIndex(db) {
+  const where = `WHERE state = ${sqlText(activeSprintState())}`;
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_sprints_one_active'").get();
+  if (row && row.sql.includes(where)) return;
+  if (row) db.exec('DROP INDEX idx_sprints_one_active');
+  db.exec(`CREATE UNIQUE INDEX idx_sprints_one_active ON sprints(project_id) ${where}`);
+}
+
+// Databases created before the sprints spec lack issues.sprint_id and
+// issues.sprint_rank. Add them (only when missing, so this runs once) and,
+// per project with at least one non-epic work item, create one `Sprint 1`
+// holding every non-epic item in rank order (sprint_rank in steps of 1000):
+// Active for a non-archived project, Completed for an archived one. Epics stay
+// out of sprints (both columns null). No history, no sprint events and no
+// updated_at change. A fresh database gets the columns and no sprint.
+function migrateSprints(db) {
+  const columns = db.prepare('PRAGMA table_info(issues)').all().map((c) => c.name);
+  if (!columns.includes('sprint_id')) {
+    db.transaction(() => {
+      db.exec('ALTER TABLE issues ADD COLUMN sprint_id INTEGER REFERENCES sprints(id)');
+      db.exec('ALTER TABLE issues ADD COLUMN sprint_rank INTEGER');
+      const epics = epicTypeNames();
+      const notEpic = epics.length ? `AND type NOT IN (${epics.map(() => '?').join(', ')})` : '';
+      const now = new Date().toISOString();
+      const projectRows = db.prepare('SELECT id, archived FROM projects ORDER BY id').all();
+      const itemsOf = db.prepare(`SELECT id FROM issues WHERE project_id = ? ${notEpic} ORDER BY rank, id`);
+      const insertSprint = db.prepare(
+        `INSERT INTO sprints (project_id, name, goal, start_date, end_date, state, created_at, started_at, completed_at)
+         VALUES (?, 'Sprint 1', '', NULL, NULL, ?, ?, ?, ?)`
+      );
+      const place = db.prepare('UPDATE issues SET sprint_id = ?, sprint_rank = ? WHERE id = ?');
+      for (const project of projectRows) {
+        const items = itemsOf.all(project.id, ...epics);
+        if (items.length === 0) continue;
+        const archived = project.archived === 1;
+        const sprintId = insertSprint.run(
+          project.id,
+          archived ? finalSprintState() : activeSprintState(),
+          now,
+          now,
+          archived ? now : null
+        ).lastInsertRowid;
+        items.forEach((item, i) => place.run(sprintId, (i + 1) * SPRINT_RANK_STEP, item.id));
+      }
+    })();
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_issues_sprint ON issues(project_id, sprint_id, sprint_rank)');
+  ensureOneActiveIndex(db);
+}
+
 function openDb(dbPath = DEFAULT_DB_PATH) {
   if (dbPath !== ':memory:') {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -240,9 +360,11 @@ function openDb(dbPath = DEFAULT_DB_PATH) {
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
   migrateResolution(db);
+  migrateStatuses(db); // after migrateResolution: the column must exist
   migrateUsername(db);
   migrateReporter(db);
   migrateGroups(db);
+  migrateSprints(db); // after migrateStatuses, so it is the last legacy step
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
   if (n === 0) {
     const insert = db.prepare('INSERT INTO users (name, username, group_name) VALUES (?, ?, ?)');

@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>board - a-teal-chrome</title>
+<style>
+/* Proposed :root for public/css/app.css (tokens promoted from dialog#detail). */
+:root{
+  --teal:#0b5d66; --teal-mid:#65999e; --teal-soft:#e5eded; --page:#f8fafa;
+  --navy:#154973; --linkblue:#004dd1; --gold:#face00; --ink:#000;
+  --muted:#62666a; --line:#d0d0ce; --line2:#e4e4e4; --danger:#c0300b; --neutral:#62666a;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  /* legacy names the existing rules read, re-pointed */
+  --bg:var(--page); --surface:#fff; --column:var(--teal-soft); --border:var(--line);
+  --text:var(--ink); --primary:var(--teal);
+  font-family:"Proxima Nova","Helvetica Neue",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:14px;color:var(--ink);background:var(--page);
+}
+*{box-sizing:border-box} body{margin:0;background:var(--page)}
+h1{font-size:20px;margin:0;color:var(--teal);font-weight:700}
+h2{font-size:16px;margin:0 0 12px;color:var(--teal);font-weight:700}
+a{color:var(--linkblue)}
+button,select,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+button{border:1px solid var(--navy);color:var(--navy);background:#fff;border-radius:4px;padding:6px 12px;font-weight:700;cursor:pointer}
+button.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+button.navy{background:var(--navy);border-color:var(--navy);color:#fff}
+button.danger{color:var(--danger);border-color:var(--line)}
+button[disabled]{opacity:.6;cursor:default}
+button.link{border:none;background:none;padding:0;color:var(--linkblue);font-size:12px;font-weight:400;text-decoration:underline;text-underline-offset:2px}
+input,select,textarea{padding:6px 8px;border:1px solid var(--navy);border-radius:4px;background:#fff}
+label{display:flex;flex-direction:column;gap:4px;margin-bottom:10px;color:var(--ink);font-size:12px;font-weight:700}
+label.toggle,label.group-by,label.filter{flex-direction:row;align-items:center;gap:6px;margin:0;font-size:13px;font-weight:700}
+.page{padding:20px;max-width:1400px;margin:0 auto}
+.toolbar{display:flex;align-items:center;gap:16px;margin-bottom:16px;flex-wrap:wrap}
+.toolbar h1{margin-right:auto}
+.board-page .toolbar h1{margin-right:0}
+.board-page .toolbar .group-by{margin-left:auto}
+.panel{background:#fff;border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:16px}
+.form-row{display:flex;gap:12px;flex-wrap:wrap}
+.actions{display:flex;gap:8px}
+.error{color:var(--danger);min-height:1em;margin:4px 0}
+.hint{color:var(--muted);font-size:12px}
+.empty{text-align:center;padding:40px;background:#fff;border:1px dashed var(--teal-mid);border-radius:8px}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;background:var(--teal-soft);color:var(--ink);font-size:11px;font-weight:700;text-transform:uppercase;border:1px solid var(--teal-mid)}
+.badge.archived{background:#fff0b3;border-color:#c9a800}
+table.projects{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+table.projects th{background:var(--teal-soft);color:var(--teal);font-size:12px;font-weight:700;text-align:left;padding:9px 12px;border-bottom:1px solid var(--teal-mid)}
+table.projects td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line2)}
+table.projects tr:last-child td{border-bottom:none}
+table.projects tbody tr:hover td{background:var(--page)}
+table.projects tr.is-archived td{color:var(--muted);background:var(--page)}
+.row-actions{text-align:right} .row-actions button{margin-left:6px}
+.filter-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;flex-basis:100%;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+label.filter input[type=search]{width:220px;max-width:100%}
+.filter-count{color:var(--muted);font-size:13px}
+.notice{display:flex;align-items:center;gap:12px;background:var(--teal-soft);border:1px solid var(--teal-mid);padding:8px 12px;border-radius:4px;margin-bottom:12px}
+.message{background:#fff;border:1px solid var(--danger);border-left-width:4px;color:var(--danger);padding:8px 12px;border-radius:4px;margin-bottom:12px;font-weight:700}
+.board{overflow-x:auto}
+.board-header,.lane-body{display:grid;grid-template-columns:repeat(4,minmax(220px,1fr));gap:8px}
+.col-header{display:flex;justify-content:space-between;padding:8px 10px;font-size:12px;font-weight:700;text-transform:uppercase;color:var(--teal)}
+.count{color:var(--muted);font-weight:400}
+.lane{margin-top:8px}
+.lane-header{display:flex;gap:8px;align-items:center;width:100%;border:none;background:transparent;padding:6px 4px;color:var(--teal);font-weight:700;text-align:left}
+.lane-header .count{font-size:12px}
+.column{padding:6px;min-height:60px;display:flex;flex-direction:column;gap:6px}
+.card{--type-color:var(--neutral);background:#fff;border:1px solid var(--line);border-left:4px solid var(--type-color);border-radius:4px;box-shadow:0 1px 2px rgba(9,30,40,.12);padding:8px 10px;cursor:grab}
+.card:hover{border-color:var(--teal-mid);border-left-color:var(--type-color)}
+.card-title{margin-bottom:8px;word-break:break-word}
+.card-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.card-key{font-weight:700;font-family:var(--mono);color:var(--ink)}
+.type-badge{--type-color:var(--neutral);display:inline-flex;align-items:center;gap:5px;padding:1px 6px;border-radius:4px;background:#fff;border:1px solid var(--line);color:var(--ink);font-weight:600;font-size:11px}
+.type-badge::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--type-color)}
+.epic-chip{background:#eae6ff;color:#403294;padding:1px 6px;border-radius:4px;font-weight:700}
+.resolution-label{padding:1px 6px;border-radius:4px;background:#2f6b3f;color:#fff;font-weight:700;font-size:11px}
+.priority{border:1px solid var(--line);padding:0 5px;border-radius:4px}
+.avatar{margin-left:auto;width:24px;height:24px;border-radius:50%;background:var(--teal);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
+.avatar.unassigned{background:var(--muted)}
+.drop-indicator{height:4px;border-radius:2px;background:var(--navy)}
+.login{max-width:420px;margin:40px auto}
+.user-list{border:none;padding:0;margin:0 0 8px}
+.user-list legend{color:var(--ink);font-weight:700;font-size:12px;margin-bottom:6px}
+label.user-option{flex-direction:row;align-items:center;gap:8px;font-size:14px;font-weight:400;margin:0;padding:8px;border-radius:4px;cursor:pointer}
+label.user-option:hover{background:var(--teal-soft)}
+.user-username{color:var(--muted);font-size:12px}
+.mock-note{font:12px var(--mono);color:var(--muted);padding:6px 20px;background:#fff;border-bottom:1px solid var(--line2)}
+/* OPTION A: teal chrome, matches the dialog band */
+.topbar{background:var(--teal);color:#fff;padding:10px 20px;display:flex;gap:10px;align-items:center}
+.topbar :focus-visible{outline-color:var(--gold)}
+.topbar .brand{color:#fff;font-weight:700;text-decoration:none;font-size:15px}
+.topbar .crumb{color:#cfe3e5}
+.topbar .nav-link{color:#fff;font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.topbar .session{margin-left:auto;display:flex;align-items:center;gap:12px}
+.topbar .session button{background:transparent;border-color:#fff;color:#fff;padding:3px 10px}
+.topbar .session button:hover{background:#fff;color:var(--teal)}
+.column{background:var(--teal-soft);border-radius:8px}
+.col-header{background:transparent;border-bottom:2px solid var(--teal-mid);margin:0 0 6px}
+.login h1{background:var(--teal);color:#fff;margin:-16px -16px 14px;padding:14px 24px;border-radius:8px 8px 0 0;font-size:22px}
+</style></head><body>
+<div class="mock-note">Mockup a-teal-chrome / board (static, no network)</div>
+<header class="topbar">
+  <a class="brand" href="#">Projects</a><span class="crumb">/ Apollo (APO)</span>
+  <span class="session"><a class="nav-link" href="#">Users</a><span>Dana Reyes</span><button type="button">Sign out</button></span>
+</header>
+<main class="page board-page">
+  <section class="toolbar">
+    <h1>Apollo</h1><span class="badge">In Progress</span>
+    <label class="group-by">Group by <select><option>Assignee</option></select></label>
+    <button type="button" class="primary">Create work item</button>
+    <div class="filter-bar" role="search">
+      <label class="filter">Search <input type="search" placeholder="Key, title or description"></label>
+      <label class="filter">Assignee <select><option>All</option></select></label>
+      <label class="filter">Type <select><option>All</option></select></label>
+      <label class="filter">Priority <select><option>All</option></select></label>
+      <label class="filter">Status <select><option>All</option></select></label>
+      <button type="button" disabled>Clear</button><span class="filter-count">7 of 7 work items</span>
+    </div>
+  </section>
+  <div class="board">
+    <div class="board-header">
+      <div class="col-header"><span>To Do</span><span class="count">3</span></div>
+      <div class="col-header"><span>In Progress</span><span class="count">2</span></div>
+      <div class="col-header"><span>In Review</span><span class="count">1</span></div>
+      <div class="col-header"><span>Done</span><span class="count">1</span></div>
+    </div>
+    <section class="lane">
+      <button type="button" class="lane-header" aria-expanded="true"><span>&#9660;</span><span>Dana Reyes</span><span class="count">5 work items</span></button>
+      <div class="lane-body">
+        <div class="column">
+          <div class="card" style="--type-color:#4bade8"><div class="card-title">Add export to CSV</div><div class="card-meta"><span class="type-badge" style="--type-color:#4bade8">Task</span><span class="card-key">APO-12</span><span class="priority">High</span><span class="epic-chip">Reporting</span><span>&#128172; 2</span><span class="avatar" title="Dana Reyes">DR</span></div></div>
+          <div class="card" style="--type-color:#e5493a"><div class="card-title">Login fails when the username contains an apostrophe &lt;script&gt;alert(1)&lt;/script&gt; and a very long title that wraps</div><div class="card-meta"><span class="type-badge" style="--type-color:#e5493a">Defect</span><span class="card-key">APO-9</span><span class="priority">Highest</span><span>&#128172; 0</span><span class="avatar unassigned" title="Unassigned">?</span></div></div>
+        </div>
+        <div class="column">
+          <div class="card" style="--type-color:#f5a623"><div class="card-title">Evaluate hosting options</div><div class="card-meta"><span class="type-badge" style="--type-color:#f5a623">Issue</span><span class="card-key">APO-4</span><span class="priority">Medium</span><span class="avatar">DR</span></div></div>
+          <div class="drop-indicator"></div>
+        </div>
+        <div class="column">
+          <div class="card" style="--type-color:#904ee2"><div class="card-title">Reporting</div><div class="card-meta"><span class="type-badge" style="--type-color:#904ee2">Epic</span><span class="card-key">APO-1</span><span class="priority">Medium</span><span class="avatar">DR</span></div></div>
+        </div>
+        <div class="column">
+          <div class="card" style="--type-color:#4bade8"><div class="card-title">Set up CI</div><div class="card-meta"><span class="type-badge" style="--type-color:#4bade8">Task</span><span class="card-key">APO-2</span><span class="resolution-label">Done</span><span class="avatar">DR</span></div></div>
+        </div>
+      </div>
+    </section>
+    <section class="lane">
+      <button type="button" class="lane-header" aria-expanded="false"><span>&#9654;</span><span>Unassigned</span><span class="count">2 work items</span></button>
+    </section>
+  </div>
+</main>
+</body></html>

@@ -11,6 +11,13 @@
 // names (session.can); the board never looks at a group name.
 // Search and filters (js/filters.js) narrow what is drawn; state.items stays
 // the full list, so lanes and drag ranks are computed from every item.
+// Sprints (docs/specs/sprints-and-backlog.md): the board draws only the
+// active sprint's non-epic items (boardItems), with the sprint bar and the
+// overdue banner above it; with no active sprint it shows an empty state.
+// Sprint states come from GET /api/sprint-states; none are named here.
+// The same script runs the work item dialog on the Backlog page
+// (backlog.html, body data-page="backlog"), where js/backlog.js draws the
+// page and this file hands it what it needs (backlogPage.init).
 (() => {
   const GROUP_BY_STORAGE_KEY = 'pm.groupBy';
   const FILTERS_STORAGE_PREFIX = 'pm.filters.';
@@ -20,6 +27,7 @@
   const RANK_STEP = 1000;
 
   const projectId = new URLSearchParams(location.search).get('project');
+  const onBoard = document.body.dataset.page !== 'backlog';
 
   // localStorage may be missing or throw (private mode, blocked storage);
   // the board works without it.
@@ -53,6 +61,8 @@
     attachmentTypes: { types: [], max_bytes: 0, max_per_item: 0 }, // GET /api/attachment-types
     me: null, // the signed-in user { id, name, username, group, permissions }
     items: [],
+    sprints: [], // GET /api/projects/:id/sprints (with counts)
+    sprintStates: [], // GET /api/sprint-states: [{ name, initial, active, final }]
     groupBy: storageGet(GROUP_BY_STORAGE_KEY) || 'none',
     filters: boardFilters.emptyFilters(), // search text and dropdowns, per project
     collapsed: new Set(),
@@ -170,6 +180,20 @@
     filterNotice: document.getElementById('filter-notice'),
     filterNoticeText: document.getElementById('filter-notice-text'),
     filterNoticeDismiss: document.getElementById('filter-notice-dismiss'),
+    navBoard: document.getElementById('nav-board'),
+    navBacklog: document.getElementById('nav-backlog'),
+    sprintBar: document.getElementById('sprint-bar'),
+    overdueBanner: document.getElementById('overdue-banner'),
+    filterBar: document.getElementById('filter-bar'),
+    backlogNotice: document.getElementById('backlog-notice'),
+    backlogNoticeText: document.getElementById('backlog-notice-text'),
+    backlogNoticeLink: document.getElementById('backlog-notice-link'),
+    backlogNoticeDismiss: document.getElementById('backlog-notice-dismiss'),
+    sprintField: document.getElementById('sprint-field'),
+    sprintSelect: document.getElementById('sprint-select'),
+    sprintNa: document.getElementById('sprint-na'),
+    sprintNote: document.getElementById('sprint-note'),
+    sprintWhere: document.getElementById('sprint-where'),
   };
 
   // ---------- helpers ----------
@@ -220,6 +244,26 @@
     return name.split(/\s+/).filter(Boolean).map((p) => p[0].toUpperCase()).slice(0, 2).join('');
   }
 
+  // ----- sprints -----
+  // State names come from the server's list, by flag.
+  const stateWith = (flag) => {
+    const s = state.sprintStates.find((x) => x[flag]);
+    return s ? s.name : null;
+  };
+  const isActiveSprint = (sprint) => Boolean(sprint) && sprint.state === stateWith('active');
+  const isFinalSprint = (sprint) => Boolean(sprint) && sprint.state === stateWith('final');
+  const activeSprint = () => state.sprints.find(isActiveSprint) || null;
+  const sprintById = (id) => state.sprints.find((s) => s.id === id) || null;
+  const backlogUrl = () => `backlog.html?project=${encodeURIComponent(projectId)}`;
+
+  // The board's items: the active sprint's non-epic items (none without an
+  // active sprint). Epics are never cards (AC 24).
+  function boardItems() {
+    const active = activeSprint();
+    if (!active) return [];
+    return state.items.filter((i) => i.sprint_id === active.id && !isEpicItem(i));
+  }
+
   let messageTimer = null;
   function showMessage(text) {
     els.message.textContent = text;
@@ -248,11 +292,13 @@
     return field ? item[field] ?? null : null;
   }
 
-  // Lanes are computed client-side from the full work item list, so an epic
-  // that is filtered out still has its lane; each lane then holds only the
-  // `visible` items. While a search or filter is active, empty lanes are hidden.
+  // Lanes are computed client-side from every item on the board (the active
+  // sprint), so an item that is filtered out still keeps its lane; each lane
+  // then holds only the `visible` items. An epic gets a lane only when one of
+  // its children is on the board (AC 29); the epic itself comes from the full
+  // list. While a search or filter is active, empty lanes are hidden.
   function computeLanes(visible) {
-    const items = state.items;
+    const items = boardItems();
     const lanes = [];
     if (state.groupBy === 'assignee') {
       const used = new Set(items.map((i) => i.assignee_id).filter((v) => v !== null));
@@ -262,7 +308,7 @@
       lanes.push({ key: 'none', label: 'Unassigned', value: null });
     } else if (state.groupBy === 'epic') {
       const used = new Set(items.map((i) => i.epic_id).filter((v) => v !== null));
-      const epics = items.filter((i) => isEpicItem(i) && used.has(i.id)).sort((a, b) => a.number - b.number);
+      const epics = state.items.filter((i) => isEpicItem(i) && used.has(i.id)).sort((a, b) => a.number - b.number);
       for (const e of epics) {
         lanes.push({ key: `e${e.id}`, label: `${e.key} ${e.title}`, value: e.id });
       }
@@ -403,6 +449,18 @@
   }
 
   function render() {
+    if (!onBoard) {
+      if (typeof backlogPage !== 'undefined') backlogPage.render();
+      return;
+    }
+    renderSprintBar();
+    const active = activeSprint();
+    els.filterBar.hidden = !active;
+    els.groupBy.closest('label').hidden = !active;
+    if (!active) {
+      els.board.replaceChildren(renderNoSprint());
+      return;
+    }
     const visible = visibleItems();
     renderFilterCount(visible.length);
     const lanes = computeLanes(visible);
@@ -431,7 +489,19 @@
           else state.collapsed.add(collapseKey);
           render();
         });
-        laneNode.append(headerBtn);
+        // An epic lane's title also opens the Epic View (AC 29), as the
+        // epic chip does; a separate button, since buttons cannot nest.
+        const laneEpic = state.groupBy === 'epic' && lane.value !== null ? itemById(lane.value) : null;
+        laneNode.append(
+          laneEpic
+            ? el(
+                'div',
+                { class: 'lane-head-row' },
+                headerBtn,
+                el('button', { type: 'button', class: 'link lane-epic-open', onclick: () => openLinked(laneEpic.id) }, `Open ${laneEpic.key}`)
+              )
+            : headerBtn
+        );
       }
       if (!collapsed) {
         const body = el('div', { class: 'lane-body', style: gridStyle() });
@@ -443,13 +513,62 @@
     els.board.replaceChildren(...nodes);
   }
 
+  // No active sprint (AC 25): the columns are not drawn.
+  function renderNoSprint() {
+    return el(
+      'div',
+      { class: 'empty' },
+      el('p', {}, el('strong', {}, 'No active sprint.')),
+      el('p', {}, 'The board shows the work in the active sprint. Start a sprint on the Backlog page.'),
+      readOnly() ? null : el('p', {}, 'Work items you create now go to the Backlog.'),
+      el('a', { href: backlogUrl() }, 'Go to the Backlog')
+    );
+  }
+
+  // The active sprint's bar and, when it is overdue, the warning banner
+  // (AC 26, Decision 19). Text only; the state word comes from the server.
+  function renderSprintBar() {
+    const active = activeSprint();
+    els.sprintBar.hidden = !active;
+    const overdue = sprintUtil.isOverdue(active, stateWith('active'));
+    els.overdueBanner.hidden = !overdue;
+    if (!active) {
+      els.sprintBar.replaceChildren();
+      els.overdueBanner.replaceChildren();
+      return;
+    }
+    const dates = sprintUtil.datesText(active);
+    const parts = [
+      el('h2', { class: 'sprint-name' }, active.name),
+      el('span', { class: 'badge state-active' }, active.state),
+      dates ? el('span', { class: 'sprint-meta' }, dates) : null,
+      overdue ? el('span', { class: 'badge overdue' }, '\u26A0 Overdue') : null,
+      el('a', { href: backlogUrl() }, 'Open Backlog'),
+      active.goal ? el('p', { class: 'sprint-goal' }, el('strong', {}, 'Goal:'), ` ${active.goal}`) : null,
+    ];
+    els.sprintBar.replaceChildren(...parts.filter(Boolean));
+    els.overdueBanner.replaceChildren(
+      ...(overdue
+        ? [
+            el('strong', {}, '\u26A0 Overdue'),
+            el('span', {}, `This sprint ended on ${active.end_date} (${sprintUtil.agoText(active.end_date)}).`),
+            el('a', { class: 'spacer', href: backlogUrl() }, 'Complete it on the Backlog page'),
+          ]
+        : [])
+    );
+  }
+
   function renderHeader() {
     const p = state.project;
-    document.title = `${p.key} board`;
+    document.title = `${p.key} ${onBoard ? 'board' : 'backlog'}`;
     els.crumb.textContent = `/ ${p.name}`;
     els.title.textContent = `${p.name} (${p.key})`;
     els.status.textContent = p.status;
     els.archivedBadge.hidden = !p.archived;
+    els.navBoard.href = `board.html?project=${encodeURIComponent(p.id)}`;
+    els.navBacklog.href = `backlog.html?project=${encodeURIComponent(p.id)}`;
+    if (!onBoard) return;
+    els.backlogNoticeLink.href = backlogUrl();
     els.createBtn.hidden = readOnly();
     els.groupBy.replaceChildren(...groupOptions().map((o) => el('option', { value: o.value }, o.label)));
     if (!groupOptions().some((o) => o.value === state.groupBy)) state.groupBy = 'none';
@@ -521,14 +640,8 @@
     if (beforeId === item.id) return;
     const patch = { status, rank: computeRank(item, status, lane, beforeId) };
     const field = GROUP_FIELDS[state.groupBy];
-    if (field && laneValueOf(item) !== lane.value) {
-      if (state.groupBy === 'epic' && isEpicItem(item) && lane.value !== null) {
-        showMessage(`${item.key} (${epicLabel()}) cannot be placed in another ${epicLabel().toLowerCase()} lane.`);
-        render();
-        return;
-      }
-      patch[field] = lane.value;
-    }
+    // Epics are never cards (AC 24), so no epic can be dropped into a lane.
+    if (field && laneValueOf(item) !== lane.value) patch[field] = lane.value;
     // Optimistic update, rolled back if the save fails.
     const snapshot = { ...item };
     Object.assign(item, patch);
@@ -616,7 +729,79 @@
   function syncEpicField() {
     const type = typeOf(els.form.elements.type.value);
     els.epicField.hidden = !epicType() || Boolean(type && type.isEpic);
+    syncSprintField();
   }
+
+  // ----- sprint field (AC 37) -----
+  // Backlog plus every open sprint as "<name> (<state>)". An item in a
+  // completed sprint shows it, disabled, with a note. For an epic type the
+  // select gives way to fixed text, also as soon as Type is switched to one.
+  // A saved item's sprint saves at once (PATCH); a new item sends it on Create.
+
+  const openSprints = () => state.sprints.filter((s) => !isFinalSprint(s));
+  let sprintSaving = false;
+
+  function fillSprintField(item) {
+    const current = item && item.sprint_id ? sprintById(item.sprint_id) : null;
+    const option = (s) => ({ value: String(s.id), label: `${s.name} (${s.state})` });
+    if (isFinalSprint(current)) {
+      fillSelect(els.sprintSelect, [option(current)], String(current.id));
+    } else {
+      const active = activeSprint();
+      const value = item ? (item.sprint_id ? String(item.sprint_id) : '') : active ? String(active.id) : '';
+      fillSelect(els.sprintSelect, [{ value: '', label: 'Backlog' }, ...openSprints().map(option)], value);
+    }
+    els.sprintSelect.dataset.saved = els.sprintSelect.value;
+    syncSprintField();
+  }
+
+  function syncSprintField() {
+    const type = typeOf(els.form.elements.type.value);
+    const epic = Boolean(type && type.isEpic);
+    const current = editing && editing.sprint_id ? sprintById(editing.sprint_id) : null;
+    const completed = isFinalSprint(current);
+    els.sprintSelect.hidden = epic;
+    els.sprintNa.hidden = !epic;
+    els.sprintNote.hidden = epic || !completed;
+    els.sprintSelect.disabled = readOnly() || completed || sprintSaving;
+    // Where a new item goes (AC 27, Decision 17).
+    let where = '';
+    if (!editing) {
+      const chosen = sprintById(Number(els.sprintSelect.value));
+      if (epic) where = 'Epics are not part of a sprint.';
+      else if (chosen) where = `This work item will be created in ${chosen.name}.`;
+      else if (!activeSprint()) where = 'No sprint is active. This work item will be created in the Backlog.';
+      else where = 'This work item will be created in the Backlog.';
+    }
+    els.sprintWhere.textContent = where;
+    els.sprintWhere.hidden = !where;
+  }
+
+  els.sprintSelect.addEventListener('change', async () => {
+    syncSprintField();
+    if (!editing || readOnly()) return;
+    const item = editing;
+    const previous = els.sprintSelect.dataset.saved;
+    const sprintId = els.sprintSelect.value ? Number(els.sprintSelect.value) : null;
+    els.detailError.textContent = '';
+    sprintSaving = true;
+    syncSprintField();
+    try {
+      const saved = await api.patch(`/api/issues/${item.id}`, { sprint_id: sprintId });
+      Object.assign(item, saved);
+      if (editing === item) els.sprintSelect.dataset.saved = els.sprintSelect.value;
+      historySaved(item.id);
+      await refreshCards();
+    } catch (err) {
+      if (editing === item) {
+        els.sprintSelect.value = previous;
+        els.detailError.textContent = `Could not change the sprint: ${err.message}`;
+      }
+    } finally {
+      sprintSaving = false;
+      if (editing === item) syncSprintField();
+    }
+  });
 
   // ----- band -----
 
@@ -737,10 +922,13 @@
     els.statusField.hidden = !item;
     els.resolutionField.hidden = true;
     syncResolutionField();
+    sprintSaving = false;
+    fillSprintField(item);
     syncEpicField();
     syncEpicOpen(item);
 
     for (const field of els.form.querySelectorAll('input, select, textarea')) field.disabled = ro;
+    syncSprintField(); // also disabled for an item in a completed sprint
     els.historyField.disabled = false; // History stays usable when read-only
     els.saveBtn.hidden = ro;
     els.saveBtn.textContent = item ? 'Save' : 'Create';
@@ -774,6 +962,8 @@
       epic_id: type && type.isEpic ? null : f.epic_id.value ? Number(f.epic_id.value) : null,
       description: f.description.value,
     };
+    // A new item's sprint goes with Create; a saved item's saves on change.
+    if (!editing && !(type && type.isEpic)) values.sprint_id = f.sprint_id.value ? Number(f.sprint_id.value) : null;
     if (editing) values.status = selectedStatus();
     // Left out for other statuses: the server clears it.
     if (editing && isTerminal(values.status)) values.resolution = f.resolution.value;
@@ -807,14 +997,14 @@
         // Created from an epic's Create child: go back to that epic.
         const epic = epicView.returnTo !== null && (await reloadThenFind(epicView.returnTo));
         if (epic) {
-          noticeIfHidden(created);
+          noticeIfHidden(created) || noticeIfOffBoard(created);
           openDetail(epic);
           return;
         }
       }
       els.dialog.close();
       await reloadItems();
-      if (created) noticeIfHidden(created);
+      if (created) noticeIfOffBoard(created) || noticeIfHidden(created);
     } catch (err) {
       els.detailError.textContent = err.message;
     }
@@ -1995,7 +2185,7 @@
   // only: they work the same for every group and on archived projects.
 
   const filterStorageKey = () => `${FILTERS_STORAGE_PREFIX}${state.project.id}`;
-  const visibleItems = () => state.items.filter((i) => boardFilters.matches(i, state.filters));
+  const visibleItems = () => boardItems().filter((i) => boardFilters.matches(i, state.filters));
 
   // The current lists, for dropping stale saved values.
   function filterMeta() {
@@ -2042,8 +2232,9 @@
     els.filterClear.disabled = !boardFilters.isActive(state.filters);
   }
 
+  // Counts the board's items only: the active sprint, no epics (AC 24).
   function renderFilterCount(shown) {
-    els.filterCount.textContent = `Showing ${shown} of ${state.items.length}`;
+    els.filterCount.textContent = `Showing ${shown} of ${boardItems().length}`;
   }
 
   function filtersChanged() {
@@ -2059,51 +2250,109 @@
     els.filterNotice.hidden = true;
   }
 
-  // A newly created item that the active filters hide gets a notice; the
-  // filters stay as they are (AC 21).
+  // A newly created item on the board that the active filters hide gets a
+  // notice; the filters stay as they are (AC 21). Returns whether it did.
   function noticeIfHidden(created) {
     const item = itemById(created.id) || created;
-    if (boardFilters.matches(item, state.filters)) return;
+    if (!onBoard || !boardItems().includes(item) || boardFilters.matches(item, state.filters)) return false;
     els.filterNoticeText.textContent = `Created ${item.key}, hidden by the current filters.`;
     els.filterNotice.hidden = false;
     clearTimeout(noticeTimer);
     noticeTimer = setTimeout(hideFilterNotice, NOTICE_MS);
+    return true;
   }
 
-  els.filterText.addEventListener('input', () => {
-    state.filters.text = els.filterText.value;
-    filtersChanged();
-  });
-  // There is no form here, but keep Enter from doing anything (AC 14).
-  els.filterText.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
-  for (const [field, select] of Object.entries(els.filterSelects)) {
-    select.addEventListener('change', () => {
-      state.filters[field] = select.value;
+  if (onBoard) {
+    els.filterText.addEventListener('input', () => {
+      state.filters.text = els.filterText.value;
       filtersChanged();
     });
+    // There is no form here, but keep Enter from doing anything (AC 14).
+    els.filterText.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+    for (const [field, select] of Object.entries(els.filterSelects)) {
+      select.addEventListener('change', () => {
+        state.filters[field] = select.value;
+        filtersChanged();
+      });
+    }
+    els.filterClear.addEventListener('click', () => {
+      state.filters = boardFilters.emptyFilters();
+      syncFilterControls();
+      filtersChanged(); // also removes the saved entry
+    });
+    els.filterNoticeDismiss.addEventListener('click', hideFilterNotice);
   }
-  els.filterClear.addEventListener('click', () => {
-    state.filters = boardFilters.emptyFilters();
-    syncFilterControls();
-    filtersChanged(); // also removes the saved entry
-  });
-  els.filterNoticeDismiss.addEventListener('click', hideFilterNotice);
+
+  // ---------- sprint notices ----------
+  // A work item created from the board that is not on it (no active sprint,
+  // or created into another container) gets a notice with the Backlog link
+  // (AC 27). Returns whether it did.
+
+  function noticeIfOffBoard(created) {
+    if (!onBoard) return false;
+    const item = itemById(created.id) || created;
+    if (isEpicItem(item) || boardItems().includes(item)) return false;
+    const sprint = item.sprint_id ? sprintById(item.sprint_id) : null;
+    const where = sprint ? sprint.name : 'the Backlog';
+    const why = activeSprint() ? 'it is not in the active sprint' : 'no sprint is active';
+    els.backlogNoticeText.textContent = `${item.key} was created in ${where}. It is not on the board because ${why}.`;
+    els.backlogNotice.hidden = false;
+    return true;
+  }
+
+  if (onBoard) els.backlogNoticeDismiss.addEventListener('click', () => { els.backlogNotice.hidden = true; });
+
+  // ---------- backlog page ----------
+  // What js/backlog.js needs from this file: the shared state, the dialog and
+  // the helpers. Everything it draws is text (el), never parsed HTML.
+
+  function backlogContext() {
+    return {
+      state,
+      el,
+      readOnly,
+      typeOf,
+      isEpicItem,
+      isTerminal,
+      userById,
+      itemById,
+      initials,
+      epicChip,
+      stateWith,
+      isActiveSprint,
+      isFinalSprint,
+      activeSprint,
+      sprintById,
+      showMessage,
+      reloadItems,
+      openDetail,
+      historySaved,
+    };
+  }
 
   // ---------- loading ----------
 
-  // render() applies the active search and filters to the fresh items.
+  // render() applies the active search and filters to the fresh items. The
+  // sprints come with them so the board, the Backlog page and the dialog's
+  // Sprint field agree.
   async function reloadItems() {
-    state.items = await api.get(`/api/projects/${state.project.id}/issues`);
+    const [items, sprints] = await Promise.all([
+      api.get(`/api/projects/${state.project.id}/issues`),
+      api.get(`/api/projects/${state.project.id}/sprints`),
+    ]);
+    state.items = items;
+    state.sprints = sprints;
     render();
   }
 
-  els.groupBy.addEventListener('change', () => {
-    state.groupBy = els.groupBy.value;
-    storageSet(GROUP_BY_STORAGE_KEY, state.groupBy);
-    render();
-  });
-
-  els.createBtn.addEventListener('click', () => openDetail(null));
+  if (onBoard) {
+    els.groupBy.addEventListener('change', () => {
+      state.groupBy = els.groupBy.value;
+      storageSet(GROUP_BY_STORAGE_KEY, state.groupBy);
+      render();
+    });
+    els.createBtn.addEventListener('click', () => openDetail(null));
+  }
 
   (async () => {
     try {
@@ -2117,7 +2366,7 @@
       return;
     }
     try {
-      const [project, statuses, terminal, resolutions, types, priorities, users, historyFields, linkOptions, attachmentTypes] = await Promise.all([
+      const [project, statuses, terminal, resolutions, types, priorities, users, historyFields, linkOptions, attachmentTypes, sprintStates] = await Promise.all([
         api.get(`/api/projects/${encodeURIComponent(projectId)}`),
         api.get('/api/statuses'),
         api.get('/api/terminal-status'),
@@ -2128,6 +2377,7 @@
         api.get('/api/history-fields'),
         api.get('/api/link-types'),
         api.get('/api/attachment-types'),
+        api.get('/api/sprint-states'),
       ]);
       Object.assign(state, {
         project,
@@ -2141,10 +2391,12 @@
         historyFields,
         linkOptions,
         attachmentTypes,
+        sprintStates,
       });
       renderHeader();
       fillHistoryFilter();
-      fillFilterControls();
+      if (onBoard) fillFilterControls();
+      else backlogPage.init(backlogContext());
       await reloadItems();
     } catch (err) {
       showMessage(err.message);

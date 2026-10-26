@@ -9,6 +9,8 @@ const { safeNext, loginUrl } = require('../public/js/redirect');
 const auth = require('../server/auth');
 const { startServer, tempDbPath, createProject, createItem } = require('./helpers');
 const { permissionsOf } = require('../server/groups');
+const { defaultStatus, terminalStatus } = require('../server/statuses');
+const { defaultResolution } = require('../server/resolutions');
 
 let app;
 let users;
@@ -352,7 +354,7 @@ test('an old database gains unique usernames and reporter_id, data intact (AC 23
   const now = '2026-01-01T00:00:00.000Z';
   old.prepare("INSERT INTO projects (name, key, created_at) VALUES ('Old', 'OLD', ?)").run(now);
   old.prepare(
-    "INSERT INTO issues (project_id, number, key, type, title, status, priority, assignee_id, rank, created_at, updated_at) VALUES (1, 1, 'OLD-1', 'Task', 'Legacy', 'To Do', 'Medium', 5, 1000, ?, ?)"
+    "INSERT INTO issues (project_id, number, key, type, title, status, priority, assignee_id, rank, created_at, updated_at) VALUES (1, 1, 'OLD-1', 'Task', 'Legacy', 'Planning', 'Medium', 5, 1000, ?, ?)"
   ).run(now, now);
   old.prepare("INSERT INTO comments (issue_id, author_id, body, created_at) VALUES (1, 6, 'old note', ?)").run(now);
   const issuesBefore = old.prepare('SELECT * FROM issues').all();
@@ -367,7 +369,9 @@ test('an old database gains unique usernames and reporter_id, data intact (AC 23
   assert.throws(() => db.prepare("INSERT INTO users (name, username) VALUES ('X', 'ALEX')").run(), /UNIQUE/);
 
   const issuesAfter = db.prepare('SELECT * FROM issues').all();
-  assert.deepEqual(issuesAfter.map(({ reporter_id, ...rest }) => rest), issuesBefore);
+  // The sprints migration (docs/specs/sprints-and-backlog.md AC 4) also adds
+  // sprint_id and sprint_rank; every other column is unchanged.
+  assert.deepEqual(issuesAfter.map(({ reporter_id, sprint_id, sprint_rank, ...rest }) => rest), issuesBefore);
   assert.ok(issuesAfter.every((i) => i.reporter_id === null));
   assert.deepEqual(db.prepare('SELECT * FROM comments').all(), commentsBefore);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM sessions').get().n, 0, 'everyone signed out');
@@ -384,4 +388,29 @@ test('a fresh database seeds alex, blake, casey and dana (AC 23)', () => {
   const db = openDb(tempDbPath());
   assert.deepEqual(db.prepare('SELECT username FROM users ORDER BY id').all().map((r) => r.username), ['alex', 'blake', 'casey', 'dana']);
   db.close();
+});
+
+test('legacy To Do / Done items move to the first / terminal status; Done gains the default resolution; idempotent', () => {
+  const dbPath = tempDbPath();
+  openDb(dbPath).close();
+  const old = new Database(dbPath);
+  const now = '2026-01-01T00:00:00.000Z';
+  old.prepare("INSERT INTO projects (name, key, created_at) VALUES ('Old', 'OLD', ?)").run(now);
+  const add = old.prepare(
+    "INSERT INTO issues (project_id, number, key, type, title, status, priority, rank, created_at, updated_at) VALUES (1, ?, ?, 'Task', 't', ?, 'Medium', 1000, ?, ?)"
+  );
+  add.run(1, 'OLD-1', 'To Do', now, now);
+  add.run(2, 'OLD-2', 'In Progress', now, now);
+  add.run(3, 'OLD-3', 'Done', now, now);
+  old.close();
+  for (let pass = 0; pass < 2; pass++) {
+    const db = openDb(dbPath);
+    const rows = db.prepare('SELECT key, status, resolution FROM issues ORDER BY number').all();
+    db.close();
+    assert.equal(rows[0].status, defaultStatus());
+    assert.equal(rows[1].status, 'In Progress');
+    assert.equal(rows[2].status, terminalStatus());
+    assert.equal(rows[0].resolution, null);
+    assert.equal(rows[2].resolution, defaultResolution());
+  }
 });

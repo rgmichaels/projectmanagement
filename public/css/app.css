@@ -1,55 +1,83 @@
+/* App palette (docs/design/STYLE.md part 3, app-restyle option A): the work
+   item dialog's tokens, promoted to :root so every page matches the dialog.
+   Gold is only a focus ring or accent on dark teal; mid teal is only a border
+   or rule, never text on a light background. */
 :root {
-  --bg: #f4f5f7;
+  --teal: #0b5d66;
+  --teal-mid: #65999e;
+  --teal-soft: #e5eded;
+  --page: #f8fafa;
+  --navy: #154973;
+  --linkblue: #004dd1;
+  --gold: #face00;
+  --ink: #000000;
+  --muted: #62666a;
+  --line: #d0d0ce;
+  --line2: #e4e4e4;
+  --danger: #c0300b;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* Legacy names the shared rules read, re-pointed at the tokens above. */
+  --bg: var(--page);
   --surface: #ffffff;
-  --column: #ebecf0;
-  --border: #dfe1e6;
-  --text: #172b4d;
-  --muted: #5e6c84;
-  --primary: #0052cc;
-  --danger: #de350b;
-  --neutral: #8993a4;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --column: var(--teal-soft);
+  --border: var(--line);
+  --text: var(--ink);
+  --primary: var(--teal);
+  --neutral: #62666a;
+  font-family: "Proxima Nova", "Helvetica Neue", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 14px;
   color: var(--text);
   background: var(--bg);
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; }
-h1 { font-size: 20px; margin: 0; }
-h2 { font-size: 16px; margin: 0 0 12px; }
-a { color: var(--primary); }
+body { margin: 0; background: var(--bg); }
+h1 { font-size: 20px; margin: 0; color: var(--teal); font-weight: 700; }
+h2 { font-size: 16px; margin: 0 0 12px; color: var(--teal); font-weight: 700; }
+a { color: var(--linkblue); }
+:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
 
 button, select, input, textarea { font: inherit; }
+/* Buttons: secondary white with navy, primary deep teal, action navy. */
 button {
-  border: 1px solid var(--border);
+  border: 1px solid var(--navy);
+  color: var(--navy);
   background: var(--surface);
-  border-radius: 3px;
+  border-radius: 4px;
   padding: 6px 12px;
+  font-weight: 700;
   cursor: pointer;
 }
-button.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
-button.danger { color: var(--danger); }
+button.primary { background: var(--teal); border-color: var(--teal); color: #fff; }
+button.navy { background: var(--navy); border-color: var(--navy); color: #fff; }
+button.danger { color: var(--danger); border-color: var(--line); }
+button[disabled] { opacity: 0.6; cursor: default; }
 button[hidden] { display: none; }
 
+/* Top bar: dark teal like the dialog band; gold focus ring on it. */
 .topbar {
-  background: var(--primary);
+  background: var(--teal);
   color: #fff;
   padding: 10px 20px;
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
 }
-.topbar .brand { color: #fff; font-weight: 600; text-decoration: none; }
-.topbar .session { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-.topbar .session button { padding: 3px 10px; }
+.topbar :focus-visible { outline-color: var(--gold); }
+.topbar .brand { color: #fff; font-weight: 700; font-size: 15px; text-decoration: none; }
+.topbar .crumb { color: #cfe3e5; min-width: 0; overflow-wrap: anywhere; }
+.topbar .nav-link { color: #fff; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.topbar .session { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.topbar .session button { padding: 3px 10px; white-space: nowrap; background: transparent; border-color: #fff; color: #fff; }
+.topbar .session button:hover { background: #fff; color: var(--teal); }
 
-/* Sign-in page */
+/* Sign-in page: the h1 is a teal title band across the top of the card. */
 .login { max-width: 420px; margin: 40px auto; }
-.login h1 { margin-bottom: 12px; }
+.login h1 { background: var(--teal); color: #fff; margin: -16px -16px 14px; padding: 14px 24px; border-radius: 8px 8px 0 0; font-size: 22px; }
 .user-list { border: none; padding: 0; margin: 0 0 8px; }
-.user-list legend { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
-label.user-option { flex-direction: row; align-items: center; gap: 8px; font-size: 14px; color: var(--text); margin: 0; padding: 6px 4px; cursor: pointer; }
+.user-list legend { color: var(--ink); font-weight: 700; font-size: 12px; margin-bottom: 6px; }
+label.user-option { flex-direction: row; align-items: center; gap: 8px; font-size: 14px; font-weight: 400; color: var(--text); margin: 0; padding: 8px; border-radius: 4px; cursor: pointer; }
+label.user-option:hover { background: var(--teal-soft); }
 .user-username { color: var(--muted); font-size: 12px; }
 .hint { color: var(--muted); font-size: 12px; }
 .reporter { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
@@ -63,44 +91,56 @@ label.user-option { flex-direction: row; align-items: center; gap: 8px; font-siz
 
 .panel {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
   padding: 16px;
   margin-bottom: 16px;
 }
 .form-row { display: flex; gap: 12px; flex-wrap: wrap; }
-label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; color: var(--muted); font-size: 12px; }
-label.toggle, label.group-by { flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 14px; color: var(--text); }
+label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; color: var(--ink); font-size: 12px; font-weight: 700; }
+label.toggle, label.group-by { flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text); }
 label[hidden] { display: none; }
-input, select, textarea { padding: 6px 8px; border: 1px solid var(--border); border-radius: 3px; color: var(--text); }
-.actions { display: flex; gap: 8px; }
+input, select, textarea { padding: 6px 8px; border: 1px solid var(--navy); border-radius: 4px; background: #fff; color: var(--text); max-width: 100%; }
+/* Field text stays regular weight inside the bold labels (the work item
+   dialog keeps its own rules). */
+.page input, .page select, .page textarea, dialog.app-dialog input, dialog.app-dialog select { font-weight: 400; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .error { color: var(--danger); min-height: 1em; margin: 4px 0; }
 
-.empty { text-align: center; padding: 40px; background: var(--surface); border: 1px dashed var(--border); border-radius: 4px; }
+.empty { text-align: center; padding: 40px; background: var(--surface); border: 1px dashed var(--teal-mid); border-radius: 8px; }
 
-table.projects { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); }
-table.projects th, table.projects td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
-table.projects tr.is-archived td { color: var(--muted); background: #fafbfc; }
-.row-actions { text-align: right; }
+/* Tables (Projects, Users): pale teal header, light row rules. */
+table.projects { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+table.projects th { background: var(--teal-soft); color: var(--teal); font-size: 12px; font-weight: 700; text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--teal-mid); }
+table.projects td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line2); overflow-wrap: break-word; }
+table.projects tbody tr:last-child td { border-bottom: none; }
+table.projects tbody tr:hover td { background: var(--page); }
+table.projects tr.is-archived td { color: var(--muted); background: var(--page); }
+.row-actions, table.projects td.row-actions { text-align: right; }
+.row-actions button { margin: 2px 0 2px 6px; }
+@media (max-width: 600px) {
+  table.projects th, table.projects td { padding: 8px 6px; }
+  table.projects .badge { white-space: normal; }
+  .row-actions button { padding: 5px 8px; }
+}
 
-.badge { display: inline-block; padding: 2px 6px; border-radius: 3px; background: var(--column); font-size: 11px; font-weight: 600; text-transform: uppercase; }
-.badge.archived { background: #fff0b3; color: #172b4d; }
-.badge[hidden] { display: none; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; background: var(--teal-soft); border: 1px solid var(--teal-mid); color: var(--ink); font-size: 11px; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+.badge.archived { background: #fff0b3; border-color: #c9a800; color: var(--ink); }
+.badge[hidden], .badge:empty { display: none; }
 
-/* Board search and filters */
-.filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; flex-basis: 100%; }
+/* Board search and filters: one white card. */
+.filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; flex-basis: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
 label.filter { flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text); }
 label.filter[hidden] { display: none; }
 label.filter input[type="search"] { width: 220px; max-width: 100%; }
-.filter-bar button[disabled] { opacity: 0.5; cursor: default; }
 .filter-count { color: var(--muted); font-size: 13px; }
-.notice { display: flex; align-items: center; gap: 12px; background: #deebff; border: 1px solid #4c9aff; color: var(--text); padding: 8px 12px; border-radius: 3px; margin-bottom: 12px; }
+.notice { display: flex; align-items: center; gap: 12px; background: var(--teal-soft); border: 1px solid var(--teal-mid); color: var(--text); padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; }
 .notice[hidden] { display: none; }
 
-.message { background: #ffebe6; border: 1px solid var(--danger); color: var(--danger); padding: 8px 12px; border-radius: 3px; margin-bottom: 12px; }
+.message { background: var(--surface); border: 1px solid var(--danger); border-left-width: 4px; color: var(--danger); font-weight: 700; padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; }
 .message[hidden] { display: none; }
 
-/* Board */
+/* Board: pale teal columns under teal uppercase headers with a mid-teal rule. */
 .board { overflow-x: auto; }
 .board-header, .lane-body { display: grid; gap: 8px; min-width: min-content; }
 .col-header {
@@ -108,11 +148,11 @@ label.filter input[type="search"] { width: 220px; max-width: 100%; }
   justify-content: space-between;
   padding: 8px 10px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   text-transform: uppercase;
-  color: var(--muted);
-  background: var(--column);
-  border-radius: 3px 3px 0 0;
+  color: var(--teal);
+  background: transparent;
+  border-bottom: 2px solid var(--teal-mid);
 }
 .count { color: var(--muted); font-weight: normal; }
 .lane { margin-top: 8px; }
@@ -124,13 +164,14 @@ label.filter input[type="search"] { width: 220px; max-width: 100%; }
   border: none;
   background: transparent;
   padding: 6px 4px;
-  font-weight: 600;
+  color: var(--teal);
+  font-weight: 700;
   text-align: left;
 }
 .lane-header .count { font-size: 12px; }
 .column {
   background: var(--column);
-  border-radius: 3px;
+  border-radius: 8px;
   padding: 6px;
   min-height: 60px;
   display: flex;
@@ -141,62 +182,88 @@ label.filter input[type="search"] { width: 220px; max-width: 100%; }
 .card {
   --type-color: var(--neutral);
   background: var(--surface);
-  border-radius: 3px;
+  border: 1px solid var(--line);
   border-left: 4px solid var(--type-color);
-  box-shadow: 0 1px 1px rgba(9, 30, 66, 0.25);
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(9, 30, 40, 0.12);
   padding: 8px 10px;
   cursor: pointer;
 }
+.card:hover { border-color: var(--teal-mid); border-left-color: var(--type-color); }
 .card[draggable="true"] { cursor: grab; }
 .card.dragging { opacity: 0.4; }
 .card-title { margin-bottom: 8px; word-break: break-word; }
 .card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
-.card-key { font-weight: 600; }
+.card-key { font: 700 12px var(--mono); color: var(--ink); }
+/* Type badge: white chip with black text and a type-coloured dot (white text
+   on the type colours fails contrast). The card's left edge keeps the colour. */
 .type-badge {
   --type-color: var(--neutral);
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: var(--type-color);
-  color: #fff;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
   font-weight: 600;
   font-size: 11px;
 }
+.type-badge .type-icon { display: none; } /* the dot stands in for the list icon */
+.type-badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--type-color); flex: none; }
 /* Neutral fallback for a type with no defined styling. */
-.type-badge.type-fallback { background: var(--neutral); }
-.epic-chip { background: #eae6ff; color: #403294; padding: 1px 5px; border-radius: 3px; font-weight: 600; cursor: pointer; }
+.type-badge.type-fallback { --type-color: var(--neutral); }
+.epic-chip { background: #eae6ff; color: #403294; padding: 1px 6px; border-radius: 4px; font-weight: 700; cursor: pointer; }
 .epic-chip:hover, .epic-chip:focus-visible { background: #c0b6f2; text-decoration: underline; }
+/* Colours come from server/resolutions.js; each passes 4.5:1 with white. */
 .resolution-label {
   --resolution-color: var(--neutral);
-  padding: 1px 5px;
-  border-radius: 3px;
+  padding: 1px 6px;
+  border-radius: 4px;
   background: var(--resolution-color);
   color: #fff;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 11px;
 }
-.priority { border: 1px solid var(--border); padding: 0 4px; border-radius: 3px; }
+.priority { border: 1px solid var(--line); padding: 0 5px; border-radius: 4px; }
 .avatar {
   margin-left: auto;
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--primary);
+  background: var(--teal);
   color: #fff;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 700;
 }
 .avatar.unassigned { background: var(--neutral); }
-.drop-indicator { height: 4px; border-radius: 2px; background: var(--primary); }
+.drop-indicator { height: 4px; border-radius: 2px; background: var(--navy); }
 
-dialog { border: none; border-radius: 4px; padding: 20px; width: min(560px, 95vw); box-shadow: 0 8px 24px rgba(9, 30, 66, 0.3); }
-dialog label { color: var(--muted); }
+dialog { border: none; border-radius: 8px; padding: 20px; width: min(560px, 95vw); box-shadow: 0 12px 36px rgba(9, 30, 40, 0.35); }
 dialog input, dialog textarea { width: 100%; }
+
+/* Small dialogs (Edit project): the same shell as the work item dialog, a
+   teal band title, a body on the page colour and a footer with the buttons
+   right-aligned. */
+dialog.app-dialog { padding: 0; width: min(480px, 95vw); background: var(--page); color: var(--ink); }
+dialog.app-dialog::backdrop { background: rgba(9, 30, 40, 0.45); }
+dialog.app-dialog .band { background: var(--teal); color: #fff; padding: 14px 24px; border-radius: 8px 8px 0 0; display: flex; align-items: center; gap: 8px; }
+dialog.app-dialog .band :focus-visible { outline-color: var(--gold); }
+dialog.app-dialog .band h2 { color: #fff; font-size: 20px; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+dialog.app-dialog .keychip { display: inline-flex; align-items: center; font: 600 12px var(--mono); color: #000; background: #fff; border-radius: 4px; padding: 2px 8px; white-space: nowrap; flex: none; }
+dialog.app-dialog .dialog-body { padding: 16px 24px 8px; }
+dialog.app-dialog .dialog-body label { margin-bottom: 12px; }
+dialog.app-dialog label.toggle { margin-bottom: 4px; }
+dialog.app-dialog label.toggle input { width: auto; }
+dialog.app-dialog select { width: 100%; }
+dialog.app-dialog .hint { margin: 0 0 8px; }
+dialog.app-dialog .dialog-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; padding: 12px 24px; border-top: 1px solid var(--line); background: #fff; border-radius: 0 0 8px 8px; }
+dialog.app-dialog .dialog-foot .error { margin: 0; flex: 1 1 100%; overflow-wrap: anywhere; }
+dialog.app-dialog .dialog-foot .error:empty { display: none; }
 
 /* Comment count chip on cards (shown for 0 too). */
 .comment-count { display: inline-flex; align-items: center; gap: 2px; }
@@ -217,7 +284,7 @@ dialog input, dialog textarea { width: 100%; }
 .message-body { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; }
 .message-editor { margin-top: 4px; }
 .message-actions { margin-top: 4px; }
-button.link { border: none; background: none; padding: 0; color: var(--primary); font-size: 12px; }
+button.link { border: none; background: none; padding: 0; color: var(--linkblue); font-size: 12px; font-weight: 400; text-decoration: underline; text-underline-offset: 2px; }
 button.link.danger { color: var(--danger); }
 
 /* The tab bar in the detail dialog (Children, Discussion, History, Links, Attachments). */
@@ -303,35 +370,14 @@ label.history-filter { flex-direction: row; align-items: center; gap: 6px; margi
 .epic-actions { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
 .epic-actions select { flex: 1; min-width: 120px; }
 
-/* Permission groups: header Users link and the Users page */
-.topbar .nav-link { color: #fff; text-decoration: none; font-weight: 600; }
-.topbar .nav-link:hover { text-decoration: underline; }
+/* Permission groups: the Users page */
 table.users .save-status { color: var(--muted); font-size: 0.9em; }
 table[hidden] { display: none; }
 
 /* ---------- Work item dialog (docs/specs/task-dialog-redesign.md) ----------
-   Palette from docs/design/STYLE.md part 2, scoped to this dialog only: the
-   board, project list, Users and login pages keep the :root palette above.
-   Gold and mid teal are never text on a light background. */
+   The palette tokens live in :root (app-restyle); the rules below are the
+   dialog-specific ones. Gold and mid teal are never text on a light background. */
 dialog#detail {
-  --teal: #0b5d66;
-  --teal-mid: #65999e;
-  --teal-soft: #e5eded;
-  --page: #f8fafa;
-  --navy: #154973;
-  --linkblue: #004dd1;
-  --gold: #face00;
-  --ink: #000000;
-  --line: #d0d0ce;
-  --line2: #e4e4e4;
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  /* The app variables the shared rules above read, re-pointed in here. */
-  --text: var(--ink);
-  --muted: #62666a;
-  --border: var(--line);
-  --primary: var(--teal);
-  --danger: #c0300b;
-  font-family: "Proxima Nova", "Helvetica Neue", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   color: var(--ink);
   background: var(--page);
   width: min(660px, 95vw);
@@ -392,16 +438,22 @@ dialog#detail .banner { background: var(--teal-soft); border: 1px solid var(--te
 /* Signature: the status track (a radio group). */
 dialog#detail fieldset.track { border: 0; margin: 0; padding: 0; min-width: 0; }
 dialog#detail .track legend { font-size: 12px; font-weight: 700; color: var(--ink); padding: 0; margin-bottom: 4px; }
-dialog#detail .steps { display: flex; flex-wrap: wrap; gap: 1px; background: var(--line); border: 1px solid var(--teal-mid); border-radius: 6px; overflow: hidden; }
-dialog#detail label.step { flex: 1 1 8em; position: relative; display: block; text-align: center; padding: 7px 8px; font-weight: 600; font-size: 13px; color: var(--muted); background: #fff; cursor: pointer; user-select: none; overflow-wrap: anywhere; }
+dialog#detail .steps { display: flex; flex-wrap: nowrap; overflow-x: auto; }
+dialog#detail label.step { --notch: 10px; flex: 1 1 0; min-width: 0; position: relative; display: block; text-align: center; padding: 9px 2px 9px calc(var(--notch) + 1px); margin-left: calc(2px - var(--notch)); font-weight: 600; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #323130; background: #f3f3f3; cursor: pointer; user-select: none;
+  clip-path: polygon(0 0, calc(100% - var(--notch)) 0, 100% 50%, calc(100% - var(--notch)) 100%, 0 100%, var(--notch) 50%); }
+dialog#detail label.step:first-child { margin-left: 0; padding-left: 6px; border-radius: 16px 0 0 16px;
+  clip-path: polygon(0 0, calc(100% - var(--notch)) 0, 100% 50%, calc(100% - var(--notch)) 100%, 0 100%); }
+dialog#detail label.step:last-child { padding-right: 6px; border-radius: 0 16px 16px 0;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, var(--notch) 50%); }
+dialog#detail label.step:first-child:last-child { clip-path: none; border-radius: 16px; }
 dialog#detail label.step input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
-dialog#detail label.step.past { background: var(--teal-soft); color: var(--ink); }
-dialog#detail label.step.now { background: var(--teal); color: #fff; font-weight: 700; }
-dialog#detail label.step.now span::before { content: "\25CF\00a0"; font-size: 9px; vertical-align: 1px; }
+dialog#detail label.step.past { background: #3aa655; color: #fff; }
+dialog#detail label.step.past span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+dialog#detail label.step.past::before { content: "\2713"; font-size: 14px; }
+dialog#detail label.step.now { background: #0b4a8f; color: #fff; font-weight: 700; }
 dialog#detail label.step:has(input:focus-visible) { outline: 2px solid var(--navy); outline-offset: -3px; }
-dialog#detail label.step.now:has(input:focus-visible) { outline-color: #fff; box-shadow: inset 0 0 0 4px var(--navy); }
+dialog#detail label.step.now:has(input:focus-visible) { box-shadow: inset 0 0 0 3px #fff; }
 dialog#detail .steps.locked label.step, dialog#detail .steps.locked label.step input { cursor: default; }
-dialog#detail .steps.locked label.step:not(.now):not(.past) { background: var(--teal-soft); }
 
 dialog#detail .props { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
 dialog#detail .props > label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; }
@@ -444,3 +496,127 @@ dialog#detail .detail-foot .spacer { margin-left: auto; }
   dialog#detail .band, dialog#detail .detail-body, dialog#detail .detail-foot { padding-left: 14px; padding-right: 14px; }
   dialog#detail .detail-foot .error:not(:empty) { flex-basis: 100%; }
 }
+
+/* ---------- Sprints and backlog (docs/specs/sprints-and-backlog.md,
+   docs/design/sprints-and-backlog option A, STYLE.md part 4) ----------
+   Uses only existing tokens (STYLE.md part 3). Every colour pair was checked:
+   white on --teal 7.6:1; --teal on --teal-soft 6.4:1; --muted on white 5.9:1,
+   on --page 5.6:1, on --teal-soft 4.9:1; --danger on white 5.9:1; black on
+   white or --teal-soft > 15:1. Gold and --teal-mid are never text. */
+
+/* Project sub-navigation: Board | Backlog (first element in <main>). */
+.subnav { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 0 0 16px; }
+.subnav a { padding: 8px 14px; color: var(--muted); font-weight: 700; text-decoration: none; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.subnav a:hover { color: var(--teal); }
+.subnav a[aria-current="page"] { color: var(--teal); border-bottom-color: var(--teal); }
+
+/* A sprint or the Backlog: one white panel with a pale teal header. */
+.sprint { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+.sprint.is-active { border-top: 4px solid var(--teal); }
+.sprint.is-completed { background: var(--page); }
+.sprint-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 12px; background: var(--teal-soft); border-bottom: 1px solid var(--teal-mid); }
+.sprint-toggle { border: none; background: none; padding: 2px 6px; color: var(--teal); font-size: 14px; }
+.sprint-name { font-size: 16px; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.sprint-meta { color: var(--muted); font-size: 12px; }
+.sprint-actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.sprint-actions .hint { max-width: 220px; }
+.sprint-goal { margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line2); overflow-wrap: anywhere; }
+.sprint-goal strong { color: var(--teal); }
+.badge.state-active { background: var(--teal); border-color: var(--teal); color: #fff; }
+.badge.state-completed { background: var(--surface); border-color: var(--line); color: var(--muted); }
+.badge.overdue { background: var(--surface); border: 1px solid var(--danger); color: var(--danger); }
+
+/* Collapsible extra sections (Epics, Completed sprints, Sprint history) use
+   <details class="sprint"><summary class="sprint-head">. */
+details.sprint > summary { list-style: none; cursor: pointer; }
+details.sprint > summary::-webkit-details-marker { display: none; }
+details.sprint > summary::before { content: "\25B8"; color: var(--teal); font-size: 14px; }
+details.sprint[open] > summary::before { content: "\25BE"; }
+details.sprint > summary .sprint-name { font-size: 14px; }
+
+/* Rows. */
+.brows { list-style: none; margin: 0; padding: 0; min-height: 44px; }
+.brows.drop-target { outline: 2px dashed var(--navy); outline-offset: -2px; background: var(--teal-soft); }
+.brow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 8px 12px; border-top: 1px solid var(--line2); cursor: pointer; }
+.brow:first-child { border-top: none; }
+.brow:hover { background: var(--page); }
+.brow.dragging { opacity: 0.4; }
+.brow-handle { flex: none; width: 16px; text-align: center; color: var(--muted); cursor: grab; user-select: none; }
+.brow-title { flex: 1 1 220px; min-width: 0; border: none; background: none; padding: 0; font-weight: 400; color: var(--ink); text-align: left; overflow-wrap: anywhere; }
+.brow .avatar { margin-left: 0; flex: none; }
+.brows > .drop-indicator { margin: 0 12px; }
+.status-pill { display: inline-block; padding: 0 8px; border-radius: 10px; background: var(--teal-soft); border: 1px solid var(--teal-mid); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.status-pill.is-done::before { content: "\2713\00a0"; }
+.brows-empty { margin: 10px 12px; padding: 14px 12px; text-align: center; color: var(--muted); border: 1px dashed var(--teal-mid); border-radius: 4px; }
+
+/* Quick create row. */
+.quick { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line2); background: var(--page); }
+.quick input { flex: 1 1 220px; }
+.quick .error { flex-basis: 100%; margin: 0; }
+.quick .error:empty { display: none; }
+
+/* Warnings: visible text, never colour alone. */
+.banner-warn { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; background: var(--surface); border: 1px solid var(--danger); border-left-width: 6px; border-radius: 4px; padding: 8px 12px; margin-bottom: 12px; }
+.banner-warn strong { color: var(--danger); }
+.banner-warn .spacer { margin-left: auto; }
+
+/* Board header for the active sprint. */
+.sprint-bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--teal); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
+.sprint-bar .sprint-goal { flex-basis: 100%; padding: 0; border: none; }
+.sprint-bar a { margin-left: auto; }
+
+/* Dialog pieces. */
+input[aria-invalid="true"], textarea[aria-invalid="true"] { border: 2px solid var(--danger); }
+dialog.app-dialog textarea { width: 100%; }
+dialog.app-dialog .field-error { color: var(--danger); font-size: 12px; margin: -6px 0 10px; }
+dialog.app-dialog .field-error:empty { display: none; }
+.counter { color: var(--muted); font-size: 12px; font-weight: 400; }
+.choices { border: 0; margin: 0 0 12px; padding: 0; }
+.choices legend { font-size: 12px; font-weight: 700; padding: 0; margin-bottom: 6px; }
+.choice { display: flex; align-items: flex-start; gap: 8px; padding: 10px; margin-bottom: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; }
+.choice:has(input[type="radio"]:checked) { border: 2px solid var(--teal); background: var(--teal-soft); padding: 9px; }
+.choice > input[type="radio"] { width: auto; margin-top: 3px; }
+.choice-body { flex: 1; min-width: 0; }
+.choice-label { display: block; margin: 0; font-size: 14px; font-weight: 700; }
+.choice .hint { margin: 2px 0 0; }
+.choice select, .choice input[type="text"] { margin-top: 6px; width: 100%; }
+.choice.is-disabled { background: var(--page); color: var(--muted); }
+.summary { margin: 0 0 12px; font-size: 15px; }
+
+/* Sprint history list. */
+.hist-list { list-style: none; margin: 0; padding: 0; }
+.hist-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 8px 12px; border-top: 1px solid var(--line2); }
+.hist-item:first-child { border-top: none; }
+.hist-text { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
+.hist-time { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.hist-changes { flex-basis: 100%; list-style: none; margin: 2px 0 0; padding: 0 0 0 12px; border-left: 2px solid var(--teal-mid); font-size: 13px; overflow-wrap: anywhere; }
+.hist-more { padding: 8px 12px; border-top: 1px solid var(--line2); }
+@media (max-width: 600px) { .sprint-actions { margin-left: 0; } .subnav a { padding: 8px 10px; } }
+
+/* Built-page additions: hidden states, the Backlog page wrapper and the
+   Sprint field in the work item dialog. */
+.sprint-bar[hidden], .banner-warn[hidden], .sprint[hidden], .brows-empty[hidden] { display: none; }
+.backlog-page .toolbar h1 { margin-right: 0; }
+.backlog-page .toolbar #create-sprint { margin-left: auto; }
+.backlog .empty { margin-bottom: 12px; }
+.backlog .empty p { margin: 0 0 8px; }
+.sprint-body[hidden] { display: none; }
+.sprint-head .badge { flex: none; }
+.sprint-foot { margin: 0; padding: 8px 12px; border-top: 1px solid var(--line2); }
+.brow .card-key { flex: none; }
+.brow .epic-chip { min-width: 0; overflow-wrap: anywhere; }
+.form-row .grow { flex: 1 1 140px; }
+.hist-loading { margin: 0; padding: 8px 12px; color: var(--muted); }
+.banner-warn.hist-error { margin: 12px; }
+dialog#detail .props > .sprint-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; }
+dialog#detail .props > .sprint-field[hidden] { display: none; }
+dialog#detail .sprint-field label { font-size: 12px; }
+dialog#detail .sprint-field .hint, dialog#detail .sprint-na { margin: 0; }
+dialog#detail .sprint-na, dialog#detail .sprint-where { font-size: 13px; color: var(--ink); }
+dialog#detail .sprint-where { grid-column: 1 / -1; margin: 0; }
+.lane-head-row { display: flex; align-items: center; gap: 8px; }
+.lane-head-row .lane-header { width: auto; flex: 1 1 auto; min-width: 0; }
+.lane-head-row .lane-epic-open { flex: none; }
+/* Board with no active sprint: filters and Group by hidden, Create stays right. */
+.filter-bar[hidden] { display: none; }
+.board-page .toolbar .group-by[hidden] + #create-item { margin-left: auto; }

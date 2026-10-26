@@ -31,6 +31,10 @@ function snapshot(db, field, value) {
       const i = db.prepare('SELECT key, title FROM issues WHERE id = ?').get(value);
       return { text: i ? `${i.key} ${i.title}` : null, id: value };
     }
+    case 'sprint-name': {
+      const s = db.prepare('SELECT name FROM sprints WHERE id = ?').get(value);
+      return { text: s ? s.name : null, id: value };
+    }
     default:
       return { text: String(value), id: null };
   }
@@ -91,7 +95,8 @@ function recordAttachmentChange(db, issueId, actor, { oldText = null, newText = 
 }
 
 // The change as the API returns it. A field no longer in the list keeps its
-// stored key as the label and is shown as plain text.
+// stored key as the label and is shown as plain text. An empty value reads
+// as the field's emptyText when it has one (the backlog for a sprint).
 function toChange(row) {
   const field = getField(row.field) || { key: row.field, label: row.field, kind: 'text' };
   const long = field.kind === 'long';
@@ -99,8 +104,8 @@ function toChange(row) {
     field: field.key,
     label: field.label,
     kind: field.kind,
-    old: long ? null : row.old_value,
-    new: long ? null : row.new_value,
+    old: long ? null : row.old_value ?? field.emptyText ?? null,
+    new: long ? null : row.new_value ?? field.emptyText ?? null,
     old_id: row.old_id,
     new_id: row.new_id,
   };

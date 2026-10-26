@@ -8,6 +8,8 @@
 //              long  : only that it changed, no old or new text
 //              user  : the id plus the user's display name
 //              issue : the id plus `<key> <title>` of that work item
+//              sprint-name: the id plus the sprint's name (a snapshot, so it
+//                      survives the sprint's deletion)
 //              link  : a link added or removed, as `<label> <other key>`
 //                      from this item's point of view, plus the other id.
 //                      It has no column (column: null): recordChanges skips
@@ -15,7 +17,11 @@
 //              file  : an attachment added (new = its file name) or removed
 //                      (old = its file name). No column either;
 //                      server/data/attachments.js records it.
-// `rank` is deliberately absent: reorders are bookkeeping, not history.
+//   emptyText - optional: what the API shows for an empty (null) value of
+//              the field; it is still stored as null (the backlog is a null
+//              sprint and reads "Backlog").
+// `rank` and `sprint_rank` are deliberately absent: reorders are bookkeeping,
+// not history.
 // To track a new editable column, add one entry here (tests/history.test.js
 // fails if an updatable column other than rank is missing). Field names only;
 // no status, type, priority or resolution value belongs here.
@@ -32,6 +38,7 @@ const HISTORY_FIELDS = [
   { key: 'priority', label: 'Priority', kind: 'text' },
   { key: 'assignee', column: 'assignee_id', label: 'Assignee', kind: 'user' },
   { key: 'epic', column: 'epic_id', label: epicType ? epicType.label || epicType.name : 'Parent', kind: 'issue' },
+  { key: 'sprint', column: 'sprint_id', label: 'Sprint', kind: 'sprint-name', emptyText: 'Backlog' },
   { key: 'resolution', label: 'Resolution', kind: 'text' },
   { key: 'link', column: null, label: 'Link', kind: 'link' },
   { key: 'attachment', column: null, label: 'Attachment', kind: 'file' },

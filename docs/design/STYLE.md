@@ -43,3 +43,39 @@ Part 1 records what `public/css/app.css` already does. Part 2 lists only the new
 **Do.** Use gold only on dark teal. Use `#65999e` only for borders and hover. Use link blue only for inline links. Show counts on every secondary section. Write empty states that say what to do. Insert user text with `textContent`.
 
 **Don't.** Don't use gold or `#65999e` as text on light backgrounds. Don't tint the dialog by type. Don't add a logo, seal, nav bar or official-site wording. Don't use external fonts or icons.
+
+## 3. App-wide restyle (app-restyle, recommended option A)
+
+Supersedes the "dialog-scoped" note in part 2 once the owner approves. Details and per-screen contract: `docs/design/app-restyle/README.md`.
+
+**Tokens.** Part 2 tokens move from `dialog#detail` to `:root`. Legacy variables are re-pointed: `--bg` = `--page`, `--column` = `--teal-soft`, `--border` = `--line`, `--text` = `--ink`, `--primary` = `--teal`, `--neutral` = `#62666a`. `--primary #0052cc` and `--danger #de350b` are retired.
+
+**New or changed components.**
+- Top bar (A): `--teal` background, white bold brand, outlined white Sign out, gold focus ring. (B: white with 3px teal bottom border.)
+- Table header: `--teal-soft` background, teal bold 12px text, `--teal-mid` bottom rule.
+- Board column: `--teal-soft`, radius 8 (B: white bordered). Column header: teal uppercase bold.
+- Filter bar: white card, `--line` border, radius 8.
+- Type badge: white chip, black text, type-colour dot (contrast fix). Badge: pill with `--teal-soft` fill.
+- Sign-in card (A): title band in teal like the dialog.
+- `button.navy` and the focus ring become global.
+
+**Do.** Keep the type colour on the card's left edge. **Don't.** Don't put white text on type colours; don't reintroduce `#0052cc`.
+
+## 4. Sprints and backlog (sprints-and-backlog, recommended option A)
+
+Full contract: `docs/design/sprints-and-backlog/README.md`. The CSS is `docs/design/sprints-and-backlog/src/sprints.css` (append to `public/css/app.css`). No new colours or tokens; only existing ones.
+
+**New components.**
+- Sub-navigation (`.subnav`): Board and Backlog links, current one `aria-current="page"` with a 3px teal underline. First element in `<main>` of the board and backlog pages.
+- Sprint panel (`.sprint`, `.is-active` adds a 4px teal top border, `.is-completed` uses the page colour): pale-teal header (`.sprint-head`) with toggle, name (`.sprint-name`), state badge, dates and counts (`.sprint-meta`), actions (`.sprint-actions`). Collapsible extras use `details.sprint > summary.sprint-head`.
+- State badges: `.badge.state-active` (teal fill, white text), planned (default pale teal), `.badge.state-completed` (outlined grey), `.badge.overdue` (white, danger border and text, with a warning sign and the word Overdue).
+- Backlog row (`.brow`): handle, type chip, key, title button (`.brow-title`), epic chip, priority, status pill (`.status-pill`, `.is-done` adds a check mark), avatar. List `.brows`; `.brows.drop-target` (dashed navy outline) for an empty or hovered container; the existing `.drop-indicator` marks the drop position; `.brows-empty` for empty states.
+- Quick create (`.quick`): a row on `--page` at the bottom of a list, input plus navy Create, inline `.error`.
+- Warning banner (`.banner-warn`): white, danger border with a 6px left edge, bold danger "Overdue" word plus text; `role="status"`. Also used for a recoverable load error (`role="alert"`) with a Retry button.
+- Sprint bar (`.sprint-bar`): white card with a 4px teal left edge above the board toolbar (name, state, dates, link, goal).
+- Complete dialog choices (`.choices`, `.choice`, `.choice-body`, `.choice-label`): radio cards; selected = 2px teal border and pale fill (the radio is also visible); disabled = page colour with a hint.
+- Sprint history list (`.hist-list`, `.hist-item`, `.hist-text`, `.hist-time`, `.hist-changes`).
+- Option B only (not built unless chosen): `.split` two-pane grid and `.sprint-tabs`.
+
+**Do.** Always write the state as a word (Active, Planned, Completed, Overdue) and mark done with a check mark; hide write controls for Viewers and archived projects; insert sprint names, goals, titles and actor names as text.
+**Don't.** Don't use colour alone for overdue or done; don't draw epics as cards or rows in sprints; don't use gold or `--teal-mid` as text.

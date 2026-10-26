@@ -55,7 +55,7 @@ test('status change persists and does not alter work items (AC 3, 4)', async () 
     assert.equal((await app.get(`/api/projects/${p.id}`)).body.status, status);
   }
   assert.deepEqual(await snapshotItems(p.id), before);
-  assert.equal((await app.patch(`/api/projects/${p.id}`, { status: 'Done' })).status, 400);
+  assert.equal((await app.patch(`/api/projects/${p.id}`, { status: 'Complete' })).status, 400);
 });
 
 test('there is no project delete endpoint (AC 5)', async () => {
@@ -142,7 +142,7 @@ test('work items of an archived project are read-only via the API (AC 11)', asyn
 
   const create = await app.post(`/api/projects/${p.id}/issues`, { title: 'new' });
   assert.ok(create.status >= 400 && create.status < 500);
-  const update = await app.patch(`/api/issues/${item.id}`, { status: 'Done', title: 'changed' });
+  const update = await app.patch(`/api/issues/${item.id}`, { status: 'Complete', title: 'changed' });
   assert.ok(update.status >= 400 && update.status < 500);
   assert.match(update.body.error, /archived/);
   const del = await app.del(`/api/issues/${item.id}`);
@@ -165,4 +165,31 @@ test('data and archived flag persist across a server restart (AC 8, 38)', async 
   assert.equal(proj.status, 'Completed');
   const items = (await app.get(`/api/projects/${p.id}/issues`)).body;
   assert.equal(items[0].title, 'survives');
+});
+
+// Edit project dialog (app restyle): one PATCH carries name, status and the
+// archived flag; the key never changes.
+test('edit project: rename, status and archive in one request; name is validated (edit dialog)', async () => {
+  const p = await createProject(app);
+  const res = await app.patch(`/api/projects/${p.id}`, { name: '  Renamed project  ', status: 'Completed', archived: true });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.name, 'Renamed project', 'trimmed');
+  assert.equal(res.body.status, 'Completed');
+  assert.equal(res.body.archived, true);
+  assert.equal(res.body.key, p.key, 'key unchanged');
+  const saved = (await app.get(`/api/projects/${p.id}`)).body;
+  assert.equal(saved.name, 'Renamed project');
+
+  for (const name of ['', '   ', 'x'.repeat(81), 42]) {
+    const bad = await app.patch(`/api/projects/${p.id}`, { name, status: 'Planning' });
+    assert.equal(bad.status, 400, JSON.stringify(name));
+    assert.ok(bad.body.error);
+  }
+  const after = (await app.get(`/api/projects/${p.id}`)).body;
+  assert.deepEqual([after.name, after.status, after.archived], ['Renamed project', 'Completed', true], 'a rejected edit changes nothing');
+
+  // Unarchive and reopen together, as the dialog sends it.
+  const reopen = await app.patch(`/api/projects/${p.id}`, { name: 'Renamed project', status: 'In Progress', archived: false });
+  assert.equal(reopen.status, 200);
+  assert.deepEqual([reopen.body.status, reopen.body.archived], ['In Progress', false]);
 });

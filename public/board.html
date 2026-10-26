@@ -14,6 +14,17 @@
   </header>
 
   <main class="page board-page">
+    <!-- Project sub-navigation; hrefs carry the project id (board.js). -->
+    <nav class="subnav" aria-label="Project pages">
+      <a id="nav-board" href="board.html" aria-current="page">Board</a>
+      <a id="nav-backlog" href="backlog.html">Backlog</a>
+    </nav>
+
+    <!-- The active sprint (docs/specs/sprints-and-backlog.md AC 26): name,
+         state, dates, overdue badge, Backlog link and goal, all set as text. -->
+    <div id="sprint-bar" class="sprint-bar" hidden></div>
+    <div id="overdue-banner" class="banner-warn" role="status" hidden></div>
+
     <section class="toolbar">
       <h1 id="project-title">Board</h1>
       <span class="badge" id="project-status"></span>
@@ -33,6 +44,13 @@
         <span id="filter-count" class="filter-count" aria-live="polite"></span>
       </div>
     </section>
+
+    <!-- A work item created while it is not on the board (no active sprint). -->
+    <div id="backlog-notice" class="notice" role="status" hidden>
+      <span id="backlog-notice-text"></span>
+      <a id="backlog-notice-link" href="backlog.html">Open Backlog</a>
+      <button type="button" id="backlog-notice-dismiss" class="link">Dismiss</button>
+    </div>
 
     <div id="filter-notice" class="notice" role="status" hidden>
       <span id="filter-notice-text"></span>
@@ -78,7 +96,16 @@
           <label>Priority <select name="priority"></select></label>
           <label>Type <select name="type"></select></label>
           <label id="epic-field" class="epic-field"><span id="epic-label"></span> <select name="epic_id"></select></label>
+          <!-- Sprint: Backlog plus the open sprints (names and states from the
+               server); fixed text for epic types; disabled for a completed sprint. -->
+          <div id="sprint-field" class="sprint-field">
+            <label for="sprint-select">Sprint</label>
+            <select id="sprint-select" name="sprint_id"></select>
+            <p id="sprint-na" class="sprint-na" hidden>Not applicable (epics are not part of a sprint)</p>
+            <p id="sprint-note" class="hint" hidden>Completed sprints are read-only.</p>
+          </div>
           <label id="resolution-field" hidden>Resolution <select name="resolution"></select></label>
+          <p id="sprint-where" class="sprint-where" role="status" hidden></p>
         </div>
         <p class="reporter" id="reporter" hidden></p>
 
@@ -210,6 +237,7 @@
   <script src="js/historyFormat.js"></script>
   <script src="js/richText.js"></script>
   <script src="js/filters.js"></script>
+  <script src="js/sprints.js"></script>
   <script src="js/board.js"></script>
 </body>
 </html>
