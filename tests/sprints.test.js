@@ -630,3 +630,53 @@ test('archived projects: every sprint and membership write is 409; reads work; s
   assert.deepEqual(list.map((s) => s.state), [activeSprintState(), initialSprintState()], 'archiving changes no state');
   assert.equal((await app.get(`/api/projects/${p.id}/sprint-history`)).status, 200);
 });
+
+// ---------- backlog bulk move contract (docs/specs/backlog-bulk-move.md AC 15-17, 21, 23, 24, 28) ----------
+
+test('bulk move contract: sequential PATCH { sprint_id } puts items at the bottom in call order, one history entry each (bulk AC 15-17, 21, 28)', async () => {
+  const p = await createProject(app);
+  const target = await newSprint(p.id, { name: 'Target' });
+  const already = await createItem(app, p.id, { sprint_id: target.id });
+  const backlog = [];
+  for (const title of ['a', 'b', 'c', 'd', 'stay']) backlog.push(await createItem(app, p.id, { title }));
+  // Backlog order d, a, stay, b, c (not id order): the client sends in Backlog order.
+  const [ia, ib, ic, id, istay] = backlog;
+  assert.equal((await app.patch(`/api/issues/${id.id}`, { sprint_rank: ia.sprint_rank - 500 })).status, 200);
+  assert.equal((await app.patch(`/api/issues/${istay.id}`, { sprint_rank: ia.sprint_rank + 1 })).status, 200);
+  assert.deepEqual(keys(await container(p.id, 'backlog')), [id.key, ia.key, istay.key, ib.key, ic.key]);
+  const before = await Promise.all([id, ia, ib, ic].map((i) => getItem(i.id)));
+  const blake = await app.client('blake');
+  for (const item of [id, ia, ib, ic]) {
+    const res = await blake.patch(`/api/issues/${item.id}`, { sprint_id: target.id });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+  }
+  assert.deepEqual(keys(await container(p.id, target.id)), [already.key, id.key, ia.key, ib.key, ic.key], 'below the existing item, in call order');
+  assert.deepEqual(keys(await container(p.id, 'backlog')), [istay.key], 'the rest of the Backlog keeps its order');
+  for (const [i, item] of [id, ia, ib, ic].entries()) {
+    const after = await getItem(item.id);
+    for (const field of ['status', 'resolution', 'epic_id', 'assignee_id', 'priority', 'type']) assert.deepEqual(after[field], before[i][field], field);
+    const changes = await sprintChanges(item.id);
+    assert.equal(changes.length, 1, item.key);
+    assert.deepEqual([changes[0].old, changes[0].new, changes[0].actor], ['Backlog', 'Target', 'Blake Chen']);
+  }
+});
+
+test('bulk move contract: a completed target is 409 for every item, a deleted one 400; nothing changes (bulk AC 23, 24, 28)', async () => {
+  const p = await createProject(app);
+  const items = [];
+  for (const title of ['a', 'b', 'c']) items.push(await createItem(app, p.id, { title }));
+  const done = await activeSprint(p.id, { name: 'Done sprint' });
+  assert.equal((await app.post(`/api/sprints/${done.id}/complete`, { disposition: 'backlog' })).status, 200);
+  const gone = await newSprint(p.id, { name: 'Gone' });
+  assert.equal((await app.del(`/api/sprints/${gone.id}`)).status, 204);
+  const before = snapshot();
+  for (const item of items) {
+    let res = await app.patch(`/api/issues/${item.id}`, { sprint_id: done.id });
+    assert.equal(res.status, 409, item.key);
+    assert.match(res.body.error, /Completed sprints/);
+    res = await app.patch(`/api/issues/${item.id}`, { sprint_id: gone.id });
+    assert.equal(res.status, 400, item.key);
+  }
+  assert.deepEqual(snapshot(), before);
+  assert.deepEqual(keys(await container(p.id, 'backlog')), keys(items));
+});

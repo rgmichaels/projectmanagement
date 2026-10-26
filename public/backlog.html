@@ -16,6 +16,8 @@
   <!-- The Backlog page (docs/specs/sprints-and-backlog.md AC 28-38, 45;
        docs/design/sprints-and-backlog option A): the active sprint, planned
        sprints, the Backlog, then Epics, Completed sprints and Sprint history.
+       Backlog rows can be ticked and moved to a sprint together
+       (docs/specs/backlog-bulk-move.md, design option B).
        js/backlog.js draws the sections; js/board.js runs the work item
        dialog below, which is the same markup as on board.html. -->
   <main class="page backlog-page">
@@ -74,6 +76,22 @@
       <p class="error" id="sprint-delete-error" role="alert"></p>
       <button type="button" id="sprint-delete-cancel">Cancel</button>
       <button type="button" id="sprint-delete-confirm" class="danger">Delete sprint</button>
+    </div>
+  </dialog>
+
+  <!-- Confirm a bulk move of BULK_CONFIRM_MIN or more work items into the
+       active sprint (docs/specs/backlog-bulk-move.md AC 13, 14). Cancel has
+       focus when it opens; Escape and Cancel send nothing. -->
+  <dialog id="bulk-confirm-dialog" class="app-dialog" aria-labelledby="bulk-confirm-heading">
+    <div class="band"><h2 id="bulk-confirm-heading">Move work items?</h2></div>
+    <div class="dialog-body">
+      <p id="bulk-confirm-text"></p>
+      <p class="hint">They keep their Backlog order and go to the bottom of the sprint.</p>
+    </div>
+    <div class="dialog-foot">
+      <p class="error" id="bulk-confirm-error" role="alert"></p>
+      <button type="button" id="bulk-confirm-cancel">Cancel</button>
+      <button type="button" id="bulk-confirm-ok" class="primary">Move work items</button>
     </div>
   </dialog>
 
@@ -295,6 +313,7 @@
   <script src="js/richText.js"></script>
   <script src="js/filters.js"></script>
   <script src="js/sprints.js"></script>
+  <script src="js/bulkMove.js"></script>
   <script src="js/backlog.js"></script>
   <script src="js/board.js"></script>
 </body>

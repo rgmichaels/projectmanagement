@@ -620,3 +620,59 @@ dialog#detail .sprint-where { grid-column: 1 / -1; margin: 0; }
 /* Board with no active sprint: filters and Group by hidden, Create stays right. */
 .filter-bar[hidden] { display: none; }
 .board-page .toolbar .group-by[hidden] + #create-item { margin-left: auto; }
+
+/* ---------- Backlog bulk move (docs/specs/backlog-bulk-move.md,
+   docs/design/backlog-bulk-move option B, STYLE.md part 5) ----------
+   The design's shared block and its option B block, without the mockup
+   stand-ins (.is-hover, .is-focus, .scrollbox). Only existing tokens. */
+/* Row checkbox: a 30px hit area around an 18px box, before the drag handle. */
+.brow-select { display: inline-flex; align-items: center; justify-content: center; flex: none; margin: 0 0 0 -6px; padding: 6px; cursor: pointer; }
+.brow-select input { width: 18px; height: 18px; margin: 0; padding: 0; accent-color: var(--teal); cursor: pointer; }
+.brow-select input:disabled { cursor: default; }
+/* Selected row: pale teal fill AND a 3px teal left edge AND the ticked box (never colour alone). */
+.brow.is-selected, .brow.is-selected:hover { background: var(--teal-soft); box-shadow: inset 3px 0 0 var(--teal); }
+.brows.is-busy .brow { cursor: default; }
+/* Header pieces. */
+.sel-count { font-weight: 700; color: var(--teal); font-size: 13px; white-space: nowrap; }
+.sel-count:empty { display: none; }
+.bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.bulk label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 13px; font-weight: 700; }
+.bulk select { min-width: 180px; max-width: 260px; }
+.bulk select:disabled { background: var(--teal-soft); color: var(--muted); }
+.bulk .hint { margin: 0; }
+.bulk-note { margin: 0; color: var(--muted); font-size: 12px; }
+/* Result message inside the Backlog panel, under the header. */
+.bulk-result { padding: 10px 12px 0; }
+.bulk-result .notice, .bulk-result .banner-warn { margin: 0 0 10px; }
+.bulk-result .banner-warn { display: block; }
+.bulk-result p { margin: 0 0 4px; }
+.bulk-result .lead { display: flex; gap: 8px; align-items: baseline; }
+.bulk-result .lead > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.fail-list { margin: 4px 0 4px; padding-left: 20px; overflow-wrap: anywhere; }
+.fail-list .card-key { margin-right: 2px; }
+.bulk-result .notice button.link, .bulk-result .banner-warn button.link { margin-left: auto; flex: none; }
+.bulk-result .notice .tick { color: var(--teal); font-weight: 700; }
+dialog.app-dialog .dialog-body p { margin: 0 0 8px; overflow-wrap: anywhere; }
+
+/* Option B: a dark teal selection strip inside the (sticky) Backlog header. */
+.sprint.sticky { overflow: visible; }
+.sprint.sticky > .sprint-head { position: sticky; top: 0; z-index: 2; }
+.sel-strip { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; background: var(--teal); color: #fff; margin: 6px -12px -10px; padding: 8px 12px; }
+.sel-strip .sel-count { color: #fff; font-size: 14px; }
+.sel-strip .bulk { margin-left: auto; }
+.sel-strip .bulk label, .sel-strip .bulk-note { color: #fff; }
+.sel-strip :focus-visible { outline-color: var(--gold); }
+.sel-strip button { background: #fff; color: var(--teal); border-color: #fff; }
+.sel-strip button[disabled] { opacity: 0.75; }
+.sel-strip select:disabled { background: #fff; color: var(--muted); }
+
+/* Built-page additions: nothing drawn with no selection (the count stays in
+   the DOM as the live region), hidden states, the "Clear selection" link in
+   white on the strip, and the rounded top corners of the sticky header. */
+.sel-strip.is-empty { display: contents; }
+.bulk[hidden] { display: none; }
+.sel-strip button.link { background: none; border: none; padding: 0; color: #fff; font-size: 13px; font-weight: 400; }
+.sprint.sticky > .sprint-head { border-radius: 7px 7px 0 0; }
+.sprint.sticky > .sprint-body > :last-child { border-radius: 0 0 7px 7px; }
+/* The strip spans the header edge to edge (flex-basis 100% plus the two 12px negative margins). */
+.sprint-head > .sel-strip { flex-basis: calc(100% + 24px); }

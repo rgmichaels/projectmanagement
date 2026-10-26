@@ -706,9 +706,10 @@ test('the dialog palette is the app palette in :root (app restyle, supersedes re
   const badge = css.slice(css.indexOf('.type-badge {'), css.indexOf('}', css.indexOf('.type-badge {')));
   assert.match(badge, /color: var\(--ink\)/);
   assert.doesNotMatch(badge, /background: var\(--type-color\)/);
-  // Gold appears only on dark teal: the top bar, the dialog bands and the dark summary panel.
+  // Gold appears only on dark teal: the top bar, the dialog bands, the dark
+  // summary panel and the Backlog selection strip (backlog bulk move option B).
   for (const line of css.split('\n').filter((l) => /var\(--gold\)/.test(l))) {
-    assert.match(line, /\.topbar|\.band|\.epicchip|\.x:hover|\.title-in:focus|\.darkpanel/, line);
+    assert.match(line, /\.topbar|\.band|\.epicchip|\.x:hover|\.title-in:focus|\.darkpanel|\.sel-strip/, line);
   }
   assert.match(css, /^:focus-visible \{ outline: 2px solid var\(--teal\)/m, 'global focus ring');
   assert.doesNotMatch(css, /@import|url\(\s*['"]?https?:/, 'no external fonts or images');
@@ -741,7 +742,7 @@ test('description image thumbnails show under the read view too (redesign AC 12)
 // ---------- sprints and backlog (docs/specs/sprints-and-backlog.md AC 28, 32, 50, 51) ----------
 
 const SPRINT_SERVER_FILES = ['server/data/sprints.js', 'server/data/sprintHistory.js', 'server/routes/sprints.js', 'server/sprintStates.js', 'server/sprintEvents.js'];
-const SPRINT_CLIENT_FILES = ['public/js/backlog.js', 'public/js/sprints.js', 'public/backlog.html'];
+const SPRINT_CLIENT_FILES = ['public/js/backlog.js', 'public/js/sprints.js', 'public/js/bulkMove.js', 'public/backlog.html'];
 
 test('sprint SQL appears only in server/data/ and the schema; routes call the data layer (AC 50)', () => {
   const sprintSql = /\b(FROM|INTO|UPDATE|JOIN)\s+sprints\b/i;
@@ -871,4 +872,70 @@ test('the sprint styles from the design are appended to app.css (design src/spri
   assert.ok(rules.length > 40);
   for (const rule of rules) assert.ok(css.includes(rule.trim()), rule);
   assert.ok(!css.includes('.split {'), 'Option B is not built');
+});
+
+// ---------- backlog bulk move (docs/specs/backlog-bulk-move.md AC 1, 2, 8-13, 19, 21, 27) ----------
+
+test('bulk move: checkboxes only on writable Backlog rows, no select-all, one confirm constant (AC 1, 2, 13, 19)', () => {
+  const js = read(path.join(root, 'public/js/backlog.js'));
+  assert.match(js, /const BULK_CONFIRM_MIN = 10;/);
+  assert.equal((js.match(/BULK_CONFIRM_MIN = /g) || []).length, 1, 'defined once');
+  assert.match(js, /ctx\.isActiveSprint\(sprint\) && items\.length >= BULK_CONFIRM_MIN/);
+  // Row checkboxes: only for the writable list of the Backlog (sprintId null).
+  assert.match(js, /const selectable = writable && sprintId === null;/);
+  assert.equal((js.match(/type: 'checkbox'/g) || []).length, 1, 'one checkbox, the row one');
+  assert.match(js, /'aria-label': `Select \$\{item\.key\} \$\{item\.title\}`/);
+  // The epics list builds its own rows, without renderRow, so no checkbox.
+  const epics = js.slice(js.indexOf('function renderEpics('), js.indexOf('function renderCompleted('));
+  assert.doesNotMatch(epics, /renderRow\(|renderSelect\(|checkbox/);
+  // No select-all or other select-many shortcut.
+  for (const file of ['public/js/backlog.js', 'public/backlog.html', 'public/js/bulkMove.js']) {
+    assert.doesNotMatch(read(path.join(root, file)), /select[ -]?all|selectAll/i, file);
+  }
+  // A checkbox click never opens the dialog or starts a drag.
+  const select = js.slice(js.indexOf('function renderSelect('), js.indexOf('function renderRow('));
+  assert.match(select, /stopPropagation\(\)/);
+  assert.match(js, /if \(pressOnSelect\) \{\s*e\.preventDefault\(\);/);
+});
+
+test('bulk move: one PATCH of sprint_id per item through the shared helper, one reload (AC 21, 25)', () => {
+  const js = read(path.join(root, 'public/js/backlog.js'));
+  const run = js.slice(js.indexOf('async function startBulkMove('), js.indexOf('// ---------- quick create'));
+  assert.match(run, /bulkMoveUtil\.run\(/);
+  assert.match(run, /api\.patch\(`\/api\/issues\/\$\{item\.id\}`, \{ sprint_id: sprint\.id \}\)/);
+  assert.doesNotMatch(run, /sprint_rank/, 'no rank: the server places each at the bottom');
+  assert.equal((run.match(/ctx\.reloadItems\(\)/g) || []).length, 1);
+  assert.doesNotMatch(run, /Promise\.all/, 'never in parallel');
+  // The targets: active then planned, from the state helpers (AC 9).
+  assert.match(js, /const bulkTargets = \(\) => \[ctx\.activeSprint\(\), \.\.\.plannedSprints\(\)\]\.filter\(Boolean\);/);
+  // No new server endpoint (Decision 2).
+  assert.doesNotMatch(read(path.join(root, 'server/routes/issues.js')), /bulk/i);
+});
+
+test('bulk move: the confirm dialog matches the app dialogs; scripts load in order (AC 13)', () => {
+  const html = read(path.join(root, 'public/backlog.html'));
+  const start = html.indexOf('<dialog id="bulk-confirm-dialog"');
+  assert.ok(start > 0);
+  const dialog = html.slice(start, html.indexOf('</dialog>', start));
+  assert.match(dialog, /class="app-dialog" aria-labelledby="bulk-confirm-heading"/);
+  assert.match(dialog, /<div class="band"><h2 id="bulk-confirm-heading">/);
+  assert.match(dialog, /<p class="hint">They keep their Backlog order and go to the bottom of the sprint\.<\/p>/);
+  const buttons = dialog.match(/<button\b[^>]*>/g);
+  assert.deepEqual(buttons, ['<button type="button" id="bulk-confirm-cancel">', '<button type="button" id="bulk-confirm-ok" class="primary">']);
+  const order = ['src="js/sprints.js"', 'src="js/bulkMove.js"', 'src="js/backlog.js"'].map((s) => html.indexOf(s));
+  assert.ok(order.every((p) => p !== -1));
+  assert.deepEqual([...order].sort((a, b) => a - b), order);
+  const js = read(path.join(root, 'public/js/backlog.js'));
+  assert.match(js, /els\.bulkDialog\.showModal\(\);\s*els\.bulkCancel\.focus\(\);/, 'Cancel is focused');
+});
+
+test('bulk move: the option B styles from the design are in app.css; options A and C are not', () => {
+  const css = read(path.join(root, 'public/css/app.css'));
+  const design = read(path.join(root, 'docs/design/backlog-bulk-move/b-selection-strip.html'));
+  const block = design.slice(design.indexOf('/* ===== Backlog bulk move'), design.indexOf('.mock-note'));
+  const mock = /is-hover|is-focus|scrollbox/;
+  const rules = block.split('\n').map((l) => l.trim()).filter((l) => /^[.a-z].*\{.*\}$/i.test(l) && !mock.test(l));
+  assert.ok(rules.length > 30, String(rules.length));
+  for (const rule of rules) assert.ok(css.includes(rule), rule);
+  assert.ok(!css.includes('.hide-check'), 'option C is not built');
 });

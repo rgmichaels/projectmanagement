@@ -5,17 +5,29 @@
 // containers by drag and drop (one PATCH of sprint_id and sprint_rank);
 // quick-create rows add items at the bottom of a container; sprints are
 // created, edited, started, completed and deleted from their headers.
+// Backlog rows (only those) have a checkbox; the ticked ones move to a
+// sprint together from the selection strip in the sticky Backlog header
+// (docs/specs/backlog-bulk-move.md, design option B; js/bulkMove.js).
 // js/board.js loads the lists and items, runs the work item dialog and calls
 // backlogPage.init(ctx) and backlogPage.render(). Sprint states and event
 // labels come from the server; nothing here names a state, kind, status or
 // type. Everything is inserted as text (ctx.el), never parsed as HTML.
 const backlogPage = (() => {
   const RANK_STEP = 1000;
+  const BULK_CONFIRM_MIN = 10; // bulk moves of this many or more into the active sprint are confirmed
   const TITLE_MAX = 200;
   const HISTORY_PAGE = 50;
 
   let ctx = null;
   const view = {
+    // Backlog bulk move (docs/specs/backlog-bulk-move.md): ticked Backlog
+    // item ids, the chosen target sprint id, a run in progress and the last
+    // run's result message. Page-view state only.
+    selected: new Set(),
+    bulkTarget: null,
+    bulkBusy: false,
+    bulkResult: null,
+    bulkFocus: false, // put focus back in the Backlog header after the next render
     collapsed: new Set(), // container keys whose body is collapsed (this page view only)
     open: new Set(), // <details> keys the user opened: epics, done-sprints, history, c<id>
     dragId: null,
@@ -63,6 +75,11 @@ const backlogPage = (() => {
     completeError: $('complete-error'),
     completeCancel: $('complete-cancel'),
     completeConfirm: $('complete-confirm'),
+    bulkDialog: $('bulk-confirm-dialog'),
+    bulkHeading: $('bulk-confirm-heading'),
+    bulkText: $('bulk-confirm-text'),
+    bulkCancel: $('bulk-confirm-cancel'),
+    bulkOk: $('bulk-confirm-ok'),
   };
 
   // ---------- data helpers ----------
@@ -99,15 +116,41 @@ const backlogPage = (() => {
     );
   }
 
+  // The row checkbox (bulk move AC 1, 3, 7): a label around the box so the
+  // hit area is larger. Its click never reaches the row (no dialog) and a
+  // press on it never starts a drag (see dragstart below).
+  function renderSelect(item, li) {
+    const el = ctx.el;
+    const box = el('input', {
+      type: 'checkbox',
+      'aria-label': `Select ${item.key} ${item.title}`,
+      checked: view.selected.has(item.id),
+      disabled: view.bulkBusy,
+    });
+    box.addEventListener('change', () => {
+      if (view.bulkBusy) return;
+      if (box.checked) view.selected.add(item.id);
+      else view.selected.delete(item.id);
+      li.classList.toggle('is-selected', box.checked);
+      syncSelection();
+    });
+    const label = el('label', { class: 'brow-select' }, box);
+    label.addEventListener('click', (e) => e.stopPropagation());
+    label.addEventListener('pointerdown', () => { pressOnSelect = true; });
+    return label;
+  }
+
   // One row (AC 32). `writable`: a handle and draggable (not in a completed
-  // sprint, not for Viewers or archived projects).
-  function renderRow(item, writable) {
+  // sprint, not for Viewers or archived projects). `selectable`: a checkbox
+  // first (Backlog rows only, never read-only; bulk move AC 1, 19).
+  function renderRow(item, writable, selectable) {
     const el = ctx.el;
     const epic = item.epic_id ? ctx.itemById(item.epic_id) : null;
     const done = ctx.isTerminal(item.status);
+    const selected = selectable && view.selected.has(item.id);
     const li = el(
       'li',
-      { class: 'brow', 'data-id': item.id, draggable: writable ? 'true' : undefined },
+      { class: `brow${selected ? ' is-selected' : ''}`, 'data-id': item.id, draggable: writable ? 'true' : undefined },
       writable ? el('span', { class: 'brow-handle', 'aria-hidden': 'true' }, '⋮⋮') : null,
       typeBadge(item),
       el('span', { class: 'card-key' }, item.key),
@@ -117,6 +160,7 @@ const backlogPage = (() => {
       el('span', { class: `status-pill${done ? ' is-done' : ''}`, title: `Status: ${item.status}` }, item.status),
       avatar(item)
     );
+    if (selectable) li.prepend(renderSelect(item, li));
     // The title button is the keyboard target; a click anywhere else on the
     // row opens the item too (the epic chip opens its epic instead).
     li.addEventListener('click', (e) => {
@@ -125,6 +169,10 @@ const backlogPage = (() => {
     });
     if (writable) {
       li.addEventListener('dragstart', (e) => {
+        if (pressOnSelect) {
+          e.preventDefault(); // the checkbox area is not a drag source
+          return;
+        }
         view.dragId = item.id;
         e.dataTransfer.effectAllowed = 'move';
         e.dataTransfer.setData('text/plain', String(item.id));
@@ -140,12 +188,20 @@ const backlogPage = (() => {
   }
 
   // The list of a container. `sprintId` null is the backlog; `writable`
-  // false makes it read-only (completed sprint, Viewer, archived).
+  // false makes it read-only (completed sprint, Viewer, archived). Only the
+  // writable Backlog list has row checkboxes (bulk move AC 1, 19).
   function renderList(sprintId, label, emptyText, writable) {
     const el = ctx.el;
     const items = itemsIn(sprintId);
-    const ul = el('ul', { class: 'brows', 'aria-label': `${label} work items`, 'data-sprint': sprintId === null ? '' : String(sprintId) });
-    if (items.length) ul.append(...items.map((i) => renderRow(i, writable)));
+    const selectable = writable && sprintId === null;
+    const busy = selectable && view.bulkBusy;
+    const ul = el('ul', {
+      class: `brows${busy ? ' is-busy' : ''}`,
+      'aria-label': `${label} work items`,
+      'aria-busy': busy ? 'true' : undefined,
+      'data-sprint': sprintId === null ? '' : String(sprintId),
+    });
+    if (items.length) ul.append(...items.map((i) => renderRow(i, writable, selectable)));
     else ul.append(el('li', { class: 'brows-empty' }, emptyText));
     if (writable) {
       ul.addEventListener('dragover', (e) => onDragOver(e, ul));
@@ -165,14 +221,15 @@ const backlogPage = (() => {
     const el = ctx.el;
     const key = keyOf(sprintId);
     const id = `quick-${key}`;
-    const input = el('input', { id, maxlength: String(TITLE_MAX), placeholder: 'What needs to be done?', autocomplete: 'off', 'data-key': key });
+    const busy = sprintId === null && view.bulkBusy; // disabled while a bulk move runs
+    const input = el('input', { id, maxlength: String(TITLE_MAX), placeholder: 'What needs to be done?', autocomplete: 'off', 'data-key': key, disabled: busy });
     const error = el('p', { class: 'error', role: 'alert', id: `${id}-error` });
     const form = el(
       'form',
       { class: 'quick', novalidate: true },
       el('label', { class: 'visually-hidden', for: id }, `Title for a new work item in ${sprintId === null ? 'the Backlog' : label}`),
       input,
-      el('button', { type: 'submit', class: 'navy' }, 'Create'),
+      el('button', { type: 'submit', disabled: busy, class: 'navy' }, 'Create'),
       error
     );
     form.addEventListener('submit', (e) => {
@@ -291,17 +348,155 @@ const backlogPage = (() => {
       renderList(null, 'Backlog', empty, writable),
       writable ? renderQuick(null, 'Backlog') : null
     );
+    // Read-only (Viewer, archived): the header and rows as before, no
+    // selection strip and no checkboxes (bulk move AC 19). Otherwise the
+    // header is sticky so the strip stays in view while ticking (option B).
     return el(
       'section',
-      { class: 'sprint', 'aria-labelledby': 'backlog-name', 'data-key': key },
+      { class: `sprint${writable ? ' sticky' : ''}`, 'aria-labelledby': 'backlog-name', 'data-key': key },
       el(
         'div',
         { class: 'sprint-head' },
         toggle(key, 'Backlog', body),
         el('h2', { class: 'sprint-name', id: 'backlog-name' }, 'Backlog'),
-        el('span', { class: 'sprint-meta' }, sprintUtil.count(n, 'item'))
+        el('span', { class: 'sprint-meta' }, sprintUtil.count(n, 'item')),
+        writable ? renderSelStrip() : null
       ),
+      writable ? renderBulkResult() : null,
       body
+    );
+  }
+
+  // ---------- bulk move: header strip and result (docs/specs/backlog-bulk-move.md) ----------
+
+  // The live pieces of the selection strip, updated in place when a box is
+  // ticked so focus stays on the checkbox.
+  let bulkEls = null;
+  // A press on a row checkbox, until the pointer is released: no drag.
+  let pressOnSelect = false;
+
+  // The sprints a bulk move can target (AC 9): the active one, then the
+  // planned ones, in page order. Never a completed sprint or the Backlog.
+  const bulkTargets = () => [ctx.activeSprint(), ...plannedSprints()].filter(Boolean);
+  const bulkTargetSprint = () => bulkTargets().find((x) => x.id === view.bulkTarget) || null;
+
+  // The dark teal strip (option B, AC 4, 8-11, new "Clear selection" AC):
+  // "N selected", Clear selection, then "Move to [sprint] [Move]". The count
+  // is always in the DOM (role="status", empty at 0); with nothing ticked
+  // the strip draws nothing (CSS .is-empty).
+  function renderSelStrip() {
+    const el = ctx.el;
+    const targets = bulkTargets();
+    if (view.bulkTarget !== null && !bulkTargetSprint()) view.bulkTarget = null; // gone or completed (AC 24)
+    const count = el('span', { class: 'sel-count', role: 'status' });
+    const clear = el('button', { type: 'button', class: 'link sel-clear', onclick: clearSelection }, 'Clear selection');
+    let select = null;
+    let move = null;
+    const group = el('div', { class: 'bulk', role: 'group', 'aria-label': 'Move selected work items' });
+    if (targets.length) {
+      select = el(
+        'select',
+        { id: 'bulk-target' },
+        el('option', { value: '', disabled: true }, 'Choose a sprint'),
+        ...targets.map((x) => el('option', { value: String(x.id) }, `${x.name} (${x.state})`))
+      );
+      if (view.bulkTarget === null) select.selectedIndex = 0;
+      else select.value = String(view.bulkTarget);
+      select.addEventListener('change', () => {
+        view.bulkTarget = select.value ? Number(select.value) : null;
+        syncSelection();
+      });
+      move = el('button', { type: 'button', class: 'navy', onclick: startBulkMove }, 'Move');
+      group.append(el('label', { for: 'bulk-target' }, 'Move to'), select, move);
+    } else {
+      // AC 10: no active or planned sprint.
+      group.append(
+        el('span', { class: 'bulk-note' }, 'Create a sprint first.'),
+        el('button', { type: 'button', class: 'navy', disabled: view.bulkBusy, onclick: () => openSprintForm(null) }, 'Create sprint')
+      );
+    }
+    const strip = el('div', { class: 'sel-strip' }, count, clear, group);
+    bulkEls = { strip, count, clear, group, select, move };
+    syncSelection();
+    return strip;
+  }
+
+  // Brings the strip in line with the selection, the chosen sprint and a run
+  // in progress (AC 4, 8, 10, 11, 26).
+  function syncSelection() {
+    if (!bulkEls) return;
+    const n = view.selected.size;
+    const { strip, count, clear, group, select, move } = bulkEls;
+    count.textContent = n ? `${n} selected` : '';
+    strip.classList.toggle('is-empty', n === 0);
+    clear.hidden = n === 0;
+    clear.disabled = view.bulkBusy;
+    group.hidden = n === 0;
+    if (select) select.disabled = view.bulkBusy;
+    if (move) {
+      move.disabled = view.bulkBusy || !bulkTargetSprint();
+      move.textContent = view.bulkBusy ? 'Moving...' : 'Move';
+    }
+  }
+
+  // Clear selection: unticks every row; no server call.
+  function clearSelection() {
+    if (view.bulkBusy) return;
+    view.selected.clear();
+    render();
+    const first = els.root.querySelector('.brows[data-sprint=""] .brow-select input');
+    const target = first && first.offsetParent !== null ? first : els.root.querySelector('[data-key="backlog"] .sprint-toggle');
+    if (target) target.focus();
+  }
+
+  // The last run's message inside the Backlog panel, under the header
+  // (design states S6-S12): success is a notice (role="status"), a failure
+  // a warning (role="alert") with the failed keys as a list.
+  function renderBulkResult() {
+    const el = ctx.el;
+    const r = view.bulkResult;
+    if (!r) return null;
+    const dismiss = el('button', {
+      type: 'button',
+      class: 'link',
+      'aria-describedby': 'bulk-result-lead',
+      onclick: () => {
+        view.bulkResult = null;
+        render();
+        const toggleBtn = els.root.querySelector('[data-key="backlog"] .sprint-toggle');
+        if (toggleBtn) toggleBtn.focus();
+      },
+    }, 'Dismiss');
+    if (r.kind === 'success') {
+      return el(
+        'div',
+        { class: 'bulk-result' },
+        el(
+          'div',
+          { class: 'notice', role: 'status' },
+          el('span', { class: 'tick', 'aria-hidden': 'true' }, '✓'),
+          el('span', { id: 'bulk-result-lead' }, r.lead),
+          dismiss
+        )
+      );
+    }
+    const failList = r.failures.length
+      ? [
+          r.kind === 'stopped' ? el('p', {}, 'Could not move:') : null,
+          el('ul', { class: 'fail-list' }, ...r.failures.map((f) => el('li', {}, el('span', { class: 'card-key' }, f.key), ` (${f.message})`))),
+          r.more ? el('p', {}, `and ${r.more} more`) : null,
+        ]
+      : [];
+    return el(
+      'div',
+      { class: 'bulk-result' },
+      el(
+        'div',
+        { class: 'banner-warn', role: 'alert' },
+        el('p', { class: 'lead' }, el('span', { id: 'bulk-result-lead' }, el('strong', {}, `⚠ ${r.label}`), ` ${r.lead}`), dismiss),
+        ...failList,
+        r.leftIds && r.leftIds.some((id) => view.selected.has(id)) ? el('p', { class: 'hint' }, r.hint) : null
+      )
     );
   }
 
@@ -458,6 +653,11 @@ const backlogPage = (() => {
       ? document.activeElement.closest('.quick').querySelector('input').dataset.key
       : null;
     renderNotices();
+    // Bulk move AC 5, 19: only items still in the Backlog stay selected;
+    // nothing is selectable when read-only.
+    const inBacklog = new Set(ctx.readOnly() ? [] : itemsIn(null).map((i) => i.id));
+    for (const id of view.selected) if (!inBacklog.has(id)) view.selected.delete(id);
+    bulkEls = null;
     const nodes = [];
     const active = ctx.activeSprint();
     if (s().sprints.length === 0) {
@@ -483,6 +683,14 @@ const backlogPage = (() => {
     if (refocus) {
       const input = els.root.querySelector(`.quick input[data-key="${refocus}"]`);
       if (input) input.focus();
+    }
+    if (view.bulkFocus && !view.bulkBusy) {
+      // After a bulk run: Move again when items are still ticked, else the
+      // result's Dismiss (which is described by the message).
+      view.bulkFocus = false;
+      const result = els.root.querySelector('.bulk-result button.link');
+      const target = bulkEls && bulkEls.move && !bulkEls.move.disabled && view.selected.size ? bulkEls.move : result;
+      if (target) target.focus();
     }
   }
 
@@ -576,6 +784,85 @@ const backlogPage = (() => {
     }
   }
 
+  // ---------- bulk move (docs/specs/backlog-bulk-move.md AC 11-25) ----------
+
+  for (const type of ['pointerup', 'pointercancel']) document.addEventListener(type, () => { pressOnSelect = false; });
+
+  // The confirm dialog for BULK_CONFIRM_MIN or more items into the active
+  // sprint (AC 13, 14). Resolves true only on the confirm button; Cancel,
+  // Escape and closing resolve false. Names and counts are inserted as text.
+  let bulkConfirmDone = null;
+  function confirmBulk(sprint, n) {
+    els.bulkHeading.textContent = `Move ${bulkMoveUtil.count(n, 'work item')} to ${sprint.name}?`;
+    els.bulkText.textContent = `${sprint.name} is the active sprint, so these ${bulkMoveUtil.count(n, 'work item')} will appear on the board right away.`;
+    els.bulkOk.textContent = `Move ${bulkMoveUtil.count(n, 'work item')}`;
+    els.bulkDialog.returnValue = '';
+    els.bulkDialog.showModal();
+    els.bulkCancel.focus();
+    return new Promise((resolve) => { bulkConfirmDone = resolve; });
+  }
+  els.bulkCancel.addEventListener('click', () => els.bulkDialog.close(''));
+  els.bulkOk.addEventListener('click', () => els.bulkDialog.close('confirm'));
+  els.bulkDialog.addEventListener('close', () => {
+    const done = bulkConfirmDone;
+    bulkConfirmDone = null;
+    if (done) done(els.bulkDialog.returnValue === 'confirm');
+  });
+
+  // Move: the ticked Backlog items, in Backlog order, one PATCH of sprint_id
+  // each (no sprint_rank: the server puts each at the bottom of the target),
+  // best effort, then one reload (AC 11-25).
+  async function startBulkMove() {
+    if (view.bulkBusy || ctx.readOnly()) return;
+    const sprint = bulkTargetSprint();
+    // The set is fixed now (AC 14): a re-render while the dialog is open
+    // does not change what is moved.
+    const items = itemsIn(null).filter((i) => view.selected.has(i.id));
+    if (!sprint || !items.length) return; // nothing to submit (AC 8, 26)
+    if (ctx.isActiveSprint(sprint) && items.length >= BULK_CONFIRM_MIN) {
+      if (!(await confirmBulk(sprint, items.length))) return; // nothing sent; selection and sprint kept
+      if (view.bulkBusy) return;
+    }
+    view.bulkBusy = true;
+    view.bulkResult = null;
+    render();
+    let result;
+    try {
+      result = await bulkMoveUtil.run(items, {
+        patch: (item) => api.patch(`/api/issues/${item.id}`, { sprint_id: sprint.id }),
+        // A 400 may mean the target sprint was deleted (AC 24): ask once more.
+        targetGone: async () => {
+          const list = await api.get(`/api/projects/${projectId()}/sprints`);
+          const now = list.find((x) => x.id === sprint.id);
+          return !now || ctx.isFinalSprint(now);
+        },
+      });
+    } finally {
+      view.bulkBusy = false;
+    }
+    for (const { item, saved } of result.moved) {
+      const current = ctx.itemById(item.id);
+      if (current && saved) Object.assign(current, saved);
+      view.selected.delete(item.id);
+      ctx.historySaved(item.id);
+    }
+    view.bulkResult = bulkMoveUtil.summary(result, sprint.name);
+    // The "still ticked" hint shows only while one of these is still ticked
+    // (an item deleted meanwhile leaves the Backlog and the selection).
+    view.bulkResult.leftIds = [...result.failed.map((f) => f.item.id), ...result.notAttempted.map((i) => i.id)];
+    if (view.bulkResult.kind === 'success') {
+      view.selected.clear();
+      view.bulkTarget = null; // no sprint preselected next time (AC 10)
+    }
+    view.bulkFocus = true;
+    try {
+      await ctx.reloadItems(); // once per run, not per item (AC 25)
+    } catch (err) {
+      render();
+      ctx.showMessage(`The page could not be refreshed after the move: ${err.message}`);
+    }
+  }
+
   // ---------- quick create (AC 34) ----------
 
   function setQuickError(input, error, text) {
@@ -590,7 +877,7 @@ const backlogPage = (() => {
   }
 
   async function quickCreate(sprintId, input, error) {
-    if (ctx.readOnly() || input.dataset.busy) return;
+    if (ctx.readOnly() || input.dataset.busy || (sprintId === null && view.bulkBusy)) return;
     const title = input.value.replace(/[\r\n]+/g, ' ').trim();
     if (!title) {
       setQuickError(input, error, 'Title is required.');

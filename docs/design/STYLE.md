@@ -79,3 +79,29 @@ Full contract: `docs/design/sprints-and-backlog/README.md`. The CSS is `docs/des
 
 **Do.** Always write the state as a word (Active, Planned, Completed, Overdue) and mark done with a check mark; hide write controls for Viewers and archived projects; insert sprint names, goals, titles and actor names as text.
 **Don't.** Don't use colour alone for overdue or done; don't draw epics as cards or rows in sprints; don't use gold or `--teal-mid` as text.
+
+## 5. Backlog bulk move (backlog-bulk-move, option A recommended)
+
+Full contract and the CSS: `docs/design/backlog-bulk-move/README.md` and the "Backlog bulk move" block in `a-header-actions.html`. No new tokens.
+
+**New components.**
+- Row checkbox (`label.brow-select > input`): first item of a Backlog row, 18px box in a 30px hit area, teal accent. Backlog rows only.
+- Selected row (`.brow.is-selected`): pale teal fill, 3px teal left edge and the ticked box.
+- Selection count (`.sel-count`, `role="status"`): bold teal 13px, empty when nothing is selected.
+- Bulk control (`.bulk`): "Move to" label, select ("Choose a sprint"), navy Move button; sits in `.sprint-actions` of the Backlog header.
+- Bulk result (`.bulk-result`): holds an existing `.notice` (success) or `.banner-warn` (failure, with `.fail-list`) inside the panel under the header.
+- Option B only: `.sel-strip` (dark teal strip in a sticky header). Option C only: `.hide-check` (checkbox revealed on hover or focus).
+
+**Do.** Show selection with fill, edge and tick together; keep Cancel focused in the confirm dialog; insert names, titles and server messages as text. **Don't.** Don't add a select-all checkbox; don't draw checkboxes on sprint rows or Epics; don't rely on colour alone for success or failure.
+
+## 6. Project dropdown and Sprints screen (sprints-and-project-scope, topbar A + Sprints A recommended)
+
+Full contract and CSS: `docs/design/sprints-and-project-scope/README.md` and the shared `<style>` block in its files. No new colours or tokens.
+
+**New components.**
+- Project dropdown (`.project-scope > label + select.project-select`): white native select in the teal top bar, small pale label "Project", bold 13px, 200 to 340px wide, ellipsis. Gold focus ring (existing). Topbar B only: `.outlined` (transparent, chevron), `.sep`. Topbar C only: `.has-nav`, `.topnav`.
+- Sprint picker (`.sprint-pick`): "Sprint" label plus native select, bold; disabled = pale teal. `.sprint-why` is the one-line "why this sprint" note (muted 12px, `role="status"`).
+- Sortable table (`table.sprint-table` in `.table-wrap`): header like `table.projects`; each `th` holds `button.sort` with an arrow glyph; `th[aria-sort="ascending|descending"]` adds a 3px teal bottom edge and a teal arrow. `.sort-line` shows "Sprint order" or "Sorted by X, direction" plus a "Reset sort" link button. `.key-btn` and `.title-btn` are the text-only row buttons.
+- Table wrapper `.table-wrap` scrolls sideways on narrow screens (table min-width 720px).
+
+**Do.** Show sort as arrow plus `aria-sort` plus the word in the sort line; keep Cancel focused in confirms; insert project, sprint and item text as text. **Don't.** Don't colour-only the sorted column; don't add write controls to the Sprints table; don't list archived projects in the dropdown.
