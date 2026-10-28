@@ -1117,7 +1117,19 @@
       setEstimateError('');
     }
     syncEpicField();
+    syncTimeTab();
   });
+
+  // The Time tab follows the Type select of a saved item, like the Estimate
+  // field: switching to an epic type hides it at once (so no time is logged
+  // to the still-saved task), switching back shows it (time-tracking AC 26, 43).
+  function syncTimeTab() {
+    if (!editing) return;
+    const type = typeOf(els.form.elements.type.value);
+    els.tabTime.hidden = Boolean(type && type.isEpic);
+    // Moves off a hidden selected Time tab, and re-applies panel visibility.
+    selectTab(els.tabTime.hidden && selectedTab === 'time' ? 'discussion' : selectedTab);
+  }
   els.statusSteps.addEventListener('change', () => {
     syncTrack();
     syncResolutionField();

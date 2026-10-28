@@ -1106,6 +1106,12 @@ test('the Time tab and Estimate field: text only, no extra submit, epics exclude
   const js = boardJs();
   assert.match(js, /els\.tabTime\.hidden = !\(item && !isEpicItem\(item\)\)/, 'no Time tab for an epic');
   assert.match(js, /els\.estimateField\.hidden = epic;/, 'no Estimate field for an epic');
+  // Switching Type to an epic hides the Time tab at once, before Save (AC 26, 43).
+  const typeChange = js.slice(js.indexOf("els.form.elements.type.addEventListener('change'"), js.indexOf('els.statusSteps.addEventListener'));
+  assert.match(typeChange, /syncTimeTab\(\);/, 'the Type change syncs the Time tab');
+  const syncTime = js.slice(js.indexOf('function syncTimeTab('), js.indexOf('function syncTimeTab(') + 600);
+  assert.match(syncTime, /els\.tabTime\.hidden = Boolean\(type && type\.isEpic\);/);
+  assert.match(syncTime, /selectTab\(els\.tabTime\.hidden && selectedTab === 'time' \? 'discussion' : selectedTab\)/, 'leaves a hidden Time tab');
   assert.match(js, /els\.timeForm\.hidden = readOnly\(\);/, 'no form when read-only');
   assert.match(js, /scrollIntoView\(\{ inline: 'nearest', block: 'nearest' \}\)/);
   assert.match(js, /confirm\('Delete this time entry\? This cannot be undone\.'\)/);
