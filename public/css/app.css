@@ -306,6 +306,7 @@ dialog.app-dialog .hint { margin: 0 0 8px; }
 dialog.app-dialog .dialog-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; padding: 12px 24px; border-top: 1px solid var(--line); background: #fff; border-radius: 0 0 8px 8px; }
 dialog.app-dialog .dialog-foot .error { margin: 0; flex: 1 1 100%; overflow-wrap: anywhere; }
 dialog.app-dialog .dialog-foot .error:empty { display: none; }
+@media (max-width: 600px) { dialog.app-dialog .band, dialog.app-dialog .dialog-body, dialog.app-dialog .dialog-foot { padding-left: 14px; padding-right: 14px; } }
 
 /* Comment count chip on cards (shown for 0 too). */
 .comment-count { display: inline-flex; align-items: center; gap: 2px; }

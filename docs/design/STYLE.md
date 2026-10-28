@@ -120,3 +120,9 @@ Full contract and CSS: `docs/design/time-tracking/README.md` and `docs/design/ti
 - Tab bar `.tabs.tight`: 7px tab padding, no gap, so six tabs fit the 660px dialog. Option B only: `.time-strip`. Option C only: `details.time-sec`.
 
 **Do.** Write over-estimate as words and a triangle, never colour alone; label every number with its unit "h"; show a dash (with hidden text) for no estimate; set names, notes and server messages as text. **Don't.** Don't warn with pop-ups when logged exceeds the estimate; don't show per-item time on cards; don't give epics a Time tab or Estimate field.
+
+## 8. New project from the dropdown (new-project-from-dropdown)
+
+Contract: `docs/design/new-project-from-dropdown/README.md`. No new tokens or components. It reuses `.project-scope` / `select.project-select` (top bar A) and `dialog.app-dialog` (band, `.dialog-body`, `.dialog-foot` with `p.error[role="alert"]`, `button.primary`). Only addition: a narrow-width rule for the dialog (14px side padding below 600px).
+
+**Do.** Keep the separator as a disabled text option and the entry as a plain option; show server errors as text in the foot. **Don't.** Don't build a custom dropdown for the entry; don't add a key chip or extra fields to the dialog.
