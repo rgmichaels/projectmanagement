@@ -1908,8 +1908,10 @@
   });
 
   // After a log, edit or delete: the list and totals of this dialog, then the
-  // item's figures on the page (cards, Backlog, sprint figures; AC 17, 29).
+  // item's figures on the page (cards, Backlog, sprint figures; AC 17, 29)
+  // and its History tab, which records the change (AC 31).
   async function timeChanged(issueId) {
+    historySaved(issueId);
     await loadTime(issueId);
     if (editing && editing.id === issueId) editing.time_spent_hours = timeView.total;
     await refreshCards();

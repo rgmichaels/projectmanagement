@@ -1083,7 +1083,9 @@ test('time entry SQL appears only in server/data/ and the schema (time tracking 
   assert.deepEqual(offenders, []);
   const routes = read(path.join(root, 'server/routes/time.js'));
   assert.match(routes, /isEpicType\(issue\.type\)/, 'the epic check uses the isEpic flag');
-  assert.match(routes, /req\.user\.id/, 'the user is the signed-in one');
+  // The user (and history actor, AC 31) is the signed-in one, via actorFrom(req).
+  assert.match(routes, /createEntry\(db, issue\.id, actorFrom\(req\)/, 'the user is the signed-in one');
+  assert.doesNotMatch(routes, /req\.body\.(user|actor)/);
 });
 
 test('the Time tab and Estimate field: text only, no extra submit, epics excluded, tight tab bar (time tracking AC 22-28, 41-44)', () => {

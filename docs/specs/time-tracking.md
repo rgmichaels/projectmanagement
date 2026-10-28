@@ -28,7 +28,7 @@ Nobody can record how long a work item took, or how long it was expected to take
 1. **Sprint rollup = hours logged on work items currently in the sprint** (not "time logged while the item was in the sprint"). One SUM over existing data; no per-entry sprint snapshot. When a sprint is completed and unfinished items move to another sprint or the backlog, their hours (and estimates) go with them, so a Completed sprint's figures cover only items that stayed in it. A per-entry sprint stamp can be revisited if the owner reports on finished sprints.
 2. **Epics take no time and no estimate.** Epics are containers and are not in sprints (Sprints Decision 16). They get no Time tab, no total and no estimate field; the API refuses entries and estimates on them. No roll-up of children's time or estimates onto the epic in this POC.
 3. **Units: decimal hours**, entered as a number (for example `1.5`), stored as whole minutes, shown as hours with up to two decimals (`1.5 h`, `0.25 h`). No "1h 30m" parsing. Quarter-hour steps, at most 24 h per entry.
-4. **Audit of time edits and deletes: none.** No history event for time entries, only an `edited` marker on the row. An append-only time log can be added later (as sprint events) if accountability is needed.
+4. **Time entries are recorded in the work item's history (owner change request, 2026-10-28: "I think we're not logging time logged into the history.").** This reverses the original decision (no history for time entries). Logging, editing and deleting an entry each write one `changed` event on the work item, attributed to the signed-in user, in the same transaction as the entry write (AC 31). The row keeps its `edited` marker as well. Sprint events stay free of time data.
 5. **Dates:** no future dates, no lower limit on back-dating.
 6. **Unsaved Log time form on close:** no "Discard changes?" prompt, because the form is small and separate from the item's fields.
 7. **Who may log:** any Member or Admin logs time on any non-epic item, not only items assigned to them (as comments are not assignee-limited). Own entries only for edit and delete.
@@ -40,7 +40,7 @@ Nobody can record how long a work item took, or how long it was expected to take
    - **Who edits:** anyone with `write` (Member, Admin), through the normal work item save, like every other field. Not tied to the assignee or to the entry-ownership rule. Viewers see it read-only.
    - **Planning on the Backlog:** the Backlog list gets an Estimate column with an inline number input per non-epic row (saves on Enter or blur through the same `PATCH /api/issues/:id`), so a whole sprint can be estimated without opening each item. The sprint panel header shows the estimated total, which updates as estimates are entered. No bulk "set estimate" action.
    - **Display:** per item, sprint figure `12 h logged / 20 h est.` on the Board sprint bar, the Sprints summary line and Backlog sprint headers; the Sprints page table gains Estimate and Logged columns (previously out of scope). Cards and Backlog rows do not show logged time.
-   - **History:** estimate is an editable work item column, so it is a field edit recorded in ticket history. Verified against `docs/specs/ticket-history.md`: History AC 2 records one change per edited field, and History AC 28 plus `tests/history.test.js` fail if an updatable column (other than `rank`) has no entry in `server/historyFields.js`. So `estimate` gets one entry (`kind: 'text'`, label "Estimate"; old and new values stored as the hours text, empty as null), and appears in the History tab and the field filter with no history code change. Time entries are still not in history (Decision 4).
+   - **History:** estimate is an editable work item column, so it is a field edit recorded in ticket history. Verified against `docs/specs/ticket-history.md`: History AC 2 records one change per edited field, and History AC 28 plus `tests/history.test.js` fail if an updatable column (other than `rank`) has no entry in `server/historyFields.js`. So `estimate` gets one entry (`kind: 'text'`, label "Estimate"; old and new values stored as the hours text, empty as null), and appears in the History tab and the field filter with no history code change. Time entries are in history too, as their own `time_entry` field (Decision 4, AC 31).
 
 ## Acceptance criteria
 
@@ -94,12 +94,19 @@ Nobody can record how long a work item took, or how long it was expected to take
 
 ### History and audit
 
-31. Time entries are **not** written to the work item's history (History AC 14 pattern, as for comments): the Time tab is itself the log. Estimate changes, being edits of a work item field, **are** recorded (AC 49). Sprint events are unchanged: sprint completion or moves record no time or estimate data.
-32. Because editing and deleting an own entry leaves no trace, an edited entry shows `edited` with its `updated_at` in the row (when `updated_at` differs from `created_at`). Deleted entries are gone.
+31. Time entries **are** written to the work item's history (Decision 4), as the history field `time_entry` (label "Time entry", kind `time-entry`, no issues column; recorded by `server/data/timeEntries.js`, like links and attachments). The actor is the signed-in user (`actorFrom(req)`), never the body. Each change's text is `<hours> h on <YYYY-MM-DD>`, plus `: <note>` when the entry has a note (notes longer than 60 characters are shortened to 57 plus `...`; if an edit changes only the part of the note past the excerpt, both texts carry the full notes so they differ). `old_id`/`new_id` are the entry's id.
+    - **Log** (`POST /api/issues/:id/time`, 201): one event with old null and new the entry text. The History tab shows "Blake Lee logged 1.5 h on 2026-10-28: fix login".
+    - **Edit** (`PATCH /api/time/:id`, 200, hours, date and/or note changed): one event with the old and new text, shown as "changed Time entry from 1.5 h on 2026-10-28 to 2 h on 2026-10-28" (date and note changes show the same way). A PATCH that changes nothing writes no event.
+    - **Delete** (`DELETE /api/time/:id`, 204): one event with old the entry text and new null, shown as "deleted time entry 1.5 h on 2026-10-28".
+    - The event is written in the same transaction as the entry insert, update or delete: if either fails, neither is stored. Rejected writes (400, 403, 404, 409) write no event.
+    - `GET /api/history-fields` lists `{ key: 'time_entry', label: 'Time entry', kind: 'time-entry' }` and `field=time_entry` returns only these events; the History tab's filter offers "Time entry".
+    - After a log, edit or delete in the open dialog, a loaded History tab is refreshed (History AC 25), with the existing History row look (actor, timestamp, one line).
+    - Estimate changes, being edits of a work item field, are recorded as before (AC 49). Sprint events are unchanged: sprint completion or moves record no time or estimate data. Deleting a work item deletes its entries and its history (History AC 10) with no extra events.
+32. An edited entry also shows `edited` with its `updated_at` in the row (when `updated_at` differs from `created_at`). Deleted entries are gone from the Time tab; their deletion stays in History.
 
 ### Tests
 
-33. Automated tests (`npm test`, `node:test`, temporary database) cover at least: AC 2 and 3 as a table of accepted and rejected values; note length and trimming; epic refusal (5); own-only edit/delete including Admin getting 403 (6); Viewer 403, Member 201, archived 409 and check order (7, 8); Completed-sprint logging allowed (9); `total_hours` and `time_spent_hours` sums with quarter hours (10, 11); sprint rollup including moving an item between sprints and an epic never counting (13, 14); cascade on item delete (12); `timeFormat.hours` outputs (21); and that no history event is written for time entries (31). The route matrix and coverage guard of Perm AC 21 include the three new write routes. The estimate tests are in AC 57. Browser behaviour (AC 16 to 18, 22 to 29, 41 to 56) is verified by QA.
+33. Automated tests (`npm test`, `node:test`, temporary database) cover at least: AC 2 and 3 as a table of accepted and rejected values; note length and trimming; epic refusal (5); own-only edit/delete including Admin getting 403 (6); Viewer 403, Member 201, archived 409 and check order (7, 8); Completed-sprint logging allowed (9); `total_hours` and `time_spent_hours` sums with quarter hours (10, 11); sprint rollup including moving an item between sprints and an epic never counting (13, 14); cascade on item delete (12); `timeFormat.hours` outputs (21); and that log, edit and delete each write one `time_entry` history event with the right actor, text and ids, a no-op PATCH and rejected or archived writes write none, a failing history write rolls the entry change back, and the History tab text of the three cases (`tests/historyFormat.test.js`) (31). The route matrix and coverage guard of Perm AC 21 include the three new write routes. The estimate tests are in AC 57. Browser behaviour (AC 16 to 18, 22 to 29, 41 to 56) is verified by QA.
 
 ### Estimate: item field (server)
 
@@ -176,7 +183,7 @@ No column is added to `sprints`: logged and estimated totals are always computed
 - Per-item logged time on cards and Backlog rows, sorting or filtering by time, and a time field in search.
 - "1h 30m" style input, working-day units (days, 8 h), story-point conversion, billing rates or cost.
 - Logging time on behalf of another user, and an Admin override of the own-entries rule.
-- Time entries in work item history or sprint events, and a project-level time log.
+- Time entries in sprint events, and a project-level time log. (Time entries are in work item history, AC 31.)
 - Time entries in attachments, links or the Test Case manager.
 
 ## Open questions

@@ -454,12 +454,88 @@ test('estimate history: one change with hours text; no-op and creation write non
   assert.deepEqual(fields.find((f) => f.key === 'estimate'), { key: 'estimate', label: 'Estimate', kind: 'text' });
 });
 
-test('time entries write no history (AC 31)', async () => {
+const timeChanges = async (issueId) =>
+  (await app.get(`/api/issues/${issueId}/history?field=time_entry`)).body.events.map((e) => ({
+    actor: e.actor_name,
+    changes: e.changes.map((c) => [c.field, c.label, c.kind, c.old, c.new, c.old_id, c.new_id]),
+  }));
+
+test('logging, editing and deleting a time entry each write one history event (AC 31)', async () => {
   const p = await createProject(app);
   const item = await createItem(app, p.id);
+  const blake = await app.client('blake');
+  const blakeName = (await app.get('/api/users')).body.find((u) => u.username === 'blake').name;
+  const yesterday = dayOffset(-1);
+  const e = (await logTime(blake, item.id, { hours: 1.5, date: TODAY, note: 'fix login' })).body;
+  let list = await timeChanges(item.id);
+  assert.deepEqual(list, [
+    { actor: blakeName, changes: [['time_entry', 'Time entry', 'time-entry', null, `1.5 h on ${TODAY}: fix login`, null, e.id]] },
+  ]);
+  await blake.patch(`/api/time/${e.id}`, { hours: 2, date: yesterday, note: '' });
+  list = await timeChanges(item.id);
+  assert.equal(list.length, 2);
+  assert.deepEqual(list[0].changes, [
+    ['time_entry', 'Time entry', 'time-entry', `1.5 h on ${TODAY}: fix login`, `2 h on ${yesterday}`, e.id, e.id],
+  ]);
+  await blake.patch(`/api/time/${e.id}`, { hours: 2, date: yesterday });
+  assert.equal((await timeChanges(item.id)).length, 2, 'a PATCH that changes nothing writes nothing');
+  await blake.del(`/api/time/${e.id}`);
+  list = await timeChanges(item.id);
+  assert.equal(list.length, 3);
+  assert.deepEqual(list[0], {
+    actor: blakeName,
+    changes: [['time_entry', 'Time entry', 'time-entry', `2 h on ${yesterday}`, null, e.id, null]],
+  });
+  // Unfiltered, the events sit in the item's history with everything else.
+  const all = (await app.get(`/api/issues/${item.id}/history`)).body.events;
+  assert.deepEqual(all.map((ev) => ev.kind), ['changed', 'changed', 'changed', 'created']);
+  const fields = (await app.get('/api/history-fields')).body;
+  assert.deepEqual(fields.find((f) => f.key === 'time_entry'), { key: 'time_entry', label: 'Time entry', kind: 'time-entry' });
+});
+
+test('time entry history: long notes are shortened; a note-only edit still differs (AC 31)', async () => {
+  const p = await createProject(app);
+  const item = await createItem(app, p.id);
+  const long = 'a'.repeat(100);
+  const e = (await logTime(app, item.id, { hours: 1, note: long })).body;
+  let [latest] = await timeChanges(item.id);
+  assert.equal(latest.changes[0][4], `1 h on ${TODAY}: ${'a'.repeat(57)}...`);
+  await app.patch(`/api/time/${e.id}`, { note: `${long}b` });
+  [latest] = await timeChanges(item.id);
+  assert.equal(latest.changes[0][3], `1 h on ${TODAY}: ${long}`, 'full notes when the excerpts match');
+  assert.equal(latest.changes[0][4], `1 h on ${TODAY}: ${long}b`);
+});
+
+test('rejected time writes record nothing; a failing record rolls the entry back (AC 31)', async () => {
+  const p = await createProject(app);
+  const item = await createItem(app, p.id);
+  const dana = await app.client('dana');
+  const entry = (await logTime(dana, item.id, { hours: 1 })).body;
   const before = count('issue_history_events');
-  const e = (await logTime(app, item.id, { hours: 1 })).body;
-  await app.patch(`/api/time/${e.id}`, { hours: 2, note: 'x' });
-  await app.del(`/api/time/${e.id}`);
+  assert.equal((await logTime(dana, item.id, { hours: 0 })).status, 400);
+  assert.equal((await dana.patch(`/api/time/${entry.id}`, { hours: 25 })).status, 400);
+  assert.equal((await app.patch(`/api/time/${entry.id}`, { hours: 2 })).status, 403, 'not the author');
+  assert.equal((await app.del(`/api/time/${entry.id}`)).status, 403);
   assert.equal(count('issue_history_events'), before);
+
+  const history = require('../server/data/history');
+  const original = history.recordTimeEntryChange;
+  history.recordTimeEntryChange = () => { throw new Error('boom'); };
+  const entries = count('time_entries');
+  try {
+    assert.equal((await logTime(dana, item.id, { hours: 3 })).status, 500);
+    assert.equal((await dana.patch(`/api/time/${entry.id}`, { hours: 4 })).status, 500);
+    assert.equal((await dana.del(`/api/time/${entry.id}`)).status, 500);
+  } finally {
+    history.recordTimeEntryChange = original;
+  }
+  assert.equal(count('time_entries'), entries, 'no entry added or deleted');
+  assert.equal((await dana.get(`/api/issues/${item.id}/time`)).body.entries[0].hours, 1, 'edit rolled back');
+  assert.equal(count('issue_history_events'), before);
+
+  await app.patch(`/api/projects/${p.id}`, { status: ARCHIVABLE, archived: true });
+  const archived = count('issue_history_events');
+  assert.equal((await logTime(dana, item.id, { hours: 1 })).status, 409);
+  assert.equal((await dana.del(`/api/time/${entry.id}`)).status, 409);
+  assert.equal(count('issue_history_events'), archived, 'archived 409 writes nothing');
 });

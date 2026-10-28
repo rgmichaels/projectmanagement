@@ -5,7 +5,7 @@
 // Callers pass the same `db` from inside their own transaction, so an event
 // commits or rolls back with the write it describes. History is append-only:
 // rows go away only with their work item (deleteHistory).
-const { HISTORY_FIELDS, getField, linkField, attachmentField, testCaseField } = require('../historyFields');
+const { HISTORY_FIELDS, getField, linkField, attachmentField, testCaseField, timeEntryField } = require('../historyFields');
 const users = require('./users');
 
 // The actor when no signed-in user is known (entries written before login).
@@ -55,8 +55,8 @@ function recordCreated(db, issueId, actor, when) {
 
 // Compares `before` and `after` (work item rows) over the history fields and
 // writes one `changed` event with a row per field whose value differs.
-// Fields with no column (links, attachments) are not compared;
-// recordLinkChange and recordAttachmentChange write them.
+// Fields with no column (links, attachments, time entries) are not compared;
+// recordLinkChange, recordAttachmentChange and recordTimeEntryChange write them.
 // Writes nothing, and returns null, when nothing changed.
 function recordChanges(db, issueId, actor, before, after, when) {
   const changed = HISTORY_FIELDS.filter((f) => f.column && clean(before[f.column]) !== clean(after[f.column]));
@@ -93,6 +93,12 @@ function recordLinkChange(db, issueId, actor, change, when) {
 // { oldText: filename } when removed.
 function recordAttachmentChange(db, issueId, actor, { oldText = null, newText = null }, when) {
   return recordSingleChange(db, issueId, actor, attachmentField(), { oldText, newText }, when);
+}
+
+// One `changed` event for a time entry: { newText } when logged, { oldText,
+// newText } when edited, { oldText } when deleted; the ids are the entry's.
+function recordTimeEntryChange(db, issueId, actor, change, when) {
+  return recordSingleChange(db, issueId, actor, timeEntryField(), change, when);
 }
 
 // The change as the API returns it. A field no longer in the list keeps its
@@ -163,6 +169,7 @@ module.exports = {
   recordChanges,
   recordLinkChange,
   recordAttachmentChange,
+  recordTimeEntryChange,
   listHistory,
   deleteHistory,
 };

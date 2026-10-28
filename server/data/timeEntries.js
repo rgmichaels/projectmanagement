@@ -3,11 +3,24 @@
 // per-item and per-sprint sums, which are subqueries of the work item and
 // sprint lists (./issues, ./sprints) built from the fragments below.
 // Validation (hours, date, note, epic refusal, ownership, archived guard)
-// happens in the routes; these functions assume valid input. Time entries are
-// not recorded in work item history (spec Decision 4).
+// happens in the routes; these functions assume valid input. Logging, editing
+// and deleting an entry each record a `time_entry` change in the work item's
+// history in the same transaction (spec Decision 4, AC 31).
+const history = require('./history');
 
 // Stored minutes as API hours; exact for quarter hours.
 const toHours = (minutes) => minutes / 60;
+
+// Notes longer than this are shortened in history text.
+const NOTE_EXCERPT = 60;
+const excerpt = (note) => (note.length > NOTE_EXCERPT ? `${note.slice(0, NOTE_EXCERPT - 3)}...` : note);
+
+// The history text of an entry: `1.5 h on 2026-10-28`, plus `: <note>` when
+// it has one (shortened unless `fullNote`).
+function entryText(row, fullNote = false) {
+  const base = `${toHours(row.minutes)} h on ${row.work_date}`;
+  return row.note ? `${base}: ${fullNote ? row.note : excerpt(row.note)}` : base;
+}
 
 const SELECT = `
   SELECT id, issue_id, user_id, user_name, minutes, work_date, note, created_at, updated_at
@@ -50,34 +63,60 @@ function getEntry(db, id) {
   return db.prepare(`${SELECT} WHERE id = ?`).get(id);
 }
 
-// `user` is { id, name } of the signed-in user.
+// `user` is { id, name } of the signed-in user, who is also the history actor.
+// Records "logged <text>" in the same transaction.
 function createEntry(db, issueId, user, { minutes, work_date, note }) {
-  const now = new Date().toISOString();
-  const info = db
-    .prepare(
-      `INSERT INTO time_entries (issue_id, user_id, user_name, minutes, work_date, note, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(issueId, user.id, user.name, minutes, work_date, note, now, now);
-  return present(getEntry(db, info.lastInsertRowid));
+  return db.transaction(() => {
+    const now = new Date().toISOString();
+    const info = db
+      .prepare(
+        `INSERT INTO time_entries (issue_id, user_id, user_name, minutes, work_date, note, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(issueId, user.id, user.name, minutes, work_date, note, now, now);
+    const row = getEntry(db, info.lastInsertRowid);
+    history.recordTimeEntryChange(db, issueId, user, { newText: entryText(row), newId: row.id }, now);
+    return present(row);
+  })();
 }
 
 // Applies { minutes?, work_date?, note? }. When nothing differs, nothing is
-// written and updated_at stays, so an unchanged save shows no "edited" marker.
-function updateEntry(db, id, changes) {
-  const current = getEntry(db, id);
-  const fields = ['minutes', 'work_date', 'note'].filter((f) => changes[f] !== undefined && changes[f] !== current[f]);
-  if (fields.length === 0) return present(current);
-  db.prepare(`UPDATE time_entries SET ${fields.map((f) => `${f} = ?`).join(', ')}, updated_at = ? WHERE id = ?`).run(
-    ...fields.map((f) => changes[f]),
-    new Date().toISOString(),
-    id
-  );
-  return present(getEntry(db, id));
+// written (no history either) and updated_at stays, so an unchanged save
+// shows no "edited" marker. Otherwise records the old and new text in the
+// same transaction; when only the note changed past the excerpt, the full
+// notes are recorded so the two texts differ.
+function updateEntry(db, id, changes, actor) {
+  return db.transaction(() => {
+    const current = getEntry(db, id);
+    const fields = ['minutes', 'work_date', 'note'].filter((f) => changes[f] !== undefined && changes[f] !== current[f]);
+    if (fields.length === 0) return present(current);
+    const now = new Date().toISOString();
+    db.prepare(`UPDATE time_entries SET ${fields.map((f) => `${f} = ?`).join(', ')}, updated_at = ? WHERE id = ?`).run(
+      ...fields.map((f) => changes[f]),
+      now,
+      id
+    );
+    const updated = getEntry(db, id);
+    const full = entryText(current) === entryText(updated);
+    history.recordTimeEntryChange(
+      db,
+      current.issue_id,
+      actor,
+      { oldText: entryText(current, full), newText: entryText(updated, full), oldId: id, newId: id },
+      now
+    );
+    return present(updated);
+  })();
 }
 
-function deleteEntry(db, id) {
-  db.prepare('DELETE FROM time_entries WHERE id = ?').run(id);
+// Deletes the entry and records "deleted time entry <text>" in the same transaction.
+function deleteEntry(db, id, actor) {
+  db.transaction(() => {
+    const row = getEntry(db, id);
+    if (!row) return;
+    db.prepare('DELETE FROM time_entries WHERE id = ?').run(id);
+    history.recordTimeEntryChange(db, row.issue_id, actor, { oldText: entryText(row), oldId: id });
+  })();
 }
 
 // Used inside deleteIssue's transaction.
@@ -87,6 +126,7 @@ function deleteForIssue(db, issueId) {
 
 module.exports = {
   toHours,
+  entryText,
   ITEM_MINUTES_SQL,
   SPRINT_MINUTES_SQL,
   present,

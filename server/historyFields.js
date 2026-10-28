@@ -17,6 +17,10 @@
 //              file  : an attachment added (new = its file name) or removed
 //                      (old = its file name). No column either;
 //                      server/data/attachments.js records it.
+//              time-entry: a time entry logged (new only), edited (old and
+//                      new) or deleted (old only), as its hours, date and
+//                      note text. No column; server/data/timeEntries.js
+//                      records it.
 //   emptyText - optional: what the API shows for an empty (null) value of
 //              the field; it is still stored as null (the backlog is a null
 //              sprint and reads "Backlog").
@@ -43,6 +47,10 @@ const HISTORY_FIELDS = [
   { key: 'sprint', column: 'sprint_id', label: 'Sprint', kind: 'sprint-name', emptyText: 'Backlog' },
   // docs/specs/time-tracking.md AC 49, 50: `8` to `12`, null when empty.
   { key: 'estimate', column: 'estimate_minutes', label: 'Estimate', kind: 'text', format: (minutes) => String(minutes / 60) },
+  // docs/specs/time-tracking.md AC 31: a time entry logged (new = its text),
+  // edited (old and new) or deleted (old), as `1.5 h on 2026-10-28: note`.
+  // No column; server/data/timeEntries.js records it.
+  { key: 'time_entry', column: null, label: 'Time entry', kind: 'time-entry' },
   { key: 'resolution', label: 'Resolution', kind: 'text' },
   { key: 'link', column: null, label: 'Link', kind: 'link' },
   { key: 'attachment', column: null, label: 'Attachment', kind: 'file' },
@@ -73,4 +81,6 @@ function publicFields() {
 }
 
 const testCaseField = () => HISTORY_FIELDS.find((f) => f.kind === 'test-case');
-module.exports = { HISTORY_FIELDS, getField, isHistoryField, linkField, attachmentField, testCaseField, publicFields };
+// The field that records time entries.
+const timeEntryField = () => HISTORY_FIELDS.find((f) => f.kind === 'time-entry');
+module.exports = { HISTORY_FIELDS, getField, isHistoryField, linkField, attachmentField, testCaseField, timeEntryField, publicFields };
