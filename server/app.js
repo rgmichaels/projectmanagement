@@ -12,6 +12,8 @@ const attachmentRoutes = require('./routes/attachments');
 const sprintRoutes = require('./routes/sprints');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
+const testCaseRoutes = require('./routes/testCases');
+const timeRoutes = require('./routes/time');
 const auth = require('./auth');
 
 function createApp(db) {
@@ -28,8 +30,11 @@ function createApp(db) {
 
   app.use('/api/auth', express.json());
   app.use('/api', authRoutes(db));
-  app.use('/api', auth.requireUser, attachmentRoutes(db), express.json());
-  app.use('/api', metaRoutes(db), userRoutes(db), projectRoutes(db), issueRoutes(db), commentRoutes(db), historyRoutes(db), linkRoutes(db), sprintRoutes(db));
+  // A definition can contain 100 pairs of 4,000-character step fields.
+  // Allow their UTF-8/JSON encoding as well as the plain text limits.
+  app.use('/api', auth.requireUser, attachmentRoutes(db), express.json({ limit: '8mb' }));
+  app.use('/api', testCaseRoutes(db));
+  app.use('/api', metaRoutes(db), userRoutes(db), projectRoutes(db), issueRoutes(db), commentRoutes(db), historyRoutes(db), linkRoutes(db), sprintRoutes(db), timeRoutes(db));
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
   // Express 5 forwards thrown errors (sync and async) here.

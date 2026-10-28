@@ -1,7 +1,7 @@
 // Opens the SQLite database (better-sqlite3), creates the schema, applies the
 // additive migrations and seeds the fixed user list on first start. This is the single schema/setup file.
 // New tables (comments, sessions, work item history, links, attachments,
-// sprints and the sprint audit log) are created with
+// sprints, the sprint audit log and time entries) are created with
 // CREATE TABLE IF NOT EXISTS, so existing databases gain them on start.
 // Status, type and resolution columns deliberately have no CHECK constraints:
 // their valid values come from server/statuses.js, server/types.js and
@@ -208,6 +208,71 @@ CREATE TABLE IF NOT EXISTS sprint_event_changes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sprint_event_changes_event ON sprint_event_changes(event_id);
+
+CREATE TABLE IF NOT EXISTS test_cases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  number INTEGER NOT NULL,
+  key TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  preconditions TEXT NOT NULL DEFAULT '',
+  lifecycle TEXT NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 1,
+  created_by_id INTEGER NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(project_id, number)
+);
+CREATE TABLE IF NOT EXISTS test_case_steps (
+  id INTEGER PRIMARY KEY,
+  test_case_id INTEGER NOT NULL REFERENCES test_cases(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  expected_result TEXT NOT NULL,
+  UNIQUE(test_case_id, position)
+);
+CREATE TABLE IF NOT EXISTS issue_test_cases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  issue_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+  test_case_id INTEGER NOT NULL REFERENCES test_cases(id),
+  active INTEGER NOT NULL DEFAULT 1,
+  linked_by_id INTEGER NOT NULL REFERENCES users(id),
+  linked_at TEXT NOT NULL,
+  removed_by_id INTEGER REFERENCES users(id),
+  removed_at TEXT,
+  UNIQUE(issue_id, test_case_id)
+);
+CREATE INDEX IF NOT EXISTS idx_issue_test_cases_case ON issue_test_cases(test_case_id);
+CREATE TABLE IF NOT EXISTS test_case_executions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  issue_test_case_id INTEGER NOT NULL REFERENCES issue_test_cases(id) ON DELETE CASCADE,
+  outcome TEXT NOT NULL,
+  notes TEXT NOT NULL,
+  tested_by_id INTEGER NOT NULL REFERENCES users(id),
+  tester_name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  case_revision INTEGER NOT NULL,
+  definition_snapshot_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_test_executions_link ON test_case_executions(issue_test_case_id, id);
+
+-- Time logged on a work item (server/data/timeEntries.js,
+-- docs/specs/time-tracking.md). minutes is whole minutes (quarter hours in
+-- practice, 15 to 1440); work_date is YYYY-MM-DD; user_name is a display
+-- snapshot like history actors. Existing databases gain this table on start.
+CREATE TABLE IF NOT EXISTS time_entries (
+  id INTEGER PRIMARY KEY,
+  issue_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id),
+  user_name TEXT NOT NULL,
+  minutes INTEGER NOT NULL,
+  work_date TEXT NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_time_entries_issue ON time_entries(issue_id);
 `;
 
 // Seed data: a small fixed list of placeholder people (no user management in
@@ -352,6 +417,15 @@ function migrateSprints(db) {
   ensureOneActiveIndex(db);
 }
 
+// Databases created before the time-tracking spec lack issues.estimate_minutes
+// (the original estimate in whole minutes; null = not estimated). Existing
+// work items stay unestimated.
+function migrateEstimate(db) {
+  const columns = db.prepare('PRAGMA table_info(issues)').all().map((c) => c.name);
+  if (columns.includes('estimate_minutes')) return;
+  db.exec('ALTER TABLE issues ADD COLUMN estimate_minutes INTEGER');
+}
+
 function openDb(dbPath = DEFAULT_DB_PATH) {
   if (dbPath !== ':memory:') {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -365,6 +439,7 @@ function openDb(dbPath = DEFAULT_DB_PATH) {
   migrateReporter(db);
   migrateGroups(db);
   migrateSprints(db); // after migrateStatuses, so it is the last legacy step
+  migrateEstimate(db);
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
   if (n === 0) {
     const insert = db.prepare('INSERT INTO users (name, username, group_name) VALUES (?, ?, ?)');

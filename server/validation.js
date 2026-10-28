@@ -48,6 +48,7 @@ function toIdOrNull(value, label) {
 }
 
 // Validates work item fields for create (existing = undefined) or update.
+// estimate_hours in the body becomes estimate_minutes in the result.
 // Returns the cleaned set of changes.
 function checkIssueFields(db, project, body, existing) {
   const out = {};
@@ -122,6 +123,15 @@ function checkIssueFields(db, project, body, existing) {
   const finalEpic = out.epic_id !== undefined ? out.epic_id : existing?.epic_id ?? null;
   if (finalType && isEpicType(finalType) && finalEpic !== null) {
     throw new ValidationError('An epic cannot have an epic.');
+  }
+  // The original estimate (docs/specs/time-tracking.md AC 35, 36): whole
+  // minutes or null. An epic has none; clearing it on an epic is a no-op.
+  // Required here, not at the top: server/timeValidation.js requires this file.
+  if (body.estimate_hours !== undefined) {
+    const minutes = require('./timeValidation').checkEstimate(body.estimate_hours);
+    const epic = Boolean(finalType) && isEpicType(finalType);
+    if (epic && minutes !== null) throw new ValidationError('An epic cannot have an estimate.');
+    if (!epic) out.estimate_minutes = minutes;
   }
   Object.assign(out, checkSprintMembership(db, project, body, existing, finalType));
   return out;

@@ -1,6 +1,6 @@
 # Test case manager
 
-Status: Draft for owner review; not approved for implementation
+Status: Implemented following the owner's build request on 2026-10-27
 Date: 2026-10-27
 
 ## Purpose
@@ -11,7 +11,7 @@ Terminology: “ticket” means the existing work item (`issues` in storage and 
 
 ## Requirements and proposed defaults
 
-The owner requested two things: test cases can be added to a ticket, and the test case manager has its own tab. Everything below refines those requirements as proposed behavior for review.
+The owner requested two things: test cases can be added to a ticket, and the test case manager has its own tab. The implementation follows the defaults below, including manual execution tracking. The owner subsequently requested the shared project dropdown; it is implemented on Board, Backlog and Test Cases as part of this delivery.
 
 - **Project library:** a Test Cases tab beside Board and Backlog (and Sprints when available). Each case belongs to one project and can exist without any ticket.
 - **Reusable relationships:** a case can be linked to multiple tickets in its project, and a ticket can have multiple cases. Linking references the existing case rather than copying it.
@@ -129,17 +129,17 @@ For the library, use ascending sequence cursor pagination; for execution history
 10. Archive/restore cases: existing links/history stay readable, new links and executions fail while archived, and removing a link still works in a live project.
 11. Delete one ticket: its relationships/results disappear with no orphans; library cases and another ticket's results survive. Verify rollback if cleanup fails.
 12. Manually verify navigation/project switching, direct links, empty/error/loading states, keyboard/focus behavior, unsaved-draft protection and preservation of ticket edits during test actions on Board and Backlog, plus Sprints when implemented.
-13. Automated coverage uses the existing `node:test` API helpers and temporary databases. Add meaningful tests for transactions, permissions, concurrency and snapshots; run existing regression checks. Keep SQL separation and metadata extensibility consistent with existing source checks. This draft adds no executable code.
+13. Automated coverage uses the existing `node:test` API helpers and temporary databases. Add meaningful tests for transactions, permissions, concurrency and snapshots; run existing regression checks. Keep SQL separation and metadata extensibility consistent with existing source checks. Verification results are recorded in `docs/qa/test-case-manager.md`.
 
 ## Deferred scope
 
 Automated test imports or execution, CI integration, Gherkin, suites/folders, release test plans, scheduled runs, environments, attachments, per-step results, defect creation, test ownership/assignments, cross-project sharing, bulk import/export, notifications, case revision browsing, permanent deletion and mandatory test gates on ticket transitions.
 
-## Decisions to confirm during review
+## Defaults used for the first delivery
 
-- Project-scoped library versus an organization-wide library. This draft proposes project scope to match existing navigation and permissions.
-- Whether manual execution tracking belongs in the first delivery. It is specified here; a smaller first delivery could ship definitions and linking first.
-- Whether the proposed fields (preconditions and action/expected-result steps) match the tests the team writes.
-- Whether reusable cases, soft unlink with retained results, and archive instead of deletion fit the intended workflow.
+- Project-scoped library to match existing navigation and permissions.
+- Manual execution tracking in the first delivery.
+- Preconditions and ordered action/expected-result steps for definitions.
+- Reusable cases, soft unlink with retained results, and archive instead of permanent deletion.
 
-These are product choices, not owner approvals already obtained. Implementation should follow review of this draft.
+These defaults were used when the owner requested implementation. They remain product choices that can be revised in later work.

@@ -121,12 +121,18 @@ test('a fresh database file gets the schema and seed users (AC 38)', () => {
     'issue_history_changes',
     'issue_history_events',
     'issue_links',
+    'issue_test_cases',
     'issues',
     'projects',
     'sessions',
     'sprint_event_changes',
     'sprint_events',
     'sprints',
+    'sqlite_sequence',
+    'test_case_executions',
+    'test_case_steps',
+    'test_cases',
+    'time_entries',
     'users',
   ]);
   const users = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
@@ -590,9 +596,10 @@ test('filters are read-only UI, stored per project with try/catch (search AC 15,
   const js = boardJs();
   assert.match(js, /FILTERS_STORAGE_PREFIX = 'pm\.filters\.'/);
   assert.match(section, /\$\{FILTERS_STORAGE_PREFIX\}\$\{state\.project\.id\}/);
-  const helpers = js.slice(js.indexOf('function storageGet'), js.indexOf('const state = {'));
-  assert.equal((helpers.match(/try \{/g) || []).length, 2, 'reads and writes wrapped');
-  assert.equal((js.match(/localStorage\./g) || []).length, (helpers.match(/localStorage\./g) || []).length, 'no unguarded localStorage use');
+  const helpers = read(path.join(root, 'public/js/projectScope.js'));
+  assert.equal((helpers.match(/try \{ return localStorage|try \{ if \(value/g) || []).length, 2, 'shared reads and writes wrapped');
+  assert.match(js, /const \{ storageGet, storageSet \} = projectScope/);
+  assert.doesNotMatch(js, /localStorage\./, 'storage is shared with project navigation');
 });
 
 // Since sprints the board's items are the active sprint's
@@ -644,7 +651,7 @@ test('the status track is built from the server list and names no status (redesi
   assert.doesNotMatch(html, /<select name="status"/, 'the select is replaced');
 });
 
-test('the dialog has one tab bar with five tabs and a panel for each (redesign AC 14-16)', () => {
+test('the dialog has one tab bar with seven tabs and a panel for each (redesign AC 14-16, test cases, time tracking AC 22)', () => {
   const html = detailMarkup();
   const open = html.indexOf('<div id="activity-tabs"');
   const bar = html.slice(open, html.indexOf('</div>', open));
@@ -652,10 +659,10 @@ test('the dialog has one tab bar with five tabs and a panel for each (redesign A
   const tabs = bar.match(/<button\b[^>]*>/gi) || [];
   assert.deepEqual(
     tabs.map((b) => b.match(/id="([^"]+)"/)[1]),
-    ['tab-children', 'tab-discussion', 'tab-history', 'tab-links', 'tab-attachments'],
+    ['tab-children', 'tab-discussion', 'tab-history', 'tab-links', 'tab-time', 'tab-test-cases', 'tab-attachments'],
     'in spec order'
   );
-  const panels = { 'tab-children': 'epic-view', 'tab-discussion': 'discussion', 'tab-history': 'history', 'tab-links': 'links', 'tab-attachments': 'attachments' };
+  const panels = { 'tab-children': 'epic-view', 'tab-discussion': 'discussion', 'tab-history': 'history', 'tab-links': 'links', 'tab-time': 'time', 'tab-test-cases': 'ticket-test-cases', 'tab-attachments': 'attachments' };
   for (const b of tabs) {
     assert.match(b, /type="button"/, b);
     assert.match(b, /role="tab"/, b);
@@ -773,7 +780,7 @@ test('no sprint state name outside server/sprintStates.js; no event kind in the 
   const { SPRINT_EVENT_KINDS } = require('../server/sprintEvents');
   // projectStatuses.js and sprintEvents.js are list files whose own values
   // (a project status, an event label) may coincide with a state name.
-  const allowed = new Set(['server/sprintStates.js', 'server/db.js', 'server/projectStatuses.js', 'server/sprintEvents.js']);
+  const allowed = new Set(['server/sprintStates.js', 'server/db.js', 'server/projectStatuses.js', 'server/sprintEvents.js', 'server/testCaseMetadata.js']);
   const files = sourceFiles.filter((f) => /^(server\/|public\/js\/|public\/(board|backlog)\.html$)/.test(rel(f)) && !allowed.has(rel(f)));
   const offenders = [];
   for (const file of files) {
@@ -835,6 +842,7 @@ test('the Backlog page shows the same work item dialog as the board', () => {
   };
   assert.ok(dialogOf('public/board.html').length > 1000);
   assert.equal(dialogOf('public/backlog.html'), dialogOf('public/board.html'));
+  assert.equal(dialogOf('public/sprints.html'), dialogOf('public/board.html'), 'and the Sprints page (Sprints AC 14)');
   const backlog = read(path.join(root, 'public/backlog.html'));
   assert.match(backlog, /<body data-page="backlog">/);
   const order = ['src="js/filters.js"', 'src="js/sprints.js"', 'src="js/backlog.js"', 'src="js/board.js"'];
@@ -843,14 +851,17 @@ test('the Backlog page shows the same work item dialog as the board', () => {
   assert.deepEqual([...positions].sort((a, b) => a - b), positions, 'backlog.js loads before board.js');
 });
 
-test('both project pages have the sub-navigation with the current page marked (AC 28)', () => {
-  for (const [file, current] of [['public/board.html', 'nav-board'], ['public/backlog.html', 'nav-backlog']]) {
+test('the project pages have the sub-navigation with the current page marked (AC 28; Sprints AC 1)', () => {
+  for (const [file, current] of [['public/board.html', 'nav-board'], ['public/backlog.html', 'nav-backlog'], ['public/sprints.html', 'nav-sprints']]) {
     const html = read(path.join(root, file));
     const main = html.slice(html.indexOf('<main'));
     assert.match(main, /^<main[^>]*>\s*<!--[^>]*-->\s*<nav class="subnav" aria-label="Project pages">|^<main[^>]*>\s*<nav class="subnav" aria-label="Project pages">/, `${file}: first in main`);
     const nav = main.slice(main.indexOf('<nav'), main.indexOf('</nav>'));
     assert.match(nav, new RegExp(`id="${current}"[^>]*aria-current="page"`), file);
     assert.equal((nav.match(/aria-current/g) || []).length, 1, file);
+    // Board, Backlog, Sprints in this order (Sprints AC 1).
+    const ids = (nav.match(/id="nav-[a-z-]+"/g) || []).map((m) => m.slice(4, -1));
+    assert.deepEqual(ids.slice(0, 3), ['nav-board', 'nav-backlog', 'nav-sprints'], file);
   }
 });
 
@@ -938,4 +949,194 @@ test('bulk move: the option B styles from the design are in app.css; options A a
   assert.ok(rules.length > 30, String(rules.length));
   for (const rule of rules) assert.ok(css.includes(rule), rule);
   assert.ok(!css.includes('.hide-check'), 'option C is not built');
+});
+
+// ---------- project scope and Sprints screen (docs/specs/global-project-scope.md, docs/specs/sprints-screen.md) ----------
+
+const PROJECT_PAGES = ['public/board.html', 'public/backlog.html', 'public/sprints.html'];
+
+test('project scope: the shared script loads after session.js on every project page; no breadcrumb (Scope AC 1, 2)', () => {
+  for (const file of PROJECT_PAGES) {
+    const html = read(path.join(root, file));
+    const order = ['src="js/session.js"', 'src="js/projectScope.js"', 'src="js/board.js"'].map((s) => html.indexOf(s));
+    assert.ok(order.every((p) => p !== -1), file);
+    assert.deepEqual([...order].sort((a, b) => a - b), order, file);
+    assert.doesNotMatch(html, /id="crumb"/, `${file}: the dropdown replaces the breadcrumb`);
+  }
+  // Not on the Projects, Users and sign-in pages (Scope AC 16).
+  for (const file of ['public/index.html', 'public/users.html', 'public/login.html']) {
+    assert.doesNotMatch(read(path.join(root, file)), /projectScope\.js/, file);
+  }
+});
+
+test('project scope: only projectScope.js reads ?project= and the remembered-project key (Scope AC 7, 8)', () => {
+  const scope = read(path.join(root, 'public/js/projectScope.js'));
+  assert.match(scope, /const STORAGE_KEY = 'pm\.project';/);
+  const clientFiles = sourceFiles.filter((f) => /^public\/(js\/.*\.js|.*\.html)$/.test(rel(f)) && rel(f) !== 'public/js/projectScope.js');
+  const offenders = [];
+  for (const file of clientFiles) {
+    const text = read(file);
+    if (/pm\.project\b/.test(text)) offenders.push(`${rel(file)}: storage key`);
+    if (/\.(get|has)\(\s*['"]project['"]\s*\)/.test(text)) offenders.push(`${rel(file)}: reads ?project=`);
+  }
+  assert.deepEqual(offenders, []);
+  // The dropdown: a native select with a visible "Project" label, built as text.
+  assert.match(scope, /el\('select', \{ id: 'project-select', class: 'project-select' \}\)/);
+  assert.match(scope, /el\('label', \{ for: 'project-select' \}, 'Project'\)/);
+  assert.match(scope, /api\.get\('\/api\/projects'\)/, 'live projects only');
+  assert.doesNotMatch(scope, /includeArchived/);
+  assert.match(scope, /history\.replaceState\(/, 'the resolved project is written into the URL');
+  assert.doesNotMatch(scope, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
+});
+
+test('project scope: one dirty flag and one confirm helper guard the work item dialog (Scope AC 14-14f)', () => {
+  const js = boardJs();
+  assert.match(js, /projectScope\.guard\.isDirty = isDetailDirty;/);
+  assert.match(js, /projectScope\.confirmDialog\(projectScope\.DISCARD_CONFIRM\)/);
+  assert.doesNotMatch(js, /confirm\('Discard changes|confirm\('You have unsaved/, 'no second confirm');
+  // X, Close and Escape all go through closeDetail; Escape only when dirty.
+  assert.match(js, /els\.closeBtn\.addEventListener\('click', \(\) => closeDetail\(els\.closeBtn\)\)/);
+  assert.match(js, /els\.closeX\.addEventListener\('click', \(\) => closeDetail\(els\.closeX\)\)/);
+  assert.match(js, /addEventListener\('cancel', \(e\) => \{\s*if \(!isDetailDirty\(\)\) return;[^}]*e\.preventDefault\(\);/);
+  // Re-pointing asks too; beforeunload only while dirty.
+  assert.match(js, /async function openDetail\(item\) \{\s*if \(isDetailDirty\(\) && !\(await confirmDiscard\(/);
+  assert.match(js, /window\.addEventListener\('beforeunload', onBeforeUnload\)/);
+  assert.match(js, /window\.removeEventListener\('beforeunload', onBeforeUnload\)/);
+  const scope = read(path.join(root, 'public/js/projectScope.js'));
+  assert.match(scope, /if \(result\.guard\.isDirty\(\)\) \{\s*const ok = await confirmDialog\(SWITCH_CONFIRM\);/);
+});
+
+test('board.js tells the three pages apart; the Sprints page does not run the board (Sprints AC 1)', () => {
+  const js = boardJs();
+  assert.match(js, /const page = document\.body\.dataset\.page \|\| 'board';/);
+  assert.match(js, /const onBoard = page === 'board';/);
+  assert.match(js, /else if \(page === 'sprints'\) sprintsPage\.init\(backlogContext\(\)\);/);
+  assert.match(js, /if \(page === 'sprints' && typeof sprintsPage !== 'undefined'\) sprintsPage\.render\(\);/);
+  const html = read(path.join(root, 'public/sprints.html'));
+  assert.match(html, /<body data-page="sprints">/);
+  const order = ['src="js/sprints.js"', 'src="js/sprintView.js"', 'src="js/board.js"'].map((s) => html.indexOf(s));
+  assert.ok(order.every((p) => p !== -1));
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'sprintView.js loads before board.js');
+  assert.doesNotMatch(html, /src="js\/backlog\.js"|src="js\/bulkMove\.js"/);
+  assert.doesNotMatch(html, /sprint-dialog|sprint-delete-dialog|bulk-confirm-dialog|sprint-complete-dialog/, 'no sprint management dialogs');
+});
+
+test('the Sprints page names no sprint state, status, type or priority (Sprints AC 26)', () => {
+  const { STATUSES } = require('../server/statuses');
+  const { TYPES } = require('../server/types');
+  const { PRIORITIES } = require('../server/priorities');
+  const { SPRINT_STATES } = require('../server/sprintStates');
+  const names = new Set([...STATUSES, ...TYPES.flatMap((t) => [t.name, t.label]), ...PRIORITIES, ...SPRINT_STATES.map((s) => s.name)]);
+  const offenders = [];
+  for (const file of ['public/js/sprintView.js', 'public/sprints.html', 'public/js/projectScope.js']) {
+    const text = read(path.join(root, file));
+    for (const name of names) if (quoted(name).test(text)) offenders.push(`${file}: ${name}`);
+  }
+  assert.deepEqual(offenders, []);
+  const js = read(path.join(root, 'public/js/sprintView.js'));
+  // Orders and states come from the server lists.
+  assert.match(js, /types: s\(\)\.types\.map\(/);
+  assert.match(js, /priorities: s\(\)\.priorities/);
+  assert.match(js, /statuses: s\(\)\.statuses/);
+  assert.match(js, /sprintView\.defaultSprint\(s\(\)\.sprints, s\(\)\.sprintStates\)/);
+  assert.match(js, /sprintUtil\.isOverdue\(/, 'the one overdue rule');
+});
+
+test('the Sprints table renders text only, is read-only and fetches one sprint (Sprints AC 9, 12, 15, 16, 21, 23)', () => {
+  const js = read(path.join(root, 'public/js/sprintView.js'));
+  assert.doesNotMatch(js, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
+  assert.match(js, /api\.get\(`\/api\/projects\/\$\{s\(\)\.project\.id\}\/issues\?sprint=\$\{sprint\.id\}`\)/);
+  assert.doesNotMatch(js, /api\.(post|patch|del)\(/, 'nothing on this page writes');
+  assert.doesNotMatch(js, /draggable|checkbox|dragstart/, 'no handles, checkboxes or drag');
+  for (const call of js.match(/el\(\s*'button',\s*\{[^}]*\}/g) || []) assert.match(call, /type: 'button'/, call);
+  // Sort headings: a button in a th scope="col" with aria-sort; an announcement.
+  assert.match(js, /el\('th', \{ scope: 'col', 'aria-sort': dir \}, button\)/);
+  assert.match(js, /`Sorted by \$\{columnLabel\(column\)\}, \$\{view\.sort\.direction\}\.`/);
+  // The sort is not saved (Decision 2): no storage, and only ?sprint= in the URL.
+  assert.doesNotMatch(js, /localStorage|storageSet|searchParams\.set\('sort/);
+  const html = read(path.join(root, 'public/sprints.html'));
+  assert.match(html, /<p id="sort-status" class="visually-hidden" role="status"><\/p>/);
+  assert.match(html, /<label for="sprint-pick">Sprint<\/label>/);
+  assert.match(html, /<h1>Sprints<\/h1>/);
+  assert.match(html, />Manage sprints on the Backlog<\/a>/);
+});
+
+test('the project dropdown and Sprints styles from the design are in app.css (topbar A, Sprints A)', () => {
+  const css = read(path.join(root, 'public/css/app.css'));
+  const design = read(path.join(root, 'docs/design/sprints-and-project-scope/sprints-a-panel.html'));
+  const block = design.slice(design.indexOf('/* ===== Project dropdown'), design.indexOf('/* ===== Confirm dialogs'));
+  // Mock-only rules and the other options' rules are not built.
+  const skip = /is-focus|is-hover|\.outlined|\.sep\b|has-nav|topnav|\.compact|\.bare|\.table-wrap\.card/;
+  const rules = block.split('\n').map((l) => l.trim()).filter((l) => /^[.a-z].*\{.*\}$/i.test(l) && !skip.test(l));
+  assert.ok(rules.length > 25, String(rules.length));
+  for (const rule of rules) assert.ok(css.includes(rule), rule);
+  assert.ok(!css.includes('.project-scope.outlined'), 'topbar B is not built');
+  assert.ok(!css.includes('.topbar.has-nav'), 'topbar C is not built');
+  assert.match(css, /@media \(max-width: 600px\) \{\s*\.topbar \{ flex-wrap: wrap; \}/);
+});
+
+// ---------- time tracking (docs/specs/time-tracking.md) ----------
+
+test('time entry SQL appears only in server/data/ and the schema (time tracking data model)', () => {
+  const pattern = /\b(FROM|INTO|UPDATE|JOIN)\s+time_entries\b/i;
+  const offenders = sourceFiles.filter((f) => rel(f) !== 'server/db.js' && !rel(f).startsWith('server/data/') && pattern.test(read(f))).map(rel);
+  assert.deepEqual(offenders, []);
+  const routes = read(path.join(root, 'server/routes/time.js'));
+  assert.match(routes, /isEpicType\(issue\.type\)/, 'the epic check uses the isEpic flag');
+  assert.match(routes, /req\.user\.id/, 'the user is the signed-in one');
+});
+
+test('the Time tab and Estimate field: text only, no extra submit, epics excluded, tight tab bar (time tracking AC 22-28, 41-44)', () => {
+  const html = detailMarkup();
+  const time = html.slice(html.indexOf('<section id="time"'), html.indexOf('</section>', html.indexOf('<section id="time"')));
+  assert.doesNotMatch(time, /<form\b/i, 'no nested form');
+  for (const b of time.match(/<button\b[^>]*>/gi) || []) assert.match(b, /type="button"/, b);
+  assert.match(time, /<input type="number" id="time-hours" step="0\.25" min="0\.25" max="24"/);
+  assert.match(time, /<input type="date" id="time-date">/);
+  assert.match(time, /<input type="text" id="time-note" maxlength="500">/);
+  assert.match(time, /<p class="error" id="time-error" role="alert" hidden><\/p>/);
+  assert.match(time, />No time logged yet\.</);
+  assert.match(html, /<div id="activity-tabs" class="tabs tight" role="tablist"/);
+  assert.match(html, /<label for="estimate-input" id="estimate-label">Estimate<\/label>/);
+  assert.match(html, /<input type="number" id="estimate-input" name="estimate_hours" step="0\.25" min="0\.25" max="1000" placeholder="Hours">/);
+  assert.match(html, /<p class="error" id="estimate-error" role="alert" hidden><\/p>/);
+  // Estimate sits right after the Sprint field.
+  assert.ok(html.indexOf('id="estimate-field"') > html.indexOf('id="sprint-field"'));
+  assert.ok(html.indexOf('id="estimate-field"') < html.indexOf('id="resolution-field"'));
+  const js = boardJs();
+  assert.match(js, /els\.tabTime\.hidden = !\(item && !isEpicItem\(item\)\)/, 'no Time tab for an epic');
+  assert.match(js, /els\.estimateField\.hidden = epic;/, 'no Estimate field for an epic');
+  assert.match(js, /els\.timeForm\.hidden = readOnly\(\);/, 'no form when read-only');
+  assert.match(js, /scrollIntoView\(\{ inline: 'nearest', block: 'nearest' \}\)/);
+  assert.match(js, /confirm\('Delete this time entry\? This cannot be undone\.'\)/);
+  // Time entries never join the item's unsaved state: formValues has no time field.
+  const values = js.slice(js.indexOf('function formValues('), js.indexOf('els.form.elements.type.addEventListener'));
+  assert.doesNotMatch(values, /timeHours|timeNote|timeDate/);
+  assert.match(values, /values\.estimate_hours = estimateValue\(\)/);
+});
+
+test('one sprint figure formatter for the Board, Backlog and Sprints pages (time tracking AC 21, 53)', () => {
+  const js = boardJs();
+  assert.match(js, /timeFormat\.sprintFigureParts\(/);
+  assert.match(js, /sprintFigure\(active\),/, 'the Board bar, without the unestimated note');
+  assert.match(read(path.join(root, 'public/js/backlog.js')), /ctx\.sprintFigure\(sprint, \{ note: true, live: true \}\)/);
+  assert.match(read(path.join(root, 'public/js/sprintView.js')), /ctx\.sprintFigure\(sprint, \{ note: true \}\)/);
+  for (const file of ['public/js/backlog.js', 'public/js/sprintView.js']) {
+    assert.doesNotMatch(read(path.join(root, file)), /h logged/, `${file} builds no figure text itself`);
+  }
+  for (const file of PROJECT_PAGES) {
+    const html = read(path.join(root, file));
+    const order = ['src="js/time.js"', 'src="js/board.js"'].map((x) => html.indexOf(x));
+    assert.ok(order[0] !== -1 && order[0] < order[1], file);
+  }
+});
+
+test('the time-tracking styles of option A are in app.css; options B and C are not (design time-tracking)', () => {
+  const css = read(path.join(root, 'public/css/app.css'));
+  const design = read(path.join(root, 'docs/design/time-tracking/src/time.css'));
+  const rules = design.split('\n').map((l) => l.trim()).filter((l) => /^[.a-z].*\{.*\}$/i.test(l) && !/time-strip|time-sec|est-btn/.test(l));
+  assert.ok(rules.length > 50, String(rules.length));
+  for (const rule of rules) assert.ok(css.includes(rule), rule);
+  assert.ok(!css.includes('.time-strip'), 'option B is not built');
+  assert.ok(!css.includes('details.time-sec'), 'option C is not built');
 });

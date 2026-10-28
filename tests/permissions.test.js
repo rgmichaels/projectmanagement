@@ -12,6 +12,8 @@ const { assertCan } = require('../server/routes/guards');
 const { TYPES } = require('../server/types');
 const { LINK_TYPES } = require('../server/linkTypes');
 const { PROJECT_STATUSES } = require('../server/projectStatuses');
+const { outcomes: TEST_OUTCOMES } = require('../server/testCaseMetadata');
+const TEST_DEFINITION = { title: 'Permission test', steps: [{ action: 'Read', expected_result: 'Visible' }] };
 
 const [ADMIN, MEMBER, VIEWER] = groups.groupNames();
 const USERNAME = { [ADMIN]: 'alex', [MEMBER]: 'blake', [VIEWER]: 'casey' };
@@ -42,7 +44,7 @@ function resetGroups() {
 test.beforeEach(resetGroups);
 
 // Everything a write could change, to show a denied request changed nothing.
-const TABLES = ['projects', 'issues', 'comments', 'issue_links', 'attachments', 'issue_history_events', 'issue_history_changes', 'users', 'sprints', 'sprint_events', 'sprint_event_changes'];
+const TABLES = ['projects', 'issues', 'comments', 'issue_links', 'attachments', 'issue_history_events', 'issue_history_changes', 'users', 'sprints', 'sprint_events', 'sprint_event_changes', 'test_cases', 'test_case_steps', 'issue_test_cases', 'test_case_executions', 'time_entries'];
 const snapshot = () => Object.fromEntries(TABLES.map((t) => [t, app.db.prepare(`SELECT * FROM ${t} ORDER BY rowid`).all()]));
 
 // ---------- groups.js (AC 1, 3) ----------
@@ -90,7 +92,8 @@ async function fixture(username, group) {
   const actor = await app.client(username);
   const comment = (await actor.post(`/api/issues/${a.id}/comments`, { body: 'mine' })).body;
   const attachment = (await actor.upload(a.id, 'notes.txt', TEXT, 'text/plain')).body;
-  assert.ok(comment.id && attachment.id && link.id);
+  const timeEntry = (await actor.post(`/api/issues/${a.id}/time`, { hours: 1 })).body;
+  assert.ok(comment.id && attachment.id && link.id && timeEntry.id);
   // Sprints (docs/specs/sprints-and-backlog.md AC 47): an active and a
   // planned sprint in p, and a project with only a planned sprint to start.
   const active = (await app.post(`/api/projects/${p.id}/sprints`, { name: 'Active one' })).body;
@@ -98,13 +101,21 @@ async function fixture(username, group) {
   const planned = (await app.post(`/api/projects/${p.id}/sprints`, { name: 'Planned one' })).body;
   const p2 = await createProject(app);
   const startable = (await app.post(`/api/projects/${p2.id}/sprints`, { name: 'Startable' })).body;
+  const testCase = (await app.post(`/api/projects/${p.id}/test-cases`, TEST_DEFINITION)).body;
+  await app.post(`/api/issues/${a.id}/test-cases`, { test_case_ids: [testCase.id] });
   setGroup(username, group);
-  return { actor, p, a, b, c, link, comment, attachment, active, planned, startable };
+  return { actor, p, a, b, c, link, comment, attachment, active, planned, startable, testCase, timeEntry };
 }
 
 // Every write route of AC 6: [method, route path as mounted, permission,
-// expected success status, request(fixture)].
+// expected success status, request(fixture), optional action wording of the
+// 403 when it is not the permission's (time entries say "log time")].
 const MATRIX = [
+  ['POST', '/api/projects/:id/test-cases', 'write', 201, (f) => f.actor.post(`/api/projects/${f.p.id}/test-cases`, TEST_DEFINITION)],
+  ['PATCH', '/api/test-cases/:id', 'write', 200, (f) => f.actor.patch(`/api/test-cases/${f.testCase.id}`, { ...TEST_DEFINITION, title: 'Changed', revision: 1 })],
+  ['POST', '/api/issues/:id/test-cases', 'write', 201, (f) => f.actor.post(`/api/issues/${f.b.id}/test-cases`, { test_case_ids: [f.testCase.id] })],
+  ['DELETE', '/api/issues/:id/test-cases/:caseId', 'write', 204, (f) => f.actor.del(`/api/issues/${f.a.id}/test-cases/${f.testCase.id}`)],
+  ['POST', '/api/issues/:id/test-cases/:caseId/executions', 'write', 201, (f) => f.actor.post(`/api/issues/${f.a.id}/test-cases/${f.testCase.id}/executions`, { outcome: TEST_OUTCOMES[0].name, case_revision: 1 })],
   ['POST', '/api/projects', 'manage-projects', 201, (f) => f.actor.post('/api/projects', { name: 'New', key: uniqueKey() })],
   ['PATCH', '/api/projects/:id', 'manage-projects', 200, (f) => f.actor.patch(`/api/projects/${f.p.id}`, { name: 'Renamed' })],
   ['POST', '/api/projects/:id/issues', 'write', 201, (f) => f.actor.post(`/api/projects/${f.p.id}/issues`, { title: 'New item' })],
@@ -123,9 +134,13 @@ const MATRIX = [
   ['DELETE', '/api/sprints/:id', 'write', 204, (f) => f.actor.del(`/api/sprints/${f.planned.id}`)],
   ['POST', '/api/sprints/:id/start', 'write', 200, (f) => f.actor.post(`/api/sprints/${f.startable.id}/start`)],
   ['POST', '/api/sprints/:id/complete', 'write', 200, (f) => f.actor.post(`/api/sprints/${f.active.id}/complete`, { disposition: 'backlog' })],
+  // Time tracking (docs/specs/time-tracking.md AC 7).
+  ['POST', '/api/issues/:id/time', 'write', 201, (f) => f.actor.post(`/api/issues/${f.a.id}/time`, { hours: 1.5 }), 'log time'],
+  ['PATCH', '/api/time/:id', 'write', 200, (f) => f.actor.patch(`/api/time/${f.timeEntry.id}`, { hours: 2 }), 'log time'],
+  ['DELETE', '/api/time/:id', 'write', 204, (f) => f.actor.del(`/api/time/${f.timeEntry.id}`), 'log time'],
 ];
 
-for (const [method, route, permission, okStatus, send] of MATRIX) {
+for (const [method, route, permission, okStatus, send, action] of MATRIX) {
   test(`${method} ${route} needs ${permission}, per group (AC 6, 19)`, async () => {
     for (const group of groups.groupNames()) {
       resetGroups();
@@ -136,7 +151,8 @@ for (const [method, route, permission, okStatus, send] of MATRIX) {
         assert.equal(res.status, okStatus, `${group}: ${JSON.stringify(res.body)}`);
       } else {
         assert.equal(res.status, 403, group);
-        assert.deepEqual(res.body, { error: denied(group, permission) }, group);
+        const error = action ? `Your group (${group}) is not allowed to ${action}.` : denied(group, permission);
+        assert.deepEqual(res.body, { error }, group);
         assert.deepEqual(snapshot(), before, `${group}: nothing changed`);
       }
     }
@@ -234,9 +250,16 @@ test('every GET route answers 200 for a Viewer, downloads and history included (
   const item = await createItem(app, p.id, { epic_id: epic.id });
   await app.post(`/api/issues/${item.id}/comments`, { body: 'hi' });
   const image = (await app.upload(item.id, 'shot.png', PNG, 'image/png')).body;
+  const testCase = (await app.post(`/api/projects/${p.id}/test-cases`, TEST_DEFINITION)).body;
+  await app.post(`/api/issues/${item.id}/test-cases`, { test_case_ids: [testCase.id] });
   setGroup('casey', VIEWER);
   const viewer = await app.client('casey');
   const urls = {
+    '/api/test-case-metadata': '/api/test-case-metadata',
+    '/api/projects/:id/test-cases': `/api/projects/${p.id}/test-cases`,
+    '/api/test-cases/:id': `/api/test-cases/${testCase.id}`,
+    '/api/issues/:id/test-cases': `/api/issues/${item.id}/test-cases`,
+    '/api/issues/:id/test-cases/:caseId/executions': `/api/issues/${item.id}/test-cases/${testCase.id}/executions`,
     '/api/auth/users': '/api/auth/users',
     '/api/auth/me': '/api/auth/me',
     '/api/users': '/api/users',
@@ -267,6 +290,7 @@ test('every GET route answers 200 for a Viewer, downloads and history included (
     '/api/projects/:id/sprints': `/api/projects/${p.id}/sprints`,
     '/api/projects/:id/sprints/next-name': `/api/projects/${p.id}/sprints/next-name`,
     '/api/projects/:id/sprint-history': `/api/projects/${p.id}/sprint-history`,
+    '/api/issues/:id/time': `/api/issues/${item.id}/time`,
   };
   const gets = appRoutes().filter((r) => r.method === 'GET').map((r) => r.path);
   assert.deepEqual(gets.filter((path) => !urls[path]), [], 'every GET route has a URL here');

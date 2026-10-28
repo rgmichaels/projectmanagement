@@ -9,6 +9,11 @@
 // item's sprint (null = the backlog; always null for epics) and sprint_rank
 // its position in that container (null for epics). `rank` stays the position
 // in a board column; the two never touch each other.
+// Time tracking (docs/specs/time-tracking.md): estimate_minutes is the
+// original estimate (null = none; always null for epics). Every item the API
+// returns carries estimate_hours, time_spent_hours (the sum of its time
+// entries, computed in the same query) and, for non-epics, remaining_hours;
+// the raw minutes columns stay internal (rowOf) for history and updates.
 const { STATUSES, isTerminalStatus } = require('../statuses');
 const { isEpicType, epicTypeNames } = require('../types');
 const { activeSprintState } = require('../sprintStates');
@@ -17,6 +22,7 @@ const history = require('./history');
 const links = require('./links');
 const attachments = require('./attachments');
 const storage = require('./storage');
+const timeEntries = require('./timeEntries');
 
 const RANK_STEP = 1000;
 
@@ -25,13 +31,30 @@ const RANK_STEP = 1000;
 const SELECT = `
   SELECT i.id, i.project_id, i.number, i.key, i.type, i.title, i.description, i.status, i.priority,
          i.assignee_id, i.epic_id, i.rank, i.resolution, i.reporter_id, r.name AS reporter_name,
-         i.sprint_id, i.sprint_rank, i.created_at, i.updated_at`;
+         i.sprint_id, i.sprint_rank, i.estimate_minutes, ${timeEntries.ITEM_MINUTES_SQL} AS time_spent_minutes,
+         i.created_at, i.updated_at`;
 const FROM = 'FROM issues i LEFT JOIN users r ON r.id = i.reporter_id';
 
 // `AND i.type NOT IN (<epic types>)` and its parameters.
 function notEpicClause() {
   const names = epicTypeNames();
   return { sql: names.length ? ` AND i.type NOT IN (${names.map(() => '?').join(', ')})` : '', params: names };
+}
+
+// The work item as the API returns it: hours instead of minutes. An epic
+// has no estimate, no time spent and no remaining_hours (AC 11, 34, 38).
+function present(row) {
+  if (!row) return row;
+  const { estimate_minutes: estimate, time_spent_minutes: spent, ...item } = row;
+  if (isEpicType(row.type)) return { ...item, estimate_hours: null, time_spent_hours: 0 };
+  const estimateHours = estimate === null || estimate === undefined ? null : timeEntries.toHours(estimate);
+  const spentHours = timeEntries.toHours(spent || 0);
+  return {
+    ...item,
+    estimate_hours: estimateHours,
+    time_spent_hours: spentHours,
+    remaining_hours: estimateHours === null ? null : timeEntries.toHours(estimate - (spent || 0)),
+  };
 }
 
 // Each item carries comment_count (number of discussion messages) so the
@@ -64,7 +87,8 @@ function listIssues(db, projectId, sprint = null) {
          (SELECT COUNT(*) FROM comments c WHERE c.issue_id = i.id) AS comment_count
        ${FROM} WHERE ${where.join(' AND ')} ORDER BY ${order}`
     )
-    .all(...params);
+    .all(...params)
+    .map(present);
 }
 
 // The non-epic items of a container (sprint id, or null for the backlog) in
@@ -76,8 +100,13 @@ function listContainer(db, projectId, sprintId) {
     .all(projectId, sprintId, ...ne.params);
 }
 
-function getIssue(db, id) {
+// The stored row, minutes columns included (history compares these).
+function rowOf(db, id) {
   return db.prepare(`${SELECT} ${FROM} WHERE i.id = ?`).get(id);
+}
+
+function getIssue(db, id) {
+  return present(rowOf(db, id));
 }
 
 function countChildren(db, epicId) {
@@ -168,9 +197,9 @@ function rebalanceSprintRank(db, projectId, sprintId, movedId) {
 // and records the sprint change in its history. Status, resolution, epic and
 // assignee are untouched.
 function moveToContainer(db, id, sprintId, sprintRank, actor, when) {
-  const before = getIssue(db, id);
+  const before = rowOf(db, id);
   db.prepare('UPDATE issues SET sprint_id = ?, sprint_rank = ?, updated_at = ? WHERE id = ?').run(sprintId, sprintRank, when, id);
-  history.recordChanges(db, id, actor, before, getIssue(db, id), when);
+  history.recordChanges(db, id, actor, before, rowOf(db, id), when);
 }
 
 // If the moved item now shares a rank with another item in its column,
@@ -216,8 +245,8 @@ function createIssue(db, project, fields, actor) {
     const info = db
       .prepare(
         `INSERT INTO issues (project_id, number, key, type, title, description, status, priority,
-           assignee_id, epic_id, rank, resolution, reporter_id, sprint_id, sprint_rank, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           assignee_id, epic_id, rank, resolution, reporter_id, sprint_id, sprint_rank, estimate_minutes, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         project.id,
@@ -235,6 +264,7 @@ function createIssue(db, project, fields, actor) {
         fields.reporter_id ?? null,
         sprintId,
         sprintRank,
+        epic ? null : fields.estimate_minutes ?? null,
         now,
         now
       );
@@ -244,7 +274,7 @@ function createIssue(db, project, fields, actor) {
   })();
 }
 
-const UPDATABLE = ['type', 'title', 'description', 'status', 'priority', 'assignee_id', 'epic_id', 'rank', 'resolution', 'sprint_id', 'sprint_rank'];
+const UPDATABLE = ['type', 'title', 'description', 'status', 'priority', 'assignee_id', 'epic_id', 'rank', 'resolution', 'sprint_id', 'sprint_rank', 'estimate_minutes'];
 
 // Clears the epic of every child of `epicId`, recording an epic change on each.
 function releaseChildren(db, epicId, actor, when) {
@@ -262,7 +292,7 @@ function releaseChildren(db, epicId, actor, when) {
 function updateIssue(db, id, changes, actor, options = {}) {
   return db.transaction(() => {
     const now = new Date().toISOString();
-    const current = getIssue(db, id);
+    const current = rowOf(db, id);
     const next = { ...changes };
     const statusChanged = next.status !== undefined && next.status !== current.status;
     if (statusChanged && next.rank === undefined) {
@@ -271,12 +301,14 @@ function updateIssue(db, id, changes, actor, options = {}) {
     next.resolution = resolutionFor(next.status ?? current.status, next.resolution, current.resolution, statusChanged);
     // Sprint membership: an epic is in no container; a non-epic item that
     // changes container, or has no position yet (it was an epic), goes to the
-    // bottom of its container unless a position is given.
+    // bottom of its container unless a position is given. An item that
+    // becomes an epic loses its estimate the same way (time-tracking AC 36).
     const epicAfter = isEpicType(next.type ?? current.type);
     const sprintAfter = epicAfter ? null : next.sprint_id !== undefined ? next.sprint_id : current.sprint_id;
     if (epicAfter) {
       next.sprint_id = null;
       next.sprint_rank = null;
+      next.estimate_minutes = null;
     } else if (next.sprint_rank === undefined && (sprintAfter !== current.sprint_id || current.sprint_rank === null)) {
       next.sprint_rank = bottomSprintRank(db, current.project_id, sprintAfter);
     }
@@ -291,7 +323,7 @@ function updateIssue(db, id, changes, actor, options = {}) {
     sets.push('updated_at = ?');
     params.push(now);
     db.prepare(`UPDATE issues SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);
-    history.recordChanges(db, id, actor, current, getIssue(db, id), now);
+    history.recordChanges(db, id, actor, current, rowOf(db, id), now);
     if (options.clearChildren) releaseChildren(db, id, actor, now);
     if (changes.rank !== undefined) {
       rebalanceIfNeeded(db, current.project_id, next.status ?? current.status, id);
@@ -303,8 +335,8 @@ function updateIssue(db, id, changes, actor, options = {}) {
   })();
 }
 
-// Deletes a work item with its discussion messages, links, attachments and
-// history. Children of a deleted epic keep existing (with their own messages)
+// Deletes a work item with its discussion messages, links, attachments, time
+// entries and history. Children of a deleted epic keep existing (with their own messages)
 // with no epic, and each gets an epic change in its history; each former link
 // partner gets a link removal in its history. Messages, links, attachments
 // and history are deleted explicitly rather than relying on the foreign-key
@@ -317,9 +349,11 @@ function deleteIssue(db, id, actor) {
     const now = new Date().toISOString();
     releaseChildren(db, id, actor, now);
     links.deleteLinksFor(db, id, actor, now);
+    require('./testCases').deleteForIssue(db, id);
     const removed = attachments.deleteAttachmentsFor(db, id);
     history.deleteHistory(db, id);
     db.prepare('DELETE FROM comments WHERE issue_id = ?').run(id);
+    timeEntries.deleteForIssue(db, id);
     db.prepare('DELETE FROM issues WHERE id = ?').run(id);
     return removed;
   })();

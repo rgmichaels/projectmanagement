@@ -5,7 +5,7 @@
 // Callers pass the same `db` from inside their own transaction, so an event
 // commits or rolls back with the write it describes. History is append-only:
 // rows go away only with their work item (deleteHistory).
-const { HISTORY_FIELDS, getField, linkField, attachmentField } = require('../historyFields');
+const { HISTORY_FIELDS, getField, linkField, attachmentField, testCaseField } = require('../historyFields');
 const users = require('./users');
 
 // The actor when no signed-in user is known (entries written before login).
@@ -20,6 +20,7 @@ const clean = (v) => (empty(v) ? null : v);
 // The display text of a value of `field`, as it is now.
 function snapshot(db, field, value) {
   if (empty(value)) return { text: null, id: null };
+  if (field.format) return { text: field.format(value), id: null };
   switch (field.kind) {
     case 'long':
       return { text: null, id: null };
@@ -156,6 +157,7 @@ function deleteHistory(db, issueId) {
 }
 
 module.exports = {
+  recordTestCaseChange: (db, issueId, actor, change, when) => recordSingleChange(db, issueId, actor, testCaseField(), change, when),
   UNKNOWN_ACTOR,
   recordCreated,
   recordChanges,

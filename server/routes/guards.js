@@ -8,18 +8,20 @@ const comments = require('../data/comments');
 const links = require('../data/links');
 const attachments = require('../data/attachments');
 const sprints = require('../data/sprints');
+const timeEntries = require('../data/timeEntries');
 const { UNKNOWN_ACTOR } = require('../data/history');
 const { ValidationError } = require('../validation');
 const { can, actionOf } = require('../groups');
 
 // The signed-in user's group must have `permission` (server/groups.js).
 // `project` is accepted for later per-project membership and ignored for now:
-// a project_members role would be consulted here, and only here.
+// a project_members role would be consulted here, and only here. `action`
+// optionally replaces the permission's wording in the message ("log time").
 // eslint-disable-next-line no-unused-vars
-function assertCan(user, permission, project) {
+function assertCan(user, permission, project, action) {
   if (!user || !can(user.group, permission)) {
     const group = user && user.group ? user.group : 'none';
-    throw new ValidationError(`Your group (${group}) is not allowed to ${actionOf(permission)}.`, 403);
+    throw new ValidationError(`Your group (${group}) is not allowed to ${action || actionOf(permission)}.`, 403);
   }
 }
 
@@ -94,6 +96,20 @@ function assertOwnsAttachment(user, attachment) {
   }
 }
 
+function loadTimeEntry(db, rawId) {
+  const id = parseId(rawId);
+  const entry = id && timeEntries.getEntry(db, id);
+  if (!entry) throw new ValidationError('Time entry not found.', 404);
+  return entry;
+}
+
+// Only the user who logged a time entry may edit or delete it (Admins included).
+function assertOwnsTimeEntry(user, entry) {
+  if (entry.user_id !== user.id) {
+    throw new ValidationError('You can only change your own time entries.', 403);
+  }
+}
+
 // Who is acting, for history: always the signed-in user (never the request
 // body), or the Unknown actor when there is none.
 function actorFrom(req) {
@@ -108,8 +124,10 @@ module.exports = {
   loadLink,
   loadAttachment,
   loadSprint,
+  loadTimeEntry,
   assertWritable,
   assertOwnsComment,
   assertOwnsAttachment,
+  assertOwnsTimeEntry,
   actorFrom,
 };

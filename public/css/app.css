@@ -32,6 +32,48 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); }
+
+/* Test case library and shared definition/result dialogs. */
+.tc-library { display: grid; gap: 12px; margin: 16px 0; }
+.tc-card, .tc-result { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 12px; overflow-wrap: anywhere; }
+.tc-card h3, .tc-result h3 { margin: 0 0 8px; color: var(--teal); }
+.tc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 10px 0; }
+.tc-actions label { display: flex; flex-direction: column; gap: 4px; }
+.tc-case-title { text-align: left; font-size: 16px; }
+dialog.app-dialog.tc-dialog { width: 760px; max-width: calc(100vw - 24px); padding: 0; max-height: calc(100vh - 24px); overflow: auto; }
+.tc-dialog .band { padding: 18px 24px; background: var(--teal); }
+.tc-dialog .band h2 { color: white; margin: 0; overflow-wrap: anywhere; }
+.tc-modal-body { padding: 20px 24px; }
+.tc-modal-body > label, .tc-step-row > label { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; font-weight: 700; }
+.tc-modal-body input[type="text"], .tc-modal-body textarea { width: 100%; }
+.tc-dialog > .tc-actions { position: sticky; bottom: 0; padding: 12px 24px; margin: 0; background: var(--surface); border-top: 1px solid var(--line); }
+.tc-dialog > .error { margin: 0; padding: 0 24px 12px; }
+.tc-dialog > .error:empty { display: none; }
+.tc-step-row { border: 1px solid var(--line); border-radius: 6px; padding: 12px; margin: 0 0 12px; min-width: 0; }
+.tc-step-row legend { color: var(--teal); font-weight: 700; }
+.tc-definition p, .tc-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.tc-definition h3 { color: var(--teal); font-size: 14px; margin: 24px 0 10px; }
+.tc-preconditions { margin: 0; padding: 14px 16px; background: var(--teal-soft); border-radius: 6px; line-height: 1.6; }
+.tc-steps { padding-left: 28px; margin: 0; }
+.tc-steps li { padding: 0 0 14px 6px; }
+.tc-steps li::marker { color: var(--teal); font-weight: 700; }
+.tc-step-content { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 16px; border: 1px solid var(--line); border-radius: 6px; }
+.tc-step-content > div { min-width: 0; }
+.tc-step-content strong { color: var(--muted); font-size: 12px; }
+.tc-step-content p { line-height: 1.6; margin: 6px 0 0; }
+.tc-detail-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.tc-detail-key { font-family: var(--mono); font-size: 13px; color: var(--teal); font-weight: 700; }
+.tc-audit { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; border-top: 1px solid var(--line); padding-top: 18px; margin: 24px 0 0; }
+.tc-audit dt { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.tc-audit dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.tc-linked-tickets { margin-top: 24px; }
+@media (max-width: 600px) {
+  .tc-step-content, .tc-audit { grid-template-columns: 1fr; gap: 14px; }
+  .tc-modal-body { padding: 16px; }
+}
+.tc-picker { display: grid; gap: 8px; padding: 12px 0; }
+.tc-picker label { display: flex; flex-direction: row-reverse; justify-content: flex-end; align-items: center; gap: 10px; padding: 8px; border: 1px solid var(--line); }
+.tc-stale { color: var(--danger); font-weight: 700; }
 h1 { font-size: 20px; margin: 0; color: var(--teal); font-weight: 700; }
 h2 { font-size: 16px; margin: 0 0 12px; color: var(--teal); font-weight: 700; }
 a { color: var(--linkblue); }
@@ -676,3 +718,160 @@ dialog.app-dialog .dialog-body p { margin: 0 0 8px; overflow-wrap: anywhere; }
 .sprint.sticky > .sprint-body > :last-child { border-radius: 0 0 7px 7px; }
 /* The strip spans the header edge to edge (flex-basis 100% plus the two 12px negative margins). */
 .sprint-head > .sel-strip { flex-basis: calc(100% + 24px); }
+
+/* ===== Project dropdown (docs/specs/global-project-scope.md AC 1-6; design sprints-and-project-scope, topbar A) ===== */
+.topbar .project-scope { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: 6px; }
+.topbar .project-scope > label { flex-direction: row; margin: 0; color: #cfe3e5; font-size: 12px; font-weight: 700; }
+.topbar select.project-select { width: auto; min-width: 200px; max-width: 340px; padding: 4px 8px; font-size: 13px; font-weight: 700; border: 1px solid #fff; background: #fff; color: var(--ink); text-overflow: ellipsis; }
+
+/* ===== Sprint dropdown + summary (docs/specs/sprints-screen.md AC 3, 4, 6, 8; Sprints A) ===== */
+.sprint-pick { display: flex; align-items: center; gap: 6px; min-width: 0; position: relative; }
+.sprint-pick label { flex-direction: row; align-items: center; margin: 0; font-size: 13px; font-weight: 700; }
+.page .sprint-pick select { min-width: 220px; max-width: 100%; font-weight: 700; }
+.sprint-pick select:disabled { background: var(--teal-soft); color: var(--muted); }
+.sprint-why { margin: 0; padding: 6px 12px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line2); }
+.sprint-sum { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.sprint-sum strong { color: var(--ink); }
+.manage-link { margin-left: auto; font-size: 13px; }
+
+/* ===== Sortable table (sprints-screen.md AC 9-23) ===== */
+.table-wrap { overflow-x: auto; }
+table.sprint-table { width: 100%; min-width: 720px; border-collapse: separate; border-spacing: 0; background: var(--surface); }
+table.sprint-table th { background: var(--teal-soft); border-bottom: 1px solid var(--teal-mid); padding: 0; text-align: left; }
+table.sprint-table th[aria-sort="ascending"], table.sprint-table th[aria-sort="descending"] { box-shadow: inset 0 -3px 0 var(--teal); }
+button.sort { display: flex; align-items: center; gap: 4px; width: 100%; border: none; border-radius: 0; background: none; color: var(--teal); font-size: 12px; font-weight: 700; padding: 9px 12px; text-align: left; white-space: nowrap; }
+button.sort:hover { text-decoration: underline; }
+button.sort:focus-visible { outline: 2px solid var(--teal); outline-offset: -3px; }
+button.sort .arrow { color: var(--muted); font-size: 11px; font-weight: 400; }
+th[aria-sort="ascending"] .arrow, th[aria-sort="descending"] .arrow { color: var(--teal); font-weight: 700; }
+table.sprint-table td { padding: 8px 12px; border-bottom: 1px solid var(--line2); vertical-align: middle; overflow-wrap: anywhere; }
+table.sprint-table tbody tr:last-child td { border-bottom: none; }
+table.sprint-table tbody tr:hover td { background: var(--page); }
+table.sprint-table td.c-key { white-space: nowrap; }
+table.sprint-table td.c-title { min-width: 220px; }
+table.sprint-table td.c-nowrap { white-space: nowrap; }
+.key-btn { border: none; background: none; padding: 0; font: 700 12px var(--mono); color: var(--ink); }
+.title-btn { border: none; background: none; padding: 0; font-weight: 400; color: var(--ink); text-align: left; overflow-wrap: anywhere; }
+.key-btn:hover, .title-btn:hover { text-decoration: underline; }
+.assignee { display: inline-flex; align-items: center; gap: 6px; }
+table.sprint-table .avatar { margin-left: 0; flex: none; }
+.cell-none { color: var(--muted); }
+.sort-line { display: flex; align-items: center; gap: 10px; padding: 6px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line2); }
+.sort-line strong { color: var(--ink); }
+.sort-line button.link { margin-left: auto; }
+
+/* Built-page additions: the epic chip as a button, the states inside the
+   panel, and the narrow-window rules the mockups drew by hand. */
+button.epic-chip { border: none; font-size: 12px; }
+.sprints-empty, .banner-warn.sprint-load-error { margin: 12px; }
+.sprints-empty p { margin: 0 0 8px; }
+@media (max-width: 600px) {
+  .topbar { flex-wrap: wrap; }
+  .topbar .project-scope { order: 3; flex: 1 1 100%; margin-left: 0; }
+  .topbar select.project-select { flex: 1; max-width: none; min-width: 0; }
+  .sprints-page .sprint-pick { flex: 1 1 100%; }
+  .sprints-page .sprint-pick select { flex: 1; min-width: 0; }
+  .sprints-page .manage-link { margin-left: 0; flex-basis: 100%; }
+}
+
+/* ===== Time tracking and estimates (docs/specs/time-tracking.md; design time-tracking option A, STYLE.md part 7) =====
+   Only existing tokens. Contrast: --danger on white 5.9:1, on --teal-soft 5.2:1; --muted on white 5.9:1;
+   --teal-mid is used only as a border (3.0:1 against white) and never as text. */
+
+/* ---- Sprint figure: "12 h logged / 20 h est." (Board bar, Sprints summary, Backlog sprint headers) ---- */
+.sprint-fig { display: inline-block; font-size: 13px; font-weight: 700; color: var(--ink); background: var(--surface); border: 1px solid var(--teal-mid); border-radius: 4px; padding: 1px 8px; white-space: nowrap; }
+.sprint-fig .fig-note { font-weight: 400; color: var(--muted); }
+.sprint-fig.is-over { border-color: var(--danger); color: var(--danger); }
+.sprint-fig.is-over .fig-note { color: var(--danger); }
+
+/* ---- Estimate field in the dialog's Properties grid (sits right of Sprint) ---- */
+dialog#detail .props > .est-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; }
+dialog#detail .props > .est-field[hidden] { display: none; }
+dialog#detail .est-input { display: flex; align-items: center; gap: 6px; }
+dialog#detail .est-input input { width: 100%; max-width: 120px; }
+dialog#detail .est-unit { font-size: 13px; font-weight: 700; }
+dialog#detail .est-field .hint, dialog#detail .est-field .error { margin: 0; }
+dialog#detail .est-ro { margin: 0; font-size: 14px; background: var(--teal-soft); border: 1px solid var(--navy); border-radius: 4px; padding: 6px 8px; overflow-wrap: anywhere; }
+dialog#detail .est-ro.none { color: var(--ink); font-style: italic; }
+dialog#detail .props input[aria-invalid="true"] { border: 2px solid var(--danger); }
+
+/* ---- Time tab: summary, form, entries ---- */
+dialog#detail .time-sum { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+dialog#detail .time-sum.is-over { border-left: 6px solid var(--danger); }
+dialog#detail .time-sum dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 14px; margin: 0; }
+dialog#detail .time-sum dt { font-size: 12px; font-weight: 700; color: var(--muted); }
+dialog#detail .time-sum dd { margin: 2px 0 0; font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+dialog#detail .time-sum dd.none { font-size: 14px; font-weight: 400; color: var(--muted); }
+dialog#detail .time-sum dd.bal-over { color: var(--danger); }
+dialog#detail .time-bar { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+dialog#detail .time-bar .progress-bar { background: var(--teal-soft); border: 1px solid var(--teal-mid); height: 10px; }
+dialog#detail .time-bar .progress-fill { background: var(--teal); transition: none; }
+dialog#detail .time-bar.is-over .progress-fill { background: var(--danger); }
+dialog#detail .time-bar-text { font-size: 12px; color: var(--muted); white-space: nowrap; }
+dialog#detail .time-h { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--teal); }
+dialog#detail .time-form { display: grid; grid-template-columns: 96px 150px minmax(0, 1fr) auto; gap: 8px 10px; align-items: end; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+dialog#detail .time-form > .time-h, dialog#detail .time-form > .hint, dialog#detail .time-form > .error { grid-column: 1 / -1; margin: 0; }
+dialog#detail .time-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; }
+dialog#detail .time-form input { width: 100%; }
+dialog#detail .time-list-head { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 4px; }
+dialog#detail .time-list-head .time-h { margin: 0; }
+dialog#detail .time-list-head .hint { margin: 0; }
+dialog#detail .time-list { list-style: none; margin: 0; padding: 0; }
+dialog#detail .time-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 8px 0; border-top: 1px solid var(--line2); }
+dialog#detail .time-item:first-child { border-top: none; }
+dialog#detail .time-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
+dialog#detail .time-who { font-weight: 700; overflow-wrap: anywhere; }
+dialog#detail .time-hours { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+dialog#detail .time-date { font: 12px var(--mono); white-space: nowrap; }
+dialog#detail .time-when { font-size: 12px; color: var(--muted); }
+dialog#detail .time-edited { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; padding: 0 6px; white-space: nowrap; }
+dialog#detail .time-note { grid-column: 1 / -1; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+dialog#detail .time-actions { display: flex; gap: 12px; align-self: start; }
+dialog#detail .time-item.is-editing { display: block; background: var(--teal-soft); border: 1px solid var(--teal-mid); border-radius: 4px; padding: 10px; margin: 4px 0; }
+dialog#detail .time-item.is-editing .time-form { margin: 0; padding: 0; border: none; grid-template-columns: 96px 150px minmax(0, 1fr); }
+dialog#detail .time-item.is-editing .time-edit-actions { grid-column: 1 / -1; display: flex; gap: 8px; }
+dialog#detail .time-empty { margin: 4px 0; color: var(--muted); }
+dialog#detail .time-loading { margin: 4px 0; color: var(--muted); }
+dialog#detail .time-load-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border: 1px solid var(--danger); border-left-width: 6px; border-radius: 4px; background: #fff; padding: 8px 12px; }
+dialog#detail .time-load-error strong { color: var(--danger); }
+
+/* ---- Tab bar fit (recommended with the seventh tab): tighter tabs, still scrolls as a safety net ---- */
+dialog#detail .tabs.tight { gap: 0; }
+dialog#detail .tabs.tight .tab { padding: 7px 7px; }
+dialog#detail .tabs.tight .tab .n { margin-left: 4px; padding: 0 5px; }
+
+/* ---- Backlog Estimate column (list view): fixed cell before the avatar, header strip above the rows ---- */
+.brows-head { display: flex; align-items: center; gap: 8px; padding: 4px 12px; background: var(--page); border-bottom: 1px solid var(--line2); font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; }
+.brows-head .grow { flex: 1; }
+.brows-head .est-h { width: 76px; text-align: right; }
+.brows-head .gap-avatar { width: 24px; flex: none; }
+.brow-est { flex: none; width: 76px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.brow-est input { width: 76px; padding: 3px 6px; text-align: right; border: 1px solid var(--teal-mid); border-radius: 3px; background: #fff; font-variant-numeric: tabular-nums; }
+.brow-est input::placeholder { color: var(--muted); opacity: 1; }
+.brow-est input:hover { border-color: var(--navy); }
+.brow-est input[disabled] { background: var(--teal-soft); color: var(--muted); }
+.brow-est .est-state { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.brow-est .est-ro { padding: 3px 6px; font-variant-numeric: tabular-nums; }
+.brow-est .est-ro.none { color: var(--muted); }
+.brow-est.is-na { visibility: hidden; }
+.brow-error { flex-basis: 100%; margin: 0; padding: 0 0 0 24px; color: var(--danger); font-size: 12px; }
+.brow-error[hidden] { display: none; }
+
+/* ---- Sprints table: Estimate and Logged columns, right aligned ---- */
+table.sprint-table th.num button.sort { justify-content: flex-end; }
+table.sprint-table td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+table.sprint-table.with-time { min-width: 880px; }
+
+@media (max-width: 600px) {
+  dialog#detail .time-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  dialog#detail .time-form > .note-field, dialog#detail .time-form > button { grid-column: 1 / -1; }
+  dialog#detail .time-sum dl { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  dialog#detail .time-item.is-editing .time-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .brows-head { display: none; }
+}
+
+/* The tab bar scrolls sideways only: never show a vertical scrollbar from the -1px tab margin. */
+dialog#detail .tabs { overflow-y: hidden; }
+
+/* Built pieces that are flex or grid boxes still honour the hidden attribute. */
+dialog#detail .est-input[hidden], dialog#detail .time-form[hidden], dialog#detail .time-load-error[hidden] { display: none; }

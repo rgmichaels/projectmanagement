@@ -15,21 +15,35 @@ const {
 } = require('../sprintStates');
 const { EVENT } = require('../sprintEvents');
 const issues = require('./issues');
+const timeEntries = require('./timeEntries');
 const sprintHistory = require('./sprintHistory');
 
 const COLUMNS = 'id, project_id, name, goal, start_date, end_date, state, created_at, started_at, completed_at';
 const NAME_PATTERN = /^Sprint (\d+)$/;
 
 // item_count and done_count of a sprint: its non-epic items, and those in
-// the terminal status (whatever their resolution).
+// the terminal status (whatever their resolution). Time tracking
+// (docs/specs/time-tracking.md AC 13, 39): the minutes logged on and
+// estimated for the items now in the sprint, finished or not, and how many
+// non-epic items have no estimate. Always computed, never stored.
 function countsSql() {
   const epics = epicTypeNames();
   const notEpic = epics.length ? ` AND i.type NOT IN (${epics.map(() => '?').join(', ')})` : '';
   return {
     sql: `(SELECT COUNT(*) FROM issues i WHERE i.sprint_id = s.id${notEpic}) AS item_count,
-          (SELECT COUNT(*) FROM issues i WHERE i.sprint_id = s.id AND i.status = ?${notEpic}) AS done_count`,
-    params: [...epics, terminalStatus(), ...epics],
+          (SELECT COUNT(*) FROM issues i WHERE i.sprint_id = s.id AND i.status = ?${notEpic}) AS done_count,
+          ${timeEntries.SPRINT_MINUTES_SQL} AS time_spent_minutes,
+          (SELECT COALESCE(SUM(i.estimate_minutes), 0) FROM issues i WHERE i.sprint_id = s.id${notEpic}) AS estimate_minutes,
+          (SELECT COUNT(*) FROM issues i WHERE i.sprint_id = s.id AND i.estimate_minutes IS NULL${notEpic}) AS unestimated_count`,
+    params: [...epics, terminalStatus(), ...epics, ...epics, ...epics],
   };
+}
+
+// The sprint as the API returns it: the minute sums as hours.
+function withHours(row) {
+  if (!row) return row;
+  const { time_spent_minutes: spent, estimate_minutes: estimate, ...sprint } = row;
+  return { ...sprint, time_spent_hours: timeEntries.toHours(spent), estimate_hours: timeEntries.toHours(estimate) };
 }
 
 // Active first, then the other states in list order; planned (and any other
@@ -48,6 +62,7 @@ function listSprints(db, projectId) {
   return db
     .prepare(`SELECT ${COLUMNS.split(', ').map((x) => `s.${x}`).join(', ')}, ${c.sql} FROM sprints s WHERE s.project_id = ?`)
     .all(...c.params, projectId)
+    .map(withHours)
     .sort(compareSprints);
 }
 
@@ -58,9 +73,11 @@ function getSprint(db, id) {
 // The sprint with its counts, as the list returns it.
 function getSprintWithCounts(db, id) {
   const c = countsSql();
-  return db
-    .prepare(`SELECT ${COLUMNS.split(', ').map((x) => `s.${x}`).join(', ')}, ${c.sql} FROM sprints s WHERE s.id = ?`)
-    .get(...c.params, id);
+  return withHours(
+    db
+      .prepare(`SELECT ${COLUMNS.split(', ').map((x) => `s.${x}`).join(', ')}, ${c.sql} FROM sprints s WHERE s.id = ?`)
+      .get(...c.params, id)
+  );
 }
 
 function getActiveSprint(db, projectId) {

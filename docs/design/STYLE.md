@@ -105,3 +105,18 @@ Full contract and CSS: `docs/design/sprints-and-project-scope/README.md` and the
 - Table wrapper `.table-wrap` scrolls sideways on narrow screens (table min-width 720px).
 
 **Do.** Show sort as arrow plus `aria-sort` plus the word in the sort line; keep Cancel focused in confirms; insert project, sprint and item text as text. **Don't.** Don't colour-only the sorted column; don't add write controls to the Sprints table; don't list archived projects in the dropdown.
+
+## 7. Time tracking and estimates (time-tracking, option A recommended)
+
+Full contract and CSS: `docs/design/time-tracking/README.md` and `docs/design/time-tracking/src/time.css` (append to `public/css/app.css`). No new colours or tokens.
+
+**New components.**
+- Sprint figure (`.sprint-fig`): bordered white 13px bold tag, `--teal-mid` border; `.fig-note` muted for "(n not estimated)"; `.is-over` turns border and text `--danger` and carries the word "(over)". Used on the Board sprint bar, the Sprints summary line and Backlog sprint headers.
+- Estimate field (`.est-field` in the dialog's `.props` grid, right of Sprint): label, number input (max 120px) and an "h" unit; read-only `.est-ro` looks like a disabled field.
+- Time summary (`.time-sum`, `dl` of Estimate, Logged, Balance; `.is-over` adds a 6px danger left edge; `.time-bar` is an 8-10px progress bar with a visible "n% of estimate logged" text).
+- Log time form (`.time-form`, grid Hours, Date, Note, navy button) and entries list (`.time-list`, `.time-item`, `.time-edited` marker, `.is-editing` inline edit on pale teal).
+- Backlog Estimate column: `.brows-head` header strip "Est. (h)" and `.brow-est` 76px cell with a right-aligned number input, `.est-state` ("Saving...", "Saved"), `.brow-error` under the row.
+- Sprints table: `th.num` / `td.num` right-aligned Estimate and Logged columns, `table.with-time` min-width 880px.
+- Tab bar `.tabs.tight`: 7px tab padding, no gap, so six tabs fit the 660px dialog. Option B only: `.time-strip`. Option C only: `details.time-sec`.
+
+**Do.** Write over-estimate as words and a triangle, never colour alone; label every number with its unit "h"; show a dash (with hidden text) for no estimate; set names, notes and server messages as text. **Don't.** Don't warn with pop-ups when logged exceeds the estimate; don't show per-item time on cards; don't give epics a Time tab or Estimate field.

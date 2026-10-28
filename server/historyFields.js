@@ -20,6 +20,8 @@
 //   emptyText - optional: what the API shows for an empty (null) value of
 //              the field; it is still stored as null (the backlog is a null
 //              sprint and reads "Backlog").
+//   format - optional: turns a stored value into the recorded text (the
+//              estimate is stored in minutes and recorded as hours text).
 // `rank` and `sprint_rank` are deliberately absent: reorders are bookkeeping,
 // not history.
 // To track a new editable column, add one entry here (tests/history.test.js
@@ -39,9 +41,12 @@ const HISTORY_FIELDS = [
   { key: 'assignee', column: 'assignee_id', label: 'Assignee', kind: 'user' },
   { key: 'epic', column: 'epic_id', label: epicType ? epicType.label || epicType.name : 'Parent', kind: 'issue' },
   { key: 'sprint', column: 'sprint_id', label: 'Sprint', kind: 'sprint-name', emptyText: 'Backlog' },
+  // docs/specs/time-tracking.md AC 49, 50: `8` to `12`, null when empty.
+  { key: 'estimate', column: 'estimate_minutes', label: 'Estimate', kind: 'text', format: (minutes) => String(minutes / 60) },
   { key: 'resolution', label: 'Resolution', kind: 'text' },
   { key: 'link', column: null, label: 'Link', kind: 'link' },
   { key: 'attachment', column: null, label: 'Attachment', kind: 'file' },
+  { key: 'test_case', column: null, label: 'Test case', kind: 'test-case' },
 ].map((f) => ({ column: f.key, ...f }));
 
 function getField(key) {
@@ -67,4 +72,5 @@ function publicFields() {
   return HISTORY_FIELDS.map(({ key, label, kind }) => ({ key, label, kind }));
 }
 
-module.exports = { HISTORY_FIELDS, getField, isHistoryField, linkField, attachmentField, publicFields };
+const testCaseField = () => HISTORY_FIELDS.find((f) => f.kind === 'test-case');
+module.exports = { HISTORY_FIELDS, getField, isHistoryField, linkField, attachmentField, testCaseField, publicFields };

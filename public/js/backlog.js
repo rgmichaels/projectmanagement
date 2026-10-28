@@ -8,6 +8,10 @@
 // Backlog rows (only those) have a checkbox; the ticked ones move to a
 // sprint together from the selection strip in the sticky Backlog header
 // (docs/specs/backlog-bulk-move.md, design option B; js/bulkMove.js).
+// Time tracking (docs/specs/time-tracking.md AC 20, 52, 54; design
+// time-tracking backlog-estimate.html): every list has an "Est. (h)" column
+// whose number input saves the item's estimate on Enter or blur (PATCH
+// estimate_hours), and each sprint header shows the sprint figure.
 // js/board.js loads the lists and items, runs the work item dialog and calls
 // backlogPage.init(ctx) and backlogPage.render(). Sprint states and event
 // labels come from the server; nothing here names a state, kind, status or
@@ -35,6 +39,8 @@ const backlogPage = (() => {
     kinds: [], // sprint event kinds from the server
     history: { events: [], hasMore: false, loaded: false, loading: false, error: '' },
     historySeq: 0,
+    // Estimate cells: item id -> { state: 'saving' | 'saved' | 'error', message }.
+    est: new Map(),
   };
 
   const $ = (id) => document.getElementById(id);
@@ -140,6 +146,110 @@ const backlogPage = (() => {
     return label;
   }
 
+  // ---------- estimate cell (time-tracking AC 52, 54) ----------
+  // A number input before the avatar (read-only text for Viewers and
+  // archived projects; a completed sprint's items keep an editable estimate,
+  // AC 37). Enter or leaving the field saves when the value changed; Escape
+  // restores it. Typing never opens the dialog or starts a row drag.
+
+  const ESTIMATE_FAILED = 'Could not save the estimate. Try again.';
+  const ESTIMATE_INVALID = 'Estimate must be a number greater than 0 and at most 1000, in steps of 0.25, or empty.';
+  const estimateText = (item) => (item.estimate_hours === null || item.estimate_hours === undefined ? '' : String(item.estimate_hours));
+
+  function estimateCell(item, li) {
+    const el = ctx.el;
+    if (ctx.readOnly()) {
+      const none = estimateText(item) === '';
+      return el(
+        'span',
+        { class: 'brow-est' },
+        none
+          ? el('span', { class: 'est-ro none' }, el('span', { 'aria-hidden': 'true' }, '-'), el('span', { class: 'visually-hidden' }, 'Not estimated'))
+          : el('span', { class: 'est-ro' }, estimateText(item), el('span', { class: 'visually-hidden' }, ' hours'))
+      );
+    }
+    const cellState = view.est.get(item.id) || null;
+    const errorId = `est-error-${item.id}`;
+    const input = el('input', {
+      type: 'number',
+      step: '0.25',
+      min: '0.25',
+      max: '1000',
+      placeholder: '-',
+      'aria-label': `Estimate in hours for ${item.key}`,
+      'data-est-id': item.id,
+      value: estimateText(item),
+      disabled: cellState && cellState.state === 'saving',
+      'aria-busy': cellState && cellState.state === 'saving' ? 'true' : undefined,
+      'aria-invalid': cellState && cellState.state === 'error' ? 'true' : undefined,
+      'aria-describedby': cellState && cellState.state === 'error' ? errorId : undefined,
+    });
+    const cell = el('span', { class: 'brow-est' }, input);
+    if (cellState && cellState.state === 'saving') cell.append(el('span', { class: 'est-state', role: 'status' }, 'Saving...'));
+    if (cellState && cellState.state === 'saved') cell.append(el('span', { class: 'est-state', role: 'status' }, '\u2713 Saved'));
+    if (cellState && cellState.state === 'error') li.append(el('p', { class: 'brow-error', id: errorId, role: 'alert' }, cellState.message));
+    // Not the row: no dialog, and a press here is no drag (as the checkbox).
+    cell.addEventListener('click', (e) => e.stopPropagation());
+    cell.addEventListener('pointerdown', () => { pressOnSelect = true; });
+    input.addEventListener('input', () => {
+      if (!view.est.has(item.id) || view.est.get(item.id).state === 'saving') return;
+      view.est.delete(item.id); // the tick and the error stay until the next edit
+      input.removeAttribute('aria-invalid');
+      input.removeAttribute('aria-describedby');
+      for (const note of cell.querySelectorAll('.est-state')) note.remove();
+      const error = li.querySelector('.brow-error');
+      if (error) error.remove();
+    });
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.isComposing) return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveEstimate(item, input);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        input.value = estimateText(item);
+      }
+    });
+    input.addEventListener('blur', () => saveEstimate(item, input));
+    return cell;
+  }
+
+  async function saveEstimate(item, input) {
+    const current = view.est.get(item.id);
+    if ((current && current.state === 'saving') || ctx.readOnly()) return;
+    const previous = estimateText(item);
+    // Re-drawn after the event, so focus moving to the next cell (Tab) survives.
+    const later = () => setTimeout(render, 0);
+    if (input.validity.badInput) {
+      input.value = previous;
+      view.est.set(item.id, { state: 'error', message: ESTIMATE_INVALID });
+      later();
+      return;
+    }
+    if (input.value === previous || (input.value !== '' && Number(input.value) === item.estimate_hours)) return; // unchanged: nothing sent
+    const value = input.value === '' ? null : Number(input.value);
+    for (const [id, x] of view.est) if (x.state === 'saved') view.est.delete(id); // one tick at a time
+    view.est.set(item.id, { state: 'saving' });
+    if (document.activeElement === input) view.focusEstimate = item.id; // Enter keeps focus in the cell
+    later();
+    try {
+      Object.assign(item, await api.patch(`/api/issues/${item.id}`, { estimate_hours: value }));
+      view.est.set(item.id, { state: 'saved' });
+      ctx.historySaved(item.id);
+    } catch (err) {
+      view.est.set(item.id, { state: 'error', message: err.message || ESTIMATE_FAILED });
+      render();
+      return;
+    }
+    try {
+      await ctx.reloadItems(); // the sprint figures
+    } catch (err) {
+      render();
+      ctx.showMessage(`${item.key} was saved, but the page could not be refreshed: ${err.message}`);
+    }
+  }
+
   // One row (AC 32). `writable`: a handle and draggable (not in a completed
   // sprint, not for Viewers or archived projects). `selectable`: a checkbox
   // first (Backlog rows only, never read-only; bulk move AC 1, 19).
@@ -157,9 +267,11 @@ const backlogPage = (() => {
       el('button', { type: 'button', class: 'brow-title' }, item.title),
       epic ? ctx.epicChip(epic) : null,
       el('span', { class: 'priority', title: `Priority: ${item.priority}` }, item.priority),
-      el('span', { class: `status-pill${done ? ' is-done' : ''}`, title: `Status: ${item.status}` }, item.status),
-      avatar(item)
+      el('span', { class: `status-pill${done ? ' is-done' : ''}`, title: `Status: ${item.status}` }, item.status)
     );
+    li.append(estimateCell(item, li), avatar(item));
+    const error = li.querySelector('.brow-error');
+    if (error) li.append(error); // under the row, after the avatar
     if (selectable) li.prepend(renderSelect(item, li));
     // The title button is the keyboard target; a click anywhere else on the
     // row opens the item too (the epic chip opens its epic instead).
@@ -189,7 +301,8 @@ const backlogPage = (() => {
 
   // The list of a container. `sprintId` null is the backlog; `writable`
   // false makes it read-only (completed sprint, Viewer, archived). Only the
-  // writable Backlog list has row checkboxes (bulk move AC 1, 19).
+  // writable Backlog list has row checkboxes (bulk move AC 1, 19). With rows,
+  // a header strip names the Estimate column (time-tracking AC 54).
   function renderList(sprintId, label, emptyText, writable) {
     const el = ctx.el;
     const items = itemsIn(sprintId);
@@ -213,7 +326,19 @@ const backlogPage = (() => {
       });
       ul.addEventListener('drop', (e) => onDrop(e, ul, sprintId));
     }
-    return ul;
+    if (!items.length) return ul;
+    const list = document.createDocumentFragment();
+    list.append(
+      el(
+        'div',
+        { class: 'brows-head', 'aria-hidden': 'true' },
+        el('span', { class: 'grow' }, 'Work item'),
+        el('span', { class: 'est-h' }, 'Est. (h)'),
+        el('span', { class: 'gap-avatar' })
+      ),
+      ul
+    );
+    return list;
   }
 
   // Quick create (AC 34): a title and Create at the bottom of a container.
@@ -330,6 +455,7 @@ const backlogPage = (() => {
         stateBadge(sprint),
         overdueBadge(sprint),
         ...sprintMeta(sprint),
+        ctx.sprintFigure(sprint, { note: true, live: true }),
         sprintActions(sprint)
       ),
       body
@@ -552,7 +678,7 @@ const backlogPage = (() => {
       details(
         `c${sprint.id}`,
         [el('h2', { class: 'sprint-name' }, sprint.name), stateBadge(sprint)],
-        sprintMeta(sprint),
+        [...sprintMeta(sprint), ctx.sprintFigure(sprint, { note: true })],
         'is-completed',
         goalLine(sprint),
         renderList(sprint.id, sprint.name, 'No work items.', false)
@@ -652,6 +778,16 @@ const backlogPage = (() => {
     const focusedKey = document.activeElement && document.activeElement.closest && document.activeElement.closest('.quick')
       ? document.activeElement.closest('.quick').querySelector('input').dataset.key
       : null;
+    // Estimate cells being typed in keep their text and focus.
+    const estDrafts = new Map([...els.root.querySelectorAll('.brow-est input')].filter((i) => !i.disabled).map((i) => [i.dataset.estId, i.value]));
+    const active = document.activeElement;
+    const focusedEst = active && active.matches && active.matches('.brow-est input') ? active.dataset.estId : null;
+    // Tab from an estimate cell lands on the next row's title or checkbox
+    // while the save re-draws the page: keep that focus too.
+    const focusedRow = !focusedEst && active && active.closest && active.closest('.brow[data-id]');
+    const rowTarget = focusedRow
+      ? { id: focusedRow.dataset.id, sel: ['.brow-title', '.brow-select input', '.epic-chip'].find((x) => active.matches(x)) }
+      : null;
     renderNotices();
     // Bulk move AC 5, 19: only items still in the Backlog stay selected;
     // nothing is selectable when read-only.
@@ -659,7 +795,7 @@ const backlogPage = (() => {
     for (const id of view.selected) if (!inBacklog.has(id)) view.selected.delete(id);
     bulkEls = null;
     const nodes = [];
-    const active = ctx.activeSprint();
+    const activeSprint = ctx.activeSprint();
     if (s().sprints.length === 0) {
       nodes.push(
         el(
@@ -671,18 +807,35 @@ const backlogPage = (() => {
         )
       );
     }
-    if (active) nodes.push(renderOpenSprint(active));
+    if (activeSprint) nodes.push(renderOpenSprint(activeSprint));
     for (const sprint of plannedSprints()) nodes.push(renderOpenSprint(sprint));
     nodes.push(renderBacklogSection(), renderEpics(), renderCompleted(), renderHistory());
     els.root.replaceChildren(...nodes);
     for (const input of els.root.querySelectorAll('.quick input')) {
       if (drafts.has(input.dataset.key)) input.value = drafts.get(input.dataset.key);
     }
+    for (const input of els.root.querySelectorAll('.brow-est input')) {
+      const item = ctx.itemById(Number(input.dataset.estId));
+      const draft = estDrafts.get(input.dataset.estId);
+      // Only a draft that differs from the value it was typed over survives.
+      if (draft !== undefined && item && draft !== estimateText(item) && !view.est.has(item.id)) input.value = draft;
+    }
     const refocus = view.focusQuick || focusedKey;
     view.focusQuick = null;
     if (refocus) {
       const input = els.root.querySelector(`.quick input[data-key="${refocus}"]`);
       if (input) input.focus();
+    }
+    const estFocus = focusedEst || (view.focusEstimate !== null && view.focusEstimate !== undefined ? String(view.focusEstimate) : null);
+    if (estFocus && !refocus) {
+      const input = els.root.querySelector(`.brow-est input[data-est-id="${estFocus}"]`);
+      if (input && !input.disabled) {
+        input.focus();
+        view.focusEstimate = null;
+      }
+    } else if (rowTarget && rowTarget.sel && !refocus && !view.bulkFocus) {
+      const target = els.root.querySelector(`.brow[data-id="${rowTarget.id}"] ${rowTarget.sel}`);
+      if (target) target.focus();
     }
     if (view.bulkFocus && !view.bulkBusy) {
       // After a bulk run: Move again when items are still ticked, else the
