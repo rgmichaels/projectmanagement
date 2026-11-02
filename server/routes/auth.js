@@ -10,10 +10,11 @@ const publicUser = (u) => ({ id: u.id, name: u.name, username: u.username });
 function authRoutes(db) {
   const router = express.Router();
 
-  // An unknown username never creates a user or a session.
+  // An unknown username never creates a user or a session. A deactivated
+  // user gets the same answer, so the public API does not reveal them.
   router.post('/auth/login', (req, res) => {
     const user = users.getUserByUsername(db, (req.body || {}).username);
-    if (!user) throw new ValidationError('Unknown username.', 401);
+    if (!user || !user.active) throw new ValidationError('Unknown username.', 401);
     auth.signIn(db, req, res, user);
     res.json(publicUser(user));
   });
@@ -23,6 +24,7 @@ function authRoutes(db) {
     res.status(204).end();
   });
 
+  // Active users only.
   router.get('/auth/users', (req, res) => {
     res.json(users.listLoginUsers(db).map(publicUser));
   });
@@ -31,7 +33,9 @@ function authRoutes(db) {
   // client hides controls from `permissions` and never from a group name.
   router.get('/auth/me', auth.requireUser, (req, res) => {
     const { group, permissions } = req.user;
-    res.json({ ...publicUser(req.user), group, permissions });
+    const rows = require('../projectPermissions').assignments(db, req.user.id);
+    const projectPermissions = Object.fromEntries(rows.map((r) => [r.project_id, require('../groups').permissionsOf(r.group_name)]));
+    res.json({ ...publicUser(req.user), group, permissions, ...(rows.length ? { projectPermissions } : {}) });
   });
 
   return router;

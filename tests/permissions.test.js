@@ -129,6 +129,8 @@ const MATRIX = [
   ['POST', '/api/issues/:id/attachments', 'write', 201, (f) => f.actor.upload(f.a.id, 'more.txt', TEXT, 'text/plain')],
   ['DELETE', '/api/attachments/:id', 'write', 204, (f) => f.actor.del(`/api/attachments/${f.attachment.id}`)],
   ['PATCH', '/api/users/:id', 'manage-users', 200, (f) => f.actor.patch(`/api/users/${ids.dana}`, { group: VIEWER })],
+  // User admin (docs/specs/user-admin.md AC 5).
+  ['POST', '/api/users', 'manage-users', 201, (f) => f.actor.post('/api/users', { name: 'Matrix Person' })],
   ['POST', '/api/projects/:id/sprints', 'write', 201, (f) => f.actor.post(`/api/projects/${f.p.id}/sprints`, { name: 'New sprint' })],
   ['PATCH', '/api/sprints/:id', 'write', 200, (f) => f.actor.patch(`/api/sprints/${f.planned.id}`, { goal: 'A goal' })],
   ['DELETE', '/api/sprints/:id', 'write', 204, (f) => f.actor.del(`/api/sprints/${f.planned.id}`)],
@@ -252,6 +254,7 @@ test('every GET route answers 200 for a Viewer, downloads and history included (
   const image = (await app.upload(item.id, 'shot.png', PNG, 'image/png')).body;
   const testCase = (await app.post(`/api/projects/${p.id}/test-cases`, TEST_DEFINITION)).body;
   await app.post(`/api/issues/${item.id}/test-cases`, { test_case_ids: [testCase.id] });
+  const sprint = (await app.post(`/api/projects/${p.id}/sprints`, { name: 'S' })).body;
   setGroup('casey', VIEWER);
   const viewer = await app.client('casey');
   const urls = {
@@ -264,6 +267,7 @@ test('every GET route answers 200 for a Viewer, downloads and history included (
     '/api/auth/me': '/api/auth/me',
     '/api/users': '/api/users',
     '/api/groups': '/api/groups',
+    '/api/groups/permissions': '/api/groups/permissions',
     '/api/statuses': '/api/statuses',
     '/api/terminal-status': '/api/terminal-status',
     '/api/resolutions': '/api/resolutions',
@@ -290,6 +294,8 @@ test('every GET route answers 200 for a Viewer, downloads and history included (
     '/api/projects/:id/sprints': `/api/projects/${p.id}/sprints`,
     '/api/projects/:id/sprints/next-name': `/api/projects/${p.id}/sprints/next-name`,
     '/api/projects/:id/sprint-history': `/api/projects/${p.id}/sprint-history`,
+    '/api/scope-event-kinds': '/api/scope-event-kinds',
+    '/api/sprints/:id/scope': `/api/sprints/${sprint.id}/scope`,
     '/api/issues/:id/time': `/api/issues/${item.id}/time`,
   };
   const gets = appRoutes().filter((r) => r.method === 'GET').map((r) => r.path);
@@ -305,13 +311,15 @@ test('every GET route answers 200 for a Viewer, downloads and history included (
 
 test('GET /api/users has group; the public sign-in list does not (AC 10)', async () => {
   setGroup('casey', VIEWER);
-  const list = (await (await app.client('casey')).get('/api/users')).body;
+  // Only the seeded users: the route matrix adds users through POST /api/users.
+  const seeded = (u) => u.username in ids;
+  const list = (await (await app.client('casey')).get('/api/users')).body.filter(seeded);
   assert.deepEqual(
     Object.fromEntries(list.map((u) => [u.username, u.group])),
     { alex: ADMIN, blake: MEMBER, casey: VIEWER, dana: MEMBER }
   );
   const login = (await app.raw('GET', '/api/auth/users')).body;
-  assert.ok(login.length === 4);
+  assert.equal(login.filter(seeded).length, 4);
   for (const u of login) assert.deepEqual(Object.keys(u).sort(), ['id', 'name', 'username']);
 });
 
@@ -329,17 +337,20 @@ test('/api/auth/me returns group and permissions (AC 14)', async () => {
 });
 
 test('PATCH /api/users/:id by an Admin changes the group; validation (AC 9)', async () => {
-  const res = await app.patch(`/api/users/${ids.dana}`, { group: VIEWER, name: 'Renamed', username: 'x', id: 99 });
+  // Fields other than name, username, group and active are ignored
+  // (docs/specs/user-admin.md AC 6 made name and username editable).
+  const res = await app.patch(`/api/users/${ids.dana}`, { group: VIEWER, id: 99, created_at: 'x' });
   assert.equal(res.status, 200);
-  assert.deepEqual(res.body, { id: ids.dana, name: 'Dana Patel', username: 'dana', group: VIEWER });
+  assert.deepEqual(res.body, { id: ids.dana, name: 'Dana Patel', username: 'dana', group: VIEWER, active: true });
   assert.equal((await app.get('/api/users')).body.find((u) => u.id === ids.dana).group, VIEWER);
   assert.deepEqual((await app.patch('/api/users/999999', { group: MEMBER })).body, { error: 'User not found.' });
   assert.equal((await app.patch('/api/users/abc', { group: MEMBER })).status, 404);
-  for (const body of [{}, { group: 'Owner' }, { group: 'viewer' }, { group: null }, { group: 1 }]) {
+  for (const body of [{ group: 'Owner' }, { group: 'viewer' }, { group: null }, { group: 1 }]) {
     const bad = await app.patch(`/api/users/${ids.dana}`, body);
     assert.equal(bad.status, 400, JSON.stringify(body));
     assert.equal(bad.body.error, 'Unknown group.');
   }
+  assert.deepEqual((await app.patch(`/api/users/${ids.dana}`, {})).body, { error: 'Nothing to change.' });
 });
 
 test('PATCH /api/users/:id by a Member or Viewer is 403 (AC 6, 9)', async () => {

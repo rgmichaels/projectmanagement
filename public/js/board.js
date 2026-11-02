@@ -206,6 +206,7 @@
     sprintNa: document.getElementById('sprint-na'),
     sprintNote: document.getElementById('sprint-note'),
     sprintWhere: document.getElementById('sprint-where'),
+    sprintAdded: document.getElementById('sprint-added'),
   };
 
   // ---------- helpers ----------
@@ -267,6 +268,23 @@
   const activeSprint = () => state.sprints.find(isActiveSprint) || null;
   const sprintById = (id) => state.sprints.find((s) => s.id === id) || null;
   const backlogUrl = () => projectScope.pageUrl('backlog.html', projectId);
+
+  // The "Added after start" badge (docs/specs/sprint-scope-change.md AC 26;
+  // design badges.html) for an item the server flags (added_after_start),
+  // else null. `short`: the Board card form, "Added" with the full text as
+  // its tooltip and hidden accessible name.
+  const ADDED_LATE = 'Added after start';
+  const ADDED_LATE_SHORT = 'Added';
+  function addedBadge(item, { short = false } = {}) {
+    if (!item || !item.added_after_start) return null;
+    if (!short) return el('span', { class: 'badge added-late' }, ADDED_LATE);
+    return el(
+      'span',
+      { class: 'badge added-late short', title: ADDED_LATE },
+      el('span', { 'aria-hidden': 'true' }, ADDED_LATE_SHORT),
+      el('span', { class: 'visually-hidden' }, ADDED_LATE)
+    );
+  }
 
   // The board's items: the active sprint's non-epic items (none without an
   // active sprint). Epics are never cards (AC 24).
@@ -392,6 +410,7 @@
         { class: 'card-meta' },
         typeBadge,
         el('span', { class: 'card-key' }, item.key),
+        addedBadge(item, { short: true }),
         epic ? epicChip(epic) : null,
         el('span', { class: 'priority', title: `Priority: ${item.priority}` }, item.priority),
         resolutionLabel(item),
@@ -803,6 +822,15 @@
     }
     els.sprintWhere.textContent = where;
     els.sprintWhere.hidden = !where;
+    // "Added after start" under the Sprint field (scope change AC 28), for
+    // the saved sprint of the open item only.
+    const flagged = Boolean(editing && !epic && editing.added_after_start && els.sprintSelect.value === String(editing.sprint_id || ''));
+    if (flagged) {
+      els.sprintAdded.replaceChildren(addedBadge(editing), ' ', el('span', { class: 'visually-hidden' }, '.'), scopeFormat.addedHint(editing.added_at));
+    } else {
+      els.sprintAdded.replaceChildren();
+    }
+    els.sprintAdded.hidden = !flagged;
   }
 
   els.sprintSelect.addEventListener('change', async () => {
@@ -2864,6 +2892,7 @@
       openDetail,
       historySaved,
       sprintFigure,
+      addedBadge,
     };
   }
 

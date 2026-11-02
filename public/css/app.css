@@ -876,3 +876,63 @@ dialog#detail .tabs { overflow-y: hidden; }
 
 /* Built pieces that are flex or grid boxes still honour the hidden attribute. */
 dialog#detail .est-input[hidden], dialog#detail .time-form[hidden], dialog#detail .time-load-error[hidden] { display: none; }
+
+/* ---- Sprint scope change (docs/specs/sprint-scope-change.md; design docs/design/sprint-scope-change, option A) ---- */
+
+/* Badge: "Added after start". White with a navy border so it is not mistaken
+   for a state badge (teal) or Archived (gold). Text is always visible. */
+.badge.added-late { background: #fff; border: 1px solid var(--navy); color: var(--navy); text-transform: none; font-size: 11px; vertical-align: middle; margin-left: 6px; }
+.badge.added-late::before { content: "+\00a0"; }
+/* Short form for Board cards: "+ Added"; the full text is the tooltip and the
+   hidden text; nothing relies on the icon or colour alone. */
+.badge.added-late.short { margin-left: 0; }
+
+/* Scope change panel (shared by all options). Sits between the sprint
+   summary line and the table, inside .sprint. */
+.scope { padding: 12px; border-bottom: 1px solid var(--line2); background: #fff; }
+.scope-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-bottom: 8px; }
+.scope-head h3 { font-size: 14px; }
+.scope-head .hint { margin: 0; }
+.scope-eq { margin: 8px 0 0; font-size: 13px; }
+.scope-lines { margin: 8px 0 0; padding: 0; list-style: none; font-size: 13px; display: grid; gap: 4px; }
+.scope-lines .hint { margin-left: 4px; }
+.scope-lines strong { color: var(--teal); }
+.scope-note { margin: 8px 0 0; font-size: 13px; }
+.late-note { display: inline-block; margin-left: 8px; padding: 0 8px; border: 1px solid var(--teal-mid); border-radius: 4px; background: var(--teal-soft); font-size: 12px; font-weight: 700; }
+.signed-pos, .signed-neg { font-variant-numeric: tabular-nums; }
+.growth-word { font-weight: 700; }
+/* State messages (planned, not tracked, loading): same dashed box as .empty, smaller. */
+.scope-msg { margin: 0; padding: 12px; border-bottom: 1px solid var(--line2); background: #fff; color: var(--muted); }
+.scope-msg.boxed { border: 1px dashed var(--teal-mid); border-radius: 4px; margin: 12px; }
+.scope-err { padding: 12px; border-bottom: 1px solid var(--line2); }
+
+/* Collapsed log: <details class="scope-log"><summary>. */
+details.scope-log { margin-top: 10px; border: 1px solid var(--line); border-radius: 4px; }
+details.scope-log > summary { cursor: pointer; padding: 6px 10px; font-weight: 700; color: var(--teal); background: var(--page); list-style: none; }
+details.scope-log > summary::-webkit-details-marker { display: none; }
+details.scope-log > summary::before { content: "\25B8\00a0"; }
+details.scope-log[open] > summary::before { content: "\25BE\00a0"; }
+.log-list { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow-y: auto; }
+.log-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 8px 10px; border-top: 1px solid var(--line2); font-size: 13px; }
+.log-what { min-width: 0; overflow-wrap: anywhere; }
+.log-kind { font-weight: 700; }
+.log-hours { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.log-meta { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
+.grace-tag { display: inline-block; margin-left: 6px; padding: 0 6px; border: 1px dashed var(--muted); border-radius: 4px; color: var(--ink); font-size: 11px; font-weight: 700; }
+.log-empty { margin: 0; padding: 10px; color: var(--muted); }
+
+/* Option A: summary tiles. */
+.tiles { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.tile { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; background: #fff; }
+.tile-label { font-size: 12px; font-weight: 700; color: var(--muted); }
+.tile-val { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.tile-sub { font-size: 12px; color: var(--muted); }
+.tile.is-total { border-top: 4px solid var(--teal); }
+.tile.is-growth { border-left: 6px solid var(--teal); }
+.tile.is-growth.is-up { border-left-color: var(--danger); }
+@media (max-width: 900px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* The dialog hint under the Sprint field: the badge leads the line. */
+dialog#detail .sprint-added .badge.added-late { margin-left: 0; }
+dialog#detail .sprint-added[hidden] { display: none; }

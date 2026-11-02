@@ -39,7 +39,7 @@
 
   function renderRow(project) {
     const actions = el('td', { class: 'row-actions' });
-    if (canManage()) {
+    if (session.can('manage-projects', project.id)) {
       // Name and status change in the Edit dialog; Archive/Unarchive stay as
       // one-click row actions.
       actions.append(el('button', { type: 'button', 'aria-label': `Edit ${project.name}`, onclick: () => openEdit(project) }, 'Edit'));
@@ -113,7 +113,7 @@
   }
 
   function openEdit(project) {
-    if (!canManage()) return;
+    if (!session.can('manage-projects', project.id)) return;
     editing = project;
     const f = els.editForm.elements;
     f.status.replaceChildren(...projectStatuses.map((s) => el('option', { value: s.name }, s.name)));

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Users - option B: collapsed Add user (closed, then open)</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../../public/css/app.css">
+  <link rel="stylesheet" href="src/user-admin.css">
+  <style>.frame-label { font-size: 12px; color: var(--muted); margin: 18px 0 6px; font-weight: 700; }</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#">Projects</a>
+    <span class="crumb">/ Users</span>
+    <span class="session"><span>Alex Admin (Admin)</span><button type="button">Sign out</button></span>
+  </header>
+
+  <main class="page">
+    <p class="frame-label">B1. Closed (default): the table is the first thing seen. The button is a native details summary.</p>
+    <section class="toolbar">
+      <h1>Users</h1>
+      <details class="add-user" style="margin:0">
+        <summary><span class="button-like" style="display:inline-block;border:1px solid var(--teal);background:var(--teal);color:#fff;border-radius:4px;padding:6px 12px;font-weight:700;cursor:pointer">Add user</span></summary>
+      </details>
+    </section>
+    <div class="list-tools"><span class="count" role="status">4 users</span><label class="toggle"><input type="checkbox"> Show deactivated users</label></div>
+    <table class="projects users">
+      <thead><tr><th scope="col">Name</th><th scope="col">Username</th><th scope="col">Group</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+        <tr><td data-label="Name"><span class="name">Alex Admin</span><span class="you">(you)</span></td><td data-label="Username"><span class="uname">alex</span></td><td data-label="Group"><select aria-label="Group of Alex Admin"><option>Admin</option></select></td><td data-label="Status"><span class="badge">Active</span></td><td class="row-actions" data-label="Actions"><button type="button">Edit</button><button type="button" class="danger" disabled>Deactivate</button></td></tr>
+        <tr><td data-label="Name"><span class="name">Dana Lee</span></td><td data-label="Username"><span class="uname">dana</span></td><td data-label="Group"><select aria-label="Group of Dana Lee"><option>Member</option></select></td><td data-label="Status"><span class="badge">Active</span></td><td class="row-actions" data-label="Actions"><button type="button">Edit</button><button type="button" class="danger">Deactivate</button></td></tr>
+      </tbody>
+    </table>
+
+    <p class="frame-label">B2. Open: the button is replaced by the same panel as option A, plus a Cancel button. Focus moves to Name.</p>
+    <section class="toolbar"><h1>Users</h1></section>
+    <details class="add-user panel" open>
+      <summary>Add user</summary>
+      <h2>Add user</h2>
+      <form novalidate>
+        <div class="form-row">
+          <label>Name <input maxlength="100" required></label>
+          <label>Username <input maxlength="30" placeholder="Leave blank to generate"></label>
+          <label class="narrow">Group <select><option>Admin</option><option selected>Member</option><option>Viewer</option></select></label>
+          <span class="submit actions"><button type="submit" class="primary">Add</button><button type="button">Cancel</button></span>
+        </div>
+        <p class="hint">Username: letters, digits, . _ - (1 to 30). Blank = first word of the name.</p>
+        <p class="error" role="alert"></p>
+      </form>
+    </details>
+  </main>
+</body>
+</html>

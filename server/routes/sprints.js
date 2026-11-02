@@ -2,12 +2,13 @@
 // validate input and call the data-access layer only. Write routes check, in
 // this order: group (403, before any record is loaded), record exists (404),
 // archived (409), state (409), then field validation (400). Reads (the list,
-// the next name and the sprint history) work on archived projects and for
+// the next name, the sprint history and the scope change) work on archived projects and for
 // every signed-in user. State names come from server/sprintStates.js.
 const express = require('express');
 const projects = require('../data/projects');
 const sprints = require('../data/sprints');
 const sprintHistory = require('../data/sprintHistory');
+const sprintScope = require('../data/sprintScope');
 const { initialSprintState, activeSprintState, finalSprintState } = require('../sprintStates');
 const { ValidationError, checkSprintFields, checkCompletion } = require('../validation');
 const { assertCan, loadProject, loadSprint, assertWritable, actorFrom } = require('./guards');
@@ -88,6 +89,14 @@ function sprintRoutes(db) {
     }
     const options = checkCompletion(db, sprint, req.body || {});
     res.json(sprints.completeSprint(db, sprint, options, actorFrom(req)));
+  });
+
+  // Scope change of one sprint (docs/specs/sprint-scope-change.md AC 17):
+  // read-only, for every signed-in user, archived projects included. There
+  // is no write route for scope events.
+  router.get('/sprints/:id/scope', (req, res) => {
+    const sprint = loadSprint(db, req.params.id);
+    res.json(sprintScope.scopeSummary(db, sprint));
   });
 
   // The sprint audit log: read-only, newest first, paged like work item history.

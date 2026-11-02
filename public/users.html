@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Users</title>
-  <link rel="icon" href="data:,">
+  <link rel="icon" type="image/svg+xml" href="/css/favicon.svg">
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -16,8 +16,35 @@
   <main class="page">
     <section class="toolbar">
       <h1>Users</h1>
+      <button id="open-add-user" class="primary" type="button" hidden>Add user</button>
     </section>
 
+    <form id="add-user-form" class="panel" hidden>
+      <h2>Add user</h2>
+      <div class="form-row">
+      <label for="new-user-name">Name
+      <input id="new-user-name" name="name" required maxlength="100" autocomplete="name">
+      </label>
+      <label for="new-user-username">Username (optional)
+      <input id="new-user-username" name="username" maxlength="30" pattern="[A-Za-z0-9._\-]+" autocomplete="off" aria-describedby="new-user-username-hint">
+      </label>
+      <label for="new-user-group">Account default group
+      <select id="new-user-group" name="group" aria-describedby="new-user-group-hint"></select>
+      </label>
+      </div>
+      <p id="new-user-username-hint" class="hint">Leave blank to generate a username from the name.</p>
+      <p id="new-user-group-hint" class="hint">This group applies across projects unless a project assignment overrides it. Set project groups in the table after adding the user.</p>
+      <p id="add-user-error" class="error" role="alert"></p>
+      <div class="actions">
+        <button type="submit" class="primary">Add user</button>
+        <button id="cancel-add-user" type="button">Cancel</button>
+      </div>
+    </form>
+    <p id="add-user-status" role="status"></p>
+
+    <label for="users-project">Permissions for</label>
+    <select id="users-project"><option value="">Account defaults</option></select>
+    <p>Project groups apply only to the selected project. Account defaults apply where no project group is assigned. Only account administrators can manage users or create projects.</p>
     <p class="error" id="users-error" role="alert"></p>
 
     <!-- Shown only with the manage-users permission. Each group dropdown saves
@@ -28,6 +55,8 @@
       </thead>
       <tbody></tbody>
     </table>
+    <h2>What each group can do</h2>
+    <table class="projects" id="permissions-table"><thead></thead><tbody></tbody></table>
   </main>
 
   <script src="js/redirect.js"></script>

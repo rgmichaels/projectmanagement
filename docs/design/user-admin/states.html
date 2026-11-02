@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Users - all states (recommended: option A)</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../../public/css/app.css">
+  <link rel="stylesheet" href="src/user-admin.css">
+  <style>
+    .state { margin: 0 0 40px; padding-top: 12px; border-top: 3px solid var(--teal-mid); }
+    .state > h2 { font-size: 15px; margin-bottom: 4px; }
+    .state > .why { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+    .state .error:empty { display: none; }
+  </style>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="#">Projects</a><span class="crumb">/ Users</span><span class="session"><span>Alex Admin (Admin)</span><button type="button">Sign out</button></span></header>
+  <main class="page">
+
+    <!-- 1 -->
+    <section class="state">
+      <h2>1. Add user: validation and server errors</h2>
+      <p class="why">The message returned by the server is shown under the form, the field is marked, and what was typed stays. Client checks only cover blank name (focus goes to Name); every other rule is the server's message.</p>
+
+      <p class="why"><strong>1a. Blank name (400 "Name is required.")</strong></p>
+      <section class="panel add-user">
+        <h2>Add user</h2>
+        <form novalidate><div class="form-row">
+          <label>Name <input aria-invalid="true" aria-describedby="e1" value=""></label>
+          <label>Username <input placeholder="Leave blank to generate" value="eva"></label>
+          <label class="narrow">Group <select><option>Admin</option><option selected>Member</option><option>Viewer</option></select></label>
+          <button type="submit" class="primary submit">Add</button>
+        </div><p class="error" id="e1" role="alert">Name is required.</p></form>
+      </section>
+
+      <p class="why"><strong>1b. Bad characters (400)</strong></p>
+      <section class="panel add-user">
+        <h2>Add user</h2>
+        <form novalidate><div class="form-row">
+          <label>Name <input value="Eva Long"></label>
+          <label>Username <input aria-invalid="true" aria-describedby="e2" value="eva long!"></label>
+          <label class="narrow">Group <select><option>Admin</option><option selected>Member</option><option>Viewer</option></select></label>
+          <button type="submit" class="primary submit">Add</button>
+        </div><p class="error" id="e2" role="alert">Username may only contain letters, digits, ".", "_" and "-" (1 to 30 characters).</p></form>
+      </section>
+
+      <p class="why"><strong>1c. Username taken (409), including a deactivated user's name</strong></p>
+      <section class="panel add-user">
+        <h2>Add user</h2>
+        <form novalidate><div class="form-row">
+          <label>Name <input value="Dana Other"></label>
+          <label>Username <input aria-invalid="true" aria-describedby="e3" value="Dana"></label>
+          <label class="narrow">Group <select><option>Admin</option><option selected>Member</option><option>Viewer</option></select></label>
+          <button type="submit" class="primary submit">Add</button>
+        </div><p class="error" id="e3" role="alert">That username is already taken.</p></form>
+      </section>
+
+      <p class="why"><strong>1d. Saving (button disabled, text "Adding...") and 1e. Success (form cleared, notice above the table, focus back to Name)</strong></p>
+      <section class="panel add-user">
+        <h2>Add user</h2>
+        <form novalidate><div class="form-row">
+          <label>Name <input value="Eva Long" disabled></label>
+          <label>Username <input placeholder="Leave blank to generate" disabled></label>
+          <label class="narrow">Group <select disabled><option>Member</option></select></label>
+          <button type="submit" class="primary submit" disabled>Adding...</button>
+        </div></form>
+      </section>
+      <p class="notice" role="status">Added Eva Long (eva).</p>
+    </section>
+
+    <!-- 2 -->
+    <section class="state">
+      <h2>2. Row editing, deactivated rows, own row</h2>
+      <p class="why">Edit swaps Name and Username to inputs and Edit/Deactivate to Save/Cancel on that row only; Group stays a live dropdown. "Show deactivated users" is ticked here. Deactivated rows are muted, carry the word Deactivated (yellow badge, like Archived) and offer Reactivate instead of Deactivate.</p>
+      <div class="list-tools"><span class="count" role="status">5 users (1 deactivated)</span><label class="toggle"><input type="checkbox" checked> Show deactivated users</label></div>
+      <table class="projects users">
+        <thead><tr><th scope="col">Name</th><th scope="col">Username</th><th scope="col">Group</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+          <tr>
+            <td data-label="Name"><span class="name">Alex Admin</span><span class="you">(you)</span></td><td data-label="Username"><span class="uname">alex</span></td>
+            <td data-label="Group"><div><select aria-label="Group of Alex Admin"><option>Admin</option><option>Member</option></select><span class="save-status" role="status"></span></div></td>
+            <td data-label="Status"><span class="badge">Active</span></td>
+            <td class="row-actions" data-label="Actions"><button type="button">Edit</button><button type="button" class="danger" disabled aria-describedby="s2">Deactivate</button><span class="row-hint" id="s2">You cannot deactivate yourself.</span></td>
+          </tr>
+          <tr class="is-editing">
+            <td data-label="Name"><input aria-label="Name of Dana Lee" value="Dana Lee" maxlength="100"></td>
+            <td data-label="Username"><input aria-label="Username of Dana Lee" value="dana" maxlength="30" aria-invalid="true" aria-describedby="re"></td>
+            <td data-label="Group"><div><select aria-label="Group of Dana Lee"><option>Member</option></select></div></td>
+            <td data-label="Status"><span class="badge">Active</span></td>
+            <td class="row-actions" data-label="Actions"><button type="button" class="primary">Save</button><button type="button">Cancel</button></td>
+          </tr>
+          <tr class="row-error"><td colspan="5" id="re" role="alert">Could not save Dana Lee: That username is already taken.</td></tr>
+          <tr>
+            <td data-label="Name"><span class="name">Sam Rivera</span></td><td data-label="Username"><span class="uname">sam</span></td>
+            <td data-label="Group"><div><select aria-label="Group of Sam Rivera"><option>Member</option></select><span class="save-status" role="status">Saving...</span></div></td>
+            <td data-label="Status"><span class="badge">Active</span></td>
+            <td class="row-actions" data-label="Actions"><button type="button" disabled>Edit</button><button type="button" class="danger" disabled>Deactivate</button></td>
+          </tr>
+          <tr class="is-inactive">
+            <td data-label="Name"><span class="name">Priya Shah</span></td><td data-label="Username"><span class="uname">priya</span></td>
+            <td data-label="Group"><div><select aria-label="Group of Priya Shah"><option>Viewer</option></select><span class="save-status" role="status"></span></div></td>
+            <td data-label="Status"><span class="badge archived">Deactivated</span></td>
+            <td class="row-actions" data-label="Actions"><button type="button">Edit</button><button type="button">Reactivate</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="why" style="margin-top:12px">Success after Deactivate / Reactivate uses the blue notice: "Deactivated Sam Rivera." / "Reactivated Priya Shah." When the toggle is off, a just-deactivated row disappears and that notice is the only trace.</p>
+      <p class="notice" role="status">Deactivated Sam Rivera.</p>
+    </section>
+
+    <!-- 3 -->
+    <section class="state">
+      <h2>3. Server refusals (existing error line above the table; the row is unchanged)</h2>
+      <p class="why">Same red line the page already uses. Form of the message: "Could not &lt;verb&gt; &lt;name&gt;: &lt;server message&gt;".</p>
+      <p class="error" role="alert">Could not change Alex Admin's group: There must be at least one Admin.</p>
+      <p class="error" role="alert">Could not deactivate Dana Lee: There must be at least one Admin.</p>
+      <p class="error" role="alert">Could not deactivate Alex Admin: You cannot deactivate yourself.</p>
+      <p class="error" role="alert">Could not reactivate Priya Shah: Your group (Viewer) is not allowed to manage users.</p>
+      <p class="why">Last-Admin guards need no client logic or group names. The own-row Deactivate button is disabled up front (client knows the signed-in user id); the server still answers 409 if it is bypassed.</p>
+    </section>
+
+    <!-- 4 -->
+    <section class="state">
+      <h2>4. Confirm dialogs (dialog.app-dialog, shown open in place)</h2>
+      <p class="why">Cancel has initial focus. Escape or Cancel closes and changes nothing. The title is a short fixed phrase; the question text is the spec wording; the user's name is inserted as text.</p>
+
+      <dialog open class="app-dialog static" aria-labelledby="d1h">
+        <div class="band"><h2 id="d1h">Deactivate user</h2></div>
+        <div class="dialog-body"><p>Deactivate Sam Rivera? They will be signed out and cannot sign in until reactivated. Their work stays.</p></div>
+        <div class="dialog-foot"><p class="error" role="alert"></p><button type="button" autofocus>Cancel</button><button type="button" class="danger">Deactivate</button></div>
+      </dialog>
+
+      <dialog open class="app-dialog static" aria-labelledby="d2h">
+        <div class="band"><h2 id="d2h">Reactivate user</h2></div>
+        <div class="dialog-body"><p>Reactivate Priya Shah? They can sign in again. Their previous sign-ins are not restored.</p></div>
+        <div class="dialog-foot"><p class="error" role="alert"></p><button type="button" autofocus>Cancel</button><button type="button" class="primary">Reactivate</button></div>
+      </dialog>
+
+      <dialog open class="app-dialog static" aria-labelledby="d3h">
+        <div class="band"><h2 id="d3h">Change your own group</h2></div>
+        <div class="dialog-body"><p>You are changing your own group. Continue?</p><p class="hint">Changing Alex Admin from Admin to Member. If you continue you may lose access to this page.</p></div>
+        <div class="dialog-foot"><p class="error" role="alert"></p><button type="button" autofocus>Cancel</button><button type="button" class="primary">Continue</button></div>
+      </dialog>
+      <p class="why">Cancel on the self-demotion dialog puts the dropdown back to its saved value, with no request sent. The Deactivate confirm button shows "Deactivating..." and both buttons are disabled while the request runs. A server refusal keeps the dialog closed and uses the page error line (section 3). The hint line under the self-demotion question is optional wording; the question itself is the spec's.</p>
+    </section>
+
+    <!-- 5 -->
+    <section class="state">
+      <h2>5. Loading, load errors, no permission</h2>
+      <p class="why"><strong>5a. Loading</strong> (table shown, one row; matrix heading present, body says Loading...)</p>
+      <table class="projects users">
+        <thead><tr><th scope="col">Name</th><th scope="col">Username</th><th scope="col">Group</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody><tr class="loading-row"><td colspan="5" role="status">Loading users...</td></tr></tbody>
+      </table>
+
+      <p class="why" style="margin-top:16px"><strong>5b. Users failed to load</strong> (error line, table and Add panel stay hidden, Retry link button)</p>
+      <p class="error" role="alert">Could not load users: Failed to fetch. <button type="button" class="link">Retry</button></p>
+
+      <p class="why"><strong>5c. Matrix failed to load</strong> (does not block the user table)</p>
+      <section class="matrix-wrap" style="margin-top:0">
+        <h2>What each group can do</h2>
+        <p class="error" role="alert">Could not load the permission table: Failed to fetch. <button type="button" class="link">Retry</button></p>
+      </section>
+
+      <p class="why"><strong>5d. Not an Admin</strong> (Member or Viewer; no table, no form, no matrix, no toggle)</p>
+      <p class="error" role="alert">Your group (Viewer) is not allowed to manage users.</p>
+
+      <p class="why"><strong>5e. Only one user, or toggle shows nothing</strong></p>
+      <p class="empty">No deactivated users.</p>
+    </section>
+
+    <!-- 6 -->
+    <section class="state">
+      <h2>6. Long and hostile text (shown literally, wraps, never cut)</h2>
+      <table class="projects users">
+        <thead><tr><th scope="col">Name</th><th scope="col">Username</th><th scope="col">Group</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+          <tr>
+            <td data-label="Name"><span class="name">&lt;img src=x onerror=alert(1)&gt; &lt;b&gt;Bobby&lt;/b&gt; Tables'); DROP TABLE users;--</span></td>
+            <td data-label="Username"><span class="uname">Bobby.Tables_x-1</span></td>
+            <td data-label="Group"><select aria-label="Group of Bobby"><option>Member</option></select></td>
+            <td data-label="Status"><span class="badge">Active</span></td>
+            <td class="row-actions" data-label="Actions"><button type="button">Edit</button><button type="button" class="danger">Deactivate</button></td>
+          </tr>
+          <tr class="is-inactive">
+            <td data-label="Name"><span class="name">Wolfeschlegelsteinhausenbergerdorff-Vandenberghe-Montgomery-Featherstonehaugh the Third of Westminster Abbey Road</span></td>
+            <td data-label="Username"><span class="uname">abcdefghij.klmnopqrst_uvwxyz-1</span></td>
+            <td data-label="Group"><select aria-label="Group of Wolfe"><option>Viewer</option></select></td>
+            <td data-label="Status"><span class="badge archived">Deactivated</span></td>
+            <td class="row-actions" data-label="Actions"><button type="button">Edit</button><button type="button">Reactivate</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="notice" role="status" style="margin-top:12px">Added &lt;script&gt;alert(1)&lt;/script&gt; (script).</p>
+      <dialog open class="app-dialog static" aria-labelledby="d4h">
+        <div class="band"><h2 id="d4h">Deactivate user</h2></div>
+        <div class="dialog-body"><p style="overflow-wrap:anywhere">Deactivate &lt;img src=x onerror=alert(1)&gt; &lt;b&gt;Bobby&lt;/b&gt;? They will be signed out and cannot sign in until reactivated. Their work stays.</p></div>
+        <div class="dialog-foot"><button type="button" autofocus>Cancel</button><button type="button" class="danger">Deactivate</button></div>
+      </dialog>
+      <p class="why">The text above is the literal characters, set with textContent. Name field: maxlength 100; username: maxlength 30.</p>
+    </section>
+
+    <!-- 7 -->
+    <section class="state">
+      <h2>7. Narrow width (about 380px, below 700px the rows stack)</h2>
+      <p class="why">Real viewport rules, shown in a frame.</p>
+      <iframe src="a-inline-form.html" title="Users page at 380px wide" style="width:380px;height:900px;border:1px solid var(--line);background:#fff"></iframe>
+    </section>
+  </main>
+</body>
+</html>

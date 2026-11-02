@@ -14,6 +14,11 @@
 // returns carries estimate_hours, time_spent_hours (the sum of its time
 // entries, computed in the same query) and, for non-epics, remaining_hours;
 // the raw minutes columns stay internal (rowOf) for history and updates.
+// Scope change (docs/specs/sprint-scope-change.md AC 6-12, 18): createIssue,
+// updateIssue and deleteIssue record the scope events of their write in the
+// same transaction (./sprintScope); moveToContainer (sprint complete and
+// delete) deliberately does not (Decision 11). Every item the API returns
+// carries added_after_start and added_at (null unless flagged).
 const { STATUSES, isTerminalStatus } = require('../statuses');
 const { isEpicType, epicTypeNames } = require('../types');
 const { activeSprintState } = require('../sprintStates');
@@ -23,6 +28,7 @@ const links = require('./links');
 const attachments = require('./attachments');
 const storage = require('./storage');
 const timeEntries = require('./timeEntries');
+const sprintScope = require('./sprintScope');
 
 const RANK_STEP = 1000;
 
@@ -81,14 +87,20 @@ function listIssues(db, projectId, sprint = null) {
     params.push(...ne.params);
     order = 'i.sprint_rank, i.id';
   }
-  return db
+  const rows = db
     .prepare(
       `${SELECT},
          (SELECT COUNT(*) FROM comments c WHERE c.issue_id = i.id) AS comment_count
        ${FROM} WHERE ${where.join(' AND ')} ORDER BY ${order}`
     )
-    .all(...params)
-    .map(present);
+    .all(...params);
+  return withScopeFlags(db, rows, { projectId }).map(present);
+}
+
+// Adds added_after_start and added_at to rows, with one lookup for all.
+function withScopeFlags(db, rows, scope) {
+  const flags = sprintScope.membershipFlags(db, rows, scope);
+  return rows.map((r) => ({ ...r, ...flags.get(r.id) }));
 }
 
 // The non-epic items of a container (sprint id, or null for the backlog) in
@@ -106,7 +118,9 @@ function rowOf(db, id) {
 }
 
 function getIssue(db, id) {
-  return present(rowOf(db, id));
+  const row = rowOf(db, id);
+  if (!row) return present(row);
+  return present(withScopeFlags(db, [row], { issueId: row.id })[0]);
 }
 
 function countChildren(db, epicId) {
@@ -270,6 +284,7 @@ function createIssue(db, project, fields, actor) {
       );
     db.prepare('UPDATE projects SET next_issue_number = ? WHERE id = ?').run(number + 1, project.id);
     history.recordCreated(db, info.lastInsertRowid, actor, now);
+    sprintScope.recordScopeChange(db, actor, null, rowOf(db, info.lastInsertRowid), now);
     return getIssue(db, info.lastInsertRowid);
   })();
 }
@@ -323,7 +338,9 @@ function updateIssue(db, id, changes, actor, options = {}) {
     sets.push('updated_at = ?');
     params.push(now);
     db.prepare(`UPDATE issues SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);
-    history.recordChanges(db, id, actor, current, rowOf(db, id), now);
+    const after = rowOf(db, id);
+    history.recordChanges(db, id, actor, current, after, now);
+    sprintScope.recordScopeChange(db, actor, current, after, now);
     if (options.clearChildren) releaseChildren(db, id, actor, now);
     if (changes.rank !== undefined) {
       rebalanceIfNeeded(db, current.project_id, next.status ?? current.status, id);
@@ -347,6 +364,8 @@ function updateIssue(db, id, changes, actor, options = {}) {
 function deleteIssue(db, id, actor) {
   const keys = db.transaction(() => {
     const now = new Date().toISOString();
+    // The item leaves its sprint: a removed event keeps its key and title.
+    sprintScope.recordScopeChange(db, actor, rowOf(db, id), null, now);
     releaseChildren(db, id, actor, now);
     links.deleteLinksFor(db, id, actor, now);
     require('./testCases').deleteForIssue(db, id);

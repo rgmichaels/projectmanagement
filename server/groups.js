@@ -6,13 +6,13 @@
 // To add a group or change what one may do, edit GROUPS here and restart.
 
 // The fixed set of permissions, with the words used in the 403 message
-// "Your group (<group>) is not allowed to <action>."
+// "Your group (<group>) is not allowed to <action>." and the `label` shown in
+// the Users page's "What each group can do" table (GET /api/groups/permissions).
 const PERMISSIONS = [
-  // Create, edit and move work items, comment, link and attach files.
-  { name: 'write', action: 'edit work items' },
-  { name: 'delete-item', action: 'delete work items' },
-  { name: 'manage-projects', action: 'manage projects' },
-  { name: 'manage-users', action: 'manage users' },
+  { name: 'write', action: 'edit work items', label: 'Create and edit work items, comment, link and attach files' },
+  { name: 'delete-item', action: 'delete work items', label: 'Delete work items' },
+  { name: 'manage-projects', action: 'manage projects', label: 'Create, edit and archive projects' },
+  { name: 'manage-users', action: 'manage users', label: 'Manage users and groups' },
 ];
 
 // In display order (the Users page dropdown).
@@ -72,8 +72,19 @@ function managerGroups() {
   return GROUPS.filter((g) => g.permissions.includes('manage-users')).map((g) => g.name);
 }
 
+// The read-only permission matrix (docs/specs/user-admin.md AC 16): every
+// permission with its label, and every group with its permission names, both
+// in the order of this file.
+function matrix() {
+  return {
+    permissions: PERMISSIONS.map(({ name, label }) => ({ name, label })),
+    groups: GROUPS.map((g) => ({ name: g.name, permissions: permissionsOf(g.name) })),
+  };
+}
+
 module.exports = {
   PERMISSIONS,
+  matrix,
   GROUPS,
   groupNames,
   isValidGroup,

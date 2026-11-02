@@ -2,7 +2,7 @@
 // statuses (and which one is terminal), types, priorities, resolutions,
 // project statuses, the fields that appear in work item history and the
 // link relationships, the allowed attachment types and limits, the sprint
-// states and the sprint event kinds.
+// states, the sprint event kinds and the scope-change event kinds.
 const express = require('express');
 const { STATUSES, terminalStatus } = require('../statuses');
 const { RESOLUTIONS } = require('../resolutions');
@@ -14,6 +14,7 @@ const { linkOptions } = require('../linkTypes');
 const { publicTypes } = require('../attachmentTypes');
 const { publicSprintStates } = require('../sprintStates');
 const { publicSprintEventKinds } = require('../sprintEvents');
+const { publicScopeEventKinds } = require('../scopeEvents');
 
 function metaRoutes(db) {
   const router = express.Router();
@@ -32,6 +33,8 @@ function metaRoutes(db) {
   // event kinds and tracked fields, so the client hard-codes none.
   router.get('/sprint-states', (req, res) => res.json(publicSprintStates()));
   router.get('/sprint-event-kinds', (req, res) => res.json(publicSprintEventKinds()));
+  // Sprint scope-change event kinds, in order, with labels.
+  router.get('/scope-event-kinds', (req, res) => res.json(publicScopeEventKinds()));
   return router;
 }
 

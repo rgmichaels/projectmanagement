@@ -125,8 +125,10 @@ test('a fresh database file gets the schema and seed users (AC 38)', () => {
     'issues',
     'projects',
     'sessions',
+    'sprint_baseline_items',
     'sprint_event_changes',
     'sprint_events',
+    'sprint_scope_events',
     'sprints',
     'sqlite_sequence',
     'test_case_executions',
@@ -779,8 +781,10 @@ test('no sprint state name outside server/sprintStates.js; no event kind in the 
   const { SPRINT_STATES } = require('../server/sprintStates');
   const { SPRINT_EVENT_KINDS } = require('../server/sprintEvents');
   // projectStatuses.js and sprintEvents.js are list files whose own values
-  // (a project status, an event label) may coincide with a state name.
-  const allowed = new Set(['server/sprintStates.js', 'server/db.js', 'server/projectStatuses.js', 'server/sprintEvents.js', 'server/testCaseMetadata.js']);
+  // (a project status, an event label) may coincide with a state name, as
+  // may the scope panel's figure labels in public/js/scope.js ("Planned"
+  // hours; the scope tests check that file outside its TILE_LABELS).
+  const allowed = new Set(['server/sprintStates.js', 'server/db.js', 'server/projectStatuses.js', 'server/sprintEvents.js', 'server/testCaseMetadata.js', 'public/js/scope.js']);
   const files = sourceFiles.filter((f) => /^(server\/|public\/js\/|public\/(board|backlog)\.html$)/.test(rel(f)) && !allowed.has(rel(f)));
   const offenders = [];
   for (const file of files) {
@@ -1147,4 +1151,126 @@ test('the time-tracking styles of option A are in app.css; options B and C are n
   for (const rule of rules) assert.ok(css.includes(rule), rule);
   assert.ok(!css.includes('.time-strip'), 'option B is not built');
   assert.ok(!css.includes('details.time-sec'), 'option C is not built');
+});
+
+// ---------- sprint scope change (docs/specs/sprint-scope-change.md AC 5, 12, 23, 26, 29, 30) ----------
+
+const SCOPE_SERVER_FILES = ['server/data/sprintScope.js', 'server/scopePolicy.js', 'server/routes/sprints.js', 'server/routes/meta.js'];
+const SCOPE_CLIENT_FILES = ['public/js/scope.js', 'public/js/sprintView.js'];
+// A scope file's text; for scope.js without its TILE_LABELS block.
+const scopeText = (file) => {
+  const text = read(path.join(root, file));
+  if (file !== 'public/js/scope.js') return text;
+  const start = text.indexOf('const TILE_LABELS');
+  return text.slice(0, start) + text.slice(text.indexOf('});', start) + 3);
+};
+const fnBody = (raw, fn) => {
+  const text = raw.replace(/\r\n/g, '\n');
+  return text.slice(text.indexOf(`function ${fn}(`), text.indexOf('\n}\n', text.indexOf(`function ${fn}(`)));
+};
+
+test('no scope event kind is hard-coded outside server/scopeEvents.js (scope AC 5, 30)', () => {
+  const { SCOPE_EVENT_KINDS } = require('../server/scopeEvents');
+  // Pre-existing, unrelated uses of the word: the image token state in
+  // richText.js and board.js (`[image removed]`), not a scope kind.
+  const unrelated = new Set(['public/js/richText.js: removed', 'public/js/board.js: removed']);
+  const files = sourceFiles.filter((f) => /^(server\/|public\/js\/)/.test(rel(f)) && rel(f) !== 'server/scopeEvents.js');
+  const offenders = [];
+  for (const file of files) {
+    const text = read(file);
+    for (const k of SCOPE_EVENT_KINDS) {
+      const hit = `${rel(file)}: ${k.key}`;
+      if (quoted(k.key).test(text) && !unrelated.has(hit)) offenders.push(hit);
+    }
+  }
+  assert.deepEqual(offenders, []);
+  // Labels: the scope code takes them from GET /api/scope-event-kinds (the
+  // panel's figure labels live in scope.js TILE_LABELS, outside this check).
+  for (const file of [...SCOPE_SERVER_FILES, ...SCOPE_CLIENT_FILES]) {
+    const text = scopeText(file);
+    for (const k of SCOPE_EVENT_KINDS) assert.ok(!quoted(k.label).test(text), `${file}: ${k.label}`);
+  }
+  assert.match(read(path.join(root, 'public/js/sprintView.js')), /api\.get\('\/api\/scope-event-kinds'\)/);
+});
+
+test('the scope code names no sprint state, status or type; epics come from the isEpic flag (scope AC 30)', () => {
+  const { SPRINT_STATES } = require('../server/sprintStates');
+  const { STATUSES } = require('../server/statuses');
+  const { TYPES } = require('../server/types');
+  const names = new Set([...SPRINT_STATES.map((s) => s.name), ...STATUSES, ...TYPES.flatMap((t) => [t.name, t.label])]);
+  const offenders = [];
+  for (const file of [...SCOPE_SERVER_FILES, ...SCOPE_CLIENT_FILES, 'server/scopeEvents.js']) {
+    const text = scopeText(file);
+    for (const name of names) if (quoted(name).test(text)) offenders.push(`${file}: ${name}`);
+  }
+  assert.ok(read(path.join(root, 'public/js/scope.js')).includes('const TILE_LABELS'), 'the labels block exists');
+  assert.deepEqual(offenders, []);
+  const data = read(path.join(root, 'server/data/sprintScope.js'));
+  assert.match(data, /isEpicType\(/);
+  assert.match(data, /epicTypeNames\(\)/);
+  assert.match(data, /activeSprintState\(\)/);
+});
+
+test('scope SQL lives in server/data/sprintScope.js and the schema; hooks in the item writes, not in moveToContainer (scope AC 12, Decision 11)', () => {
+  const allowed = new Set(['server/db.js', 'server/data/sprintScope.js', 'server/scopeEvents.js']);
+  for (const pattern of [/\bsprint_(scope_events|baseline_items)\b/, /\bSET\s+baseline_|\bbaseline_\w+\s+(INTEGER|TEXT)\b/i]) {
+    const offenders = sourceFiles.filter((f) => !allowed.has(rel(f)) && pattern.test(read(f))).map(rel);
+    assert.deepEqual(offenders, [], String(pattern));
+  }
+  const route = read(path.join(root, 'server/routes/sprints.js'));
+  assert.match(route, /require\('\.\.\/data\/sprintScope'\)/);
+  assert.match(route, /router\.get\('\/sprints\/:id\/scope'/);
+  assert.doesNotMatch(route, /router\.(post|patch|put|delete)\('\/sprints\/:id\/scope/, 'no write route (AC 29)');
+  const issues = read(path.join(root, 'server/data/issues.js'));
+  for (const fn of ['createIssue', 'updateIssue', 'deleteIssue']) assert.match(fnBody(issues, fn), /sprintScope\.recordScopeChange\(/, fn);
+  assert.doesNotMatch(fnBody(issues, 'moveToContainer'), /sprintScope/, 'Complete and Delete are not scope changes');
+  const sprints = read(path.join(root, 'server/data/sprints.js'));
+  assert.match(fnBody(sprints, 'startSprint'), /sprintScope\.captureBaseline\(db, sprint, now\)/, 'the same now as started_at');
+  for (const fn of ['completeSprint', 'deleteSprint']) assert.doesNotMatch(fnBody(sprints, fn), /sprintScope/, fn);
+  // The grace rule is written once.
+  assert.deepEqual(sourceFiles.filter((f) => /GRACE_PERIOD_MS\s*=/.test(read(f))).map(rel), ['server/scopePolicy.js']);
+  const db = read(path.join(root, 'server/db.js'));
+  assert.ok(db.indexOf('migrateScope(db)') > db.indexOf('migrateSprints(db)'), 'after migrateSprints');
+});
+
+test('the scope panel and badges render text only, have no write controls and follow design option A (scope AC 20-28)', () => {
+  for (const file of [...SCOPE_CLIENT_FILES, 'public/js/backlog.js', 'public/js/board.js']) {
+    assert.doesNotMatch(read(path.join(root, file)), /innerHTML|outerHTML|insertAdjacentHTML|document\.write/, file);
+  }
+  const view = read(path.join(root, 'public/js/sprintView.js'));
+  const panel = view.slice(view.indexOf('// ---------- scope change'), view.indexOf('// A different sprint'));
+  assert.doesNotMatch(panel, /api\.(post|patch|del)\(/, 'read-only');
+  for (const call of panel.match(/el\(\s*'button',\s*\{[^}]*\}/g) || []) assert.match(call, /type: 'button'/, call);
+  for (const text of ['Final scope change', 'Scope is tracked from the moment the sprint starts.', 'Scope change was not tracked for this sprint.', 'Loading scope change...', 'Could not load scope change.', 'No scope changes yet.', 'adjusted in first 24h', 'Hours are work item estimates. Read-only.']) {
+    assert.ok(panel.includes(`'${text}'`), text);
+  }
+  assert.match(panel, /class: 'tiles'/, 'option A tiles');
+  assert.match(view, /loadScope\(quiet\)/, 'refreshed with the table after a dialog save (AC 25)');
+  assert.match(view, /ctx\.addedBadge\(item\)/, 'the Sprints table badge');
+  assert.match(read(path.join(root, 'public/js/backlog.js')), /ctx\.addedBadge\(item\)/, 'the Backlog badge');
+  const board = boardJs();
+  assert.match(board, /addedBadge\(item, \{ short: true \}\)/, 'the Board card short badge');
+  assert.match(board, /class: 'badge added-late short', title: ADDED_LATE/);
+  assert.match(board, /el\('span', \{ class: 'visually-hidden' \}, ADDED_LATE\)/, 'full accessible name');
+  assert.match(board, /scopeFormat\.addedHint\(editing\.added_at\)/, 'the dialog hint with the date');
+  for (const file of PROJECT_PAGES) {
+    const html = read(path.join(root, file));
+    assert.match(html, /<p id="sprint-added" class="hint sprint-added" hidden><\/p>/, file);
+    const order = ['src="js/time.js"', 'src="js/scope.js"', 'src="js/board.js"'].map((x) => html.indexOf(x));
+    assert.ok(order[0] !== -1 && order[0] < order[1] && order[1] < order[2], file);
+  }
+  const html = read(path.join(root, 'public/sprints.html'));
+  const at = (id) => html.indexOf(`id="${id}"`);
+  assert.ok(at('sprint-goal') < at('sprint-scope') && at('sprint-scope') < at('sprint-body'), 'between the goal and the table');
+});
+
+test('the scope-change styles of option A are in app.css; options B and C are not (design sprint-scope-change)', () => {
+  const css = read(path.join(root, 'public/css/app.css'));
+  const design = read(path.join(root, 'docs/design/sprint-scope-change/src/scope.css'));
+  const added = design.slice(design.indexOf('NEW (append'), design.indexOf('/* Option B'));
+  const rules = added.split('\n').map((l) => l.trim()).filter((l) => /^[.a-z@].*\{.*\}$/i.test(l));
+  assert.ok(rules.length > 30, String(rules.length));
+  for (const rule of rules) assert.ok(css.includes(rule), rule);
+  assert.ok(!css.includes('table.scope-table'), 'option B is not built');
+  assert.ok(!css.includes('.scope-side'), 'option C is not built');
 });

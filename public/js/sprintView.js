@@ -11,6 +11,11 @@
 // inserted as text, never parsed as HTML.
 // Time tracking (docs/specs/time-tracking.md AC 19, 55): the summary line
 // carries the sprint figure, and the table ends with Estimate and Logged.
+// Scope change (docs/specs/sprint-scope-change.md AC 20-27; design option
+// A): the Scope change panel between the goal and the table, from
+// GET /api/sprints/:id/scope, re-read whenever the table is; its texts come
+// from js/scope.js, and titles carry the "Added after start" badge
+// (ctx.addedBadge).
 const sprintView = (() => {
   // The number at the end of a key: PM-10 -> 10 (so PM-2 sorts before PM-10).
   function keyNumber(key) {
@@ -142,6 +147,11 @@ const sprintsPage = typeof document === 'undefined' ? null : (() => {
     error: null,
     loadSeq: 0,
     focusColumn: null, // the sort button to focus after a redraw
+    scope: null, // the selected sprint's scope summary, or null before it loads
+    scopeError: null,
+    scopeSeq: 0,
+    scopeKinds: null, // GET /api/scope-event-kinds, loaded once
+    scopeLogOpen: false, // the log's open state survives a refresh (design)
   };
 
   const $ = (id) => document.getElementById(id);
@@ -152,6 +162,7 @@ const sprintsPage = typeof document === 'undefined' ? null : (() => {
     pickBox: $('sprint-pick-box'),
     why: $('sprint-why'),
     goal: $('sprint-goal'),
+    scope: $('sprint-scope'),
     body: $('sprint-body'),
     notice: $('sprint-notice'),
     sortStatus: $('sort-status'),
@@ -359,7 +370,7 @@ const sprintsPage = typeof document === 'undefined' ? null : (() => {
       'tr',
       { 'data-id': item.id },
       el('td', { class: 'c-key' }, el('button', { type: 'button', class: 'key-btn', onclick: open }, item.key)),
-      el('td', { class: 'c-title' }, el('button', { type: 'button', class: 'title-btn', onclick: open }, item.title)),
+      el('td', { class: 'c-title' }, el('button', { type: 'button', class: 'title-btn', onclick: open }, item.title), ctx.addedBadge(item)),
       el('td', { class: 'c-nowrap' }, typeBadge(item)),
       el('td', { class: 'c-nowrap' }, ...epicCell(item)),
       el('td', { class: 'c-nowrap' }, el('span', { class: 'priority' }, item.priority)),
@@ -454,13 +465,186 @@ const sprintsPage = typeof document === 'undefined' ? null : (() => {
     drawBody();
   }
 
+  // ---------- scope change (docs/specs/sprint-scope-change.md AC 20-25) ----------
+
+  const SCOPE_TEXT = {
+    loading: 'Loading scope change...',
+    planned: 'Scope is tracked from the moment the sprint starts.',
+    untracked: 'Scope change was not tracked for this sprint.',
+    failed: 'Could not load scope change.',
+    hint: 'Hours are work item estimates. Read-only.',
+    lateHelp: 'The sprint was already running when tracking began.',
+    empty: 'No scope changes yet.',
+    grace: 'adjusted in first 24h',
+    noEstimate: 'no estimate',
+  };
+
+  // A kind from GET /api/scope-event-kinds (an unknown one shows its key).
+  const kindOf = (key) => (view.scopeKinds || []).find((k) => k.key === key) || { key, label: key, effect: null };
+
+  const scopeMessage = (text) => ctx.el('p', { class: 'scope-msg', role: 'status' }, text);
+
+  function tile(label, value, sub, extra = '') {
+    const el = ctx.el;
+    const growth = extra.includes('is-growth');
+    return el(
+      'li',
+      { class: `tile${extra}` },
+      el('span', { class: 'tile-label' }, label),
+      el('span', { class: `tile-val${growth ? ' growth-word' : ''}` }, value),
+      el('span', { class: 'tile-sub' }, sub)
+    );
+  }
+
+  // One log row: kind, key, title and tags; hours; actor and time. Titles
+  // and names are text.
+  function logItem(event) {
+    const el = ctx.el;
+    const kind = kindOf(event.kind);
+    const noEstimate = kind.effect === 'add' && (event.hours === null || event.hours === undefined);
+    return el(
+      'li',
+      { class: 'log-item' },
+      el(
+        'span',
+        { class: 'log-what' },
+        el('span', { class: 'log-kind' }, kind.label),
+        ' ',
+        el('span', { class: 'card-key' }, event.issue_key),
+        ` ${event.issue_title}`,
+        event.in_grace ? el('span', { class: 'grace-tag' }, SCOPE_TEXT.grace) : null,
+        noEstimate ? el('span', { class: 'grace-tag' }, SCOPE_TEXT.noEstimate) : null
+      ),
+      el('span', { class: 'log-hours' }, scopeFormat.eventHours(event, kind.effect)),
+      el('span', { class: 'log-meta' }, `${event.actor_name} · `, el('time', { datetime: event.created_at }, timeFormat.localDateTime(event.created_at)))
+    );
+  }
+
+  // The panel of a tracked sprint (design option A, frames 1-7).
+  function scopePanel(sprint, sum) {
+    const el = ctx.el;
+    const final = ctx.isFinalSprint(sprint);
+    const headingId = `scope-h-${sprint.id}`;
+    const up = typeof sum.growth_percent === 'number' && sum.growth_percent > 0;
+    const L = scopeFormat.TILE_LABELS;
+    const tiles = el(
+      'ul',
+      { class: 'tiles' },
+      tile(L.planned, timeFormat.hours(sum.planned_hours), 'plan after the first 24h'),
+      tile(L.added, scopeFormat.plus(sum.added.hours), scopeFormat.count(sum.added.count, 'item')),
+      tile(L.removed, scopeFormat.minus(sum.removed.hours), scopeFormat.count(sum.removed.count, 'item')),
+      tile(L.estimate, scopeFormat.signed(sum.estimate_change.hours), scopeFormat.count(sum.estimate_change.count, 'change')),
+      tile(final ? L.final : L.current, timeFormat.hours(sum.current_total_hours), final ? 'frozen at completion' : 'planned + net change', ' is-total'),
+      tile(L.growth, scopeFormat.growthText(sum.growth_percent), `net ${scopeFormat.signed(sum.net_change_hours)}`, ` is-growth${up ? ' is-up' : ''}`)
+    );
+    const baselineLine = el('li', {}, el('strong', {}, 'Baseline:'), ` ${scopeFormat.baselineText(sum.baseline)}`);
+    if (sum.baseline_late) {
+      baselineLine.append(
+        el('span', { class: 'late-note', title: SCOPE_TEXT.lateHelp }, `Baseline captured on ${scopeFormat.localDate(sum.baseline_at)}`),
+        el('span', { class: 'hint' }, SCOPE_TEXT.lateHelp)
+      );
+    }
+    const lines = el('ul', { class: 'scope-lines' }, baselineLine);
+    if (scopeFormat.hasGrace(sum)) {
+      lines.append(el('li', {}, el('strong', {}, 'Adjusted in first 24h:'), ` ${scopeFormat.graceText(sum.grace)} `, el('span', { class: 'hint' }, '(not counted as scope change)')));
+    }
+    if (final && sprint.completed_at) {
+      lines.append(el('li', {}, el('strong', {}, `Sprint completed ${scopeFormat.localDate(sprint.completed_at)}.`), ' These numbers are final.'));
+    }
+    const unestimated = sum.unestimated_added_count || 0;
+    const note = unestimated > 0 ? el('p', { class: 'scope-note' }, scopeFormat.unestimatedText(unestimated)) : null;
+    const log = el(
+      'details',
+      { class: 'scope-log', open: view.scopeLogOpen },
+      el('summary', {}, `Scope change log (${sum.events.length})`),
+      sum.events.length ? el('ol', { class: 'log-list' }, ...sum.events.map(logItem)) : el('p', { class: 'log-empty' }, SCOPE_TEXT.empty)
+    );
+    log.addEventListener('toggle', () => { view.scopeLogOpen = log.open; });
+    return el(
+      'section',
+      { class: 'scope', 'aria-labelledby': headingId },
+      el('div', { class: 'scope-head' }, el('h3', { id: headingId }, final ? 'Final scope change' : 'Scope change'), el('span', { class: 'hint' }, SCOPE_TEXT.hint)),
+      tiles,
+      el('p', { class: 'scope-eq' }, scopeFormat.equation(sum, final)),
+      lines,
+      note,
+      log
+    );
+  }
+
+  // Loading, error with Retry, Planned, not tracked, or the panel (AC 24).
+  // A sprint that is not final and not tracked is one that has not started.
+  function drawScope() {
+    const el = ctx.el;
+    const sprint = selected();
+    if (!sprint) {
+      els.scope.replaceChildren();
+      return;
+    }
+    if (view.scopeError) {
+      const retry = el('button', { type: 'button' }, 'Retry');
+      retry.addEventListener('click', () => loadScope(false)); // the scope request only
+      els.scope.replaceChildren(
+        el(
+          'div',
+          { class: 'scope-err' },
+          el('div', { class: 'banner-warn', role: 'alert' }, el('strong', {}, SCOPE_TEXT.failed), el('span', {}, view.scopeError.message || ''), el('span', { class: 'spacer' }), retry)
+        )
+      );
+      return;
+    }
+    const sum = view.scope;
+    if (!sum) {
+      els.scope.replaceChildren(scopeMessage(SCOPE_TEXT.loading));
+      return;
+    }
+    if (!sum.tracked) {
+      els.scope.replaceChildren(scopeMessage(ctx.isFinalSprint(sprint) ? SCOPE_TEXT.untracked : SCOPE_TEXT.planned));
+      return;
+    }
+    els.scope.replaceChildren(scopePanel(sprint, sum));
+  }
+
+  // Fetches the selected sprint's scope (and the kinds, once). `quiet`
+  // keeps the current panel on screen while it refreshes (AC 25).
+  async function loadScope(quiet) {
+    const sprint = selected();
+    const seq = ++view.scopeSeq;
+    if (!sprint) {
+      view.scope = null;
+      drawScope();
+      return;
+    }
+    if (!quiet || view.scopeError) {
+      view.scope = null;
+      view.scopeError = null;
+      drawScope();
+    }
+    try {
+      const [kinds, sum] = await Promise.all([
+        view.scopeKinds ? Promise.resolve(view.scopeKinds) : api.get('/api/scope-event-kinds'),
+        api.get(`/api/sprints/${sprint.id}/scope`),
+      ]);
+      if (seq !== view.scopeSeq) return; // another sprint was picked meanwhile
+      view.scopeKinds = kinds;
+      view.scope = sum;
+      view.scopeError = null;
+    } catch (err) {
+      if (seq !== view.scopeSeq) return;
+      view.scopeError = err;
+    }
+    drawScope();
+  }
+
   // A different sprint: the sort goes back to sprint order (AC 22).
   function showSprint(id) {
     view.sprintId = id;
     view.sort = { column: null, direction: 'ascending' };
     els.sortStatus.textContent = '';
+    view.scopeLogOpen = false; // a different sprint's log starts closed
     fillPick();
     drawHead();
+    loadScope(false);
     loadRows(false);
   }
 
@@ -491,6 +675,7 @@ const sprintsPage = typeof document === 'undefined' ? null : (() => {
       chooseFromUrl();
       fillPick();
       drawHead();
+      loadScope(false);
       loadRows(false);
       return;
     }
@@ -498,6 +683,7 @@ const sprintsPage = typeof document === 'undefined' ? null : (() => {
     if (!quiet) chooseFromUrl(); // the sprint is gone: fall back (AC 4)
     fillPick();
     drawHead();
+    loadScope(quiet); // after a dialog save: the panel updates with the table (AC 25)
     loadRows(quiet);
   }
 

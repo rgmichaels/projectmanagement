@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Users - option A: always-visible Add user panel (default list)</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../../../public/css/app.css">
+  <link rel="stylesheet" href="src/user-admin.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#">Projects</a>
+    <span class="crumb">/ Users</span>
+    <span class="session"><span>Alex Admin (Admin)</span><button type="button">Sign out</button></span>
+  </header>
+
+  <main class="page">
+    <section class="toolbar"><h1>Users</h1></section>
+
+    <p class="error" id="users-error" role="alert"></p>
+    <p class="notice" id="users-notice" role="status" hidden></p>
+
+    <!-- Zone 1: Add user (always visible) -->
+    <section class="panel add-user" aria-labelledby="add-h">
+      <h2 id="add-h">Add user</h2>
+      <form id="add-form" novalidate>
+        <div class="form-row">
+          <label>Name <input name="name" maxlength="100" required autocomplete="off"></label>
+          <label>Username <input name="username" maxlength="30" placeholder="Leave blank to generate" autocomplete="off" aria-describedby="uname-hint"></label>
+          <label class="narrow">Group <select name="group"><option>Admin</option><option selected>Member</option><option>Viewer</option></select></label>
+          <button type="submit" class="primary submit">Add</button>
+        </div>
+        <p class="hint" id="uname-hint">Username: letters, digits, . _ - (1 to 30). Blank = first word of the name.</p>
+        <p class="error" id="add-error" role="alert"></p>
+      </form>
+    </section>
+
+    <!-- Zone 2: toggle + table -->
+    <div class="list-tools">
+      <span class="count" role="status">4 users</span>
+      <label class="toggle"><input type="checkbox" id="show-inactive"> Show deactivated users</label>
+    </div>
+
+    <table id="users-table" class="projects users">
+      <thead>
+        <tr><th scope="col">Name</th><th scope="col">Username</th><th scope="col">Group</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr>
+      </thead>
+      <tbody>
+        <tr data-id="1">
+          <td data-label="Name"><span class="name">Alex Admin</span><span class="you">(you)</span></td>
+          <td data-label="Username"><span class="uname">alex</span></td>
+          <td data-label="Group"><div><select aria-label="Group of Alex Admin"><option selected>Admin</option><option>Member</option><option>Viewer</option></select><span class="save-status" role="status"></span></div></td>
+          <td data-label="Status"><span class="badge">Active</span></td>
+          <td class="row-actions" data-label="Actions">
+            <button type="button">Edit</button>
+            <button type="button" class="danger" disabled aria-describedby="self-1">Deactivate</button>
+            <span class="row-hint" id="self-1">You cannot deactivate yourself.</span>
+          </td>
+        </tr>
+        <tr data-id="2">
+          <td data-label="Name"><span class="name">Dana Lee</span></td>
+          <td data-label="Username"><span class="uname">dana</span></td>
+          <td data-label="Group"><div><select aria-label="Group of Dana Lee"><option>Admin</option><option selected>Member</option><option>Viewer</option></select><span class="save-status" role="status">Saved: Member</span></div></td>
+          <td data-label="Status"><span class="badge">Active</span></td>
+          <td class="row-actions" data-label="Actions"><button type="button">Edit</button><button type="button" class="danger">Deactivate</button></td>
+        </tr>
+        <tr data-id="3">
+          <td data-label="Name"><span class="name">Sam Rivera</span></td>
+          <td data-label="Username"><span class="uname">sam</span></td>
+          <td data-label="Group"><div><select aria-label="Group of Sam Rivera"><option>Admin</option><option selected>Member</option><option>Viewer</option></select><span class="save-status" role="status"></span></div></td>
+          <td data-label="Status"><span class="badge">Active</span></td>
+          <td class="row-actions" data-label="Actions"><button type="button">Edit</button><button type="button" class="danger">Deactivate</button></td>
+        </tr>
+        <tr data-id="4">
+          <td data-label="Name"><span class="name">Priya Shah</span></td>
+          <td data-label="Username"><span class="uname">priya</span></td>
+          <td data-label="Group"><div><select aria-label="Group of Priya Shah"><option>Admin</option><option>Member</option><option selected>Viewer</option></select><span class="save-status" role="status"></span></div></td>
+          <td data-label="Status"><span class="badge">Active</span></td>
+          <td class="row-actions" data-label="Actions"><button type="button">Edit</button><button type="button" class="danger">Deactivate</button></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Zone 3: permission matrix -->
+    <section class="matrix-wrap" aria-labelledby="matrix-h">
+      <h2 id="matrix-h">What each group can do</h2>
+      <p class="hint">&#10003; = allowed, &mdash; = not allowed. Read only: groups are set in <code>server/groups.js</code>.</p>
+      <table class="projects matrix">
+        <thead><tr><th scope="col">Permission</th><th scope="col">Admin</th><th scope="col">Member</th><th scope="col">Viewer</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Create and edit work items, comment, link and attach files</th><td><span class="yes" aria-hidden="true">&#10003;</span><span class="sr-only">Allowed</span></td><td><span class="yes" aria-hidden="true">&#10003;</span><span class="sr-only">Allowed</span></td><td><span class="no" aria-hidden="true">&mdash;</span><span class="sr-only">Not allowed</span></td></tr>
+          <tr><th scope="row">Delete work items</th><td><span class="yes" aria-hidden="true">&#10003;</span><span class="sr-only">Allowed</span></td><td><span class="no" aria-hidden="true">&mdash;</span><span class="sr-only">Not allowed</span></td><td><span class="no" aria-hidden="true">&mdash;</span><span class="sr-only">Not allowed</span></td></tr>
+          <tr><th scope="row">Create, edit and archive projects</th><td><span class="yes" aria-hidden="true">&#10003;</span><span class="sr-only">Allowed</span></td><td><span class="no" aria-hidden="true">&mdash;</span><span class="sr-only">Not allowed</span></td><td><span class="no" aria-hidden="true">&mdash;</span><span class="sr-only">Not allowed</span></td></tr>
+          <tr><th scope="row">Manage users and groups</th><td><span class="yes" aria-hidden="true">&#10003;</span><span class="sr-only">Allowed</span></td><td><span class="no" aria-hidden="true">&mdash;</span><span class="sr-only">Not allowed</span></td><td><span class="no" aria-hidden="true">&mdash;</span><span class="sr-only">Not allowed</span></td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>

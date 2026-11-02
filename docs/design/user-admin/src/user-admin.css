@@ -1,0 +1,73 @@
+/* User admin: the only CSS the Users page needs on top of public/css/app.css.
+   Append to public/css/app.css (after the "Permission groups" block). No new
+   colours or tokens. */
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Add user panel */
+.add-user h2 { margin-bottom: 8px; }
+.add-user .form-row { align-items: flex-start; }
+.add-user .form-row label { flex: 1 1 180px; margin-bottom: 0; }
+.add-user .form-row label.narrow { flex: 0 1 150px; }
+.add-user .form-row .submit { flex: 0 0 auto; align-self: flex-end; }
+.add-user .hint { margin: 6px 0 0; }
+.add-user .error { margin: 8px 0 0; }
+.add-user .error:empty { display: none; }
+.add-user input[aria-invalid="true"] { border: 2px solid var(--danger); }
+
+/* Collapsible variant (option B): button in the toolbar opens the panel */
+details.add-user > summary { list-style: none; }
+details.add-user > summary::-webkit-details-marker { display: none; }
+details.add-user[open] > summary { display: none; }
+
+/* Table strip: the "Show deactivated" toggle sits right above the table */
+.list-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 8px; }
+.list-tools .count { color: var(--muted); font-size: 12px; margin-right: auto; }
+
+table.users td .you { color: var(--muted); font-size: 12px; font-weight: 400; margin-left: 4px; }
+table.users td .name { overflow-wrap: anywhere; }
+table.users td .uname { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+table.users td .row-hint { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; text-align: right; }
+table.users .save-status { display: block; min-height: 1em; margin-top: 2px; }
+table.users td input { width: 100%; min-width: 120px; }
+table.users tr.is-inactive td { color: var(--muted); background: var(--page); }
+table.users tr.is-inactive td .name { text-decoration: none; }
+table.users tr.is-editing td { background: #fff; }
+table.users tr.is-editing td:first-child { box-shadow: inset 3px 0 0 var(--teal); }
+table.users tr.row-error td { background: #fff; color: var(--danger); font-size: 13px; padding-top: 0; }
+table.users td.row-actions button { white-space: nowrap; }
+table.users .loading-row td { text-align: center; color: var(--muted); padding: 24px; }
+
+/* Matrix: tick = allowed, dash = not allowed; both also have hidden words. */
+.matrix-wrap { margin-top: 24px; }
+.matrix-wrap h2 { margin-bottom: 4px; }
+.matrix-wrap .hint { margin: 0 0 8px; }
+table.matrix th, table.matrix td { text-align: center; }
+table.matrix th:first-child, table.matrix td:first-child { text-align: left; }
+table.matrix tbody th { background: none; color: var(--ink); font-size: 13px; font-weight: 400; border-bottom: 1px solid var(--line2); padding: 9px 12px; }
+table.matrix tbody tr:last-child th { border-bottom: none; }
+table.matrix .yes { color: var(--teal); font-weight: 700; font-size: 16px; }
+table.matrix .no { color: var(--muted); }
+
+/* Confirm dialogs reuse dialog.app-dialog; mockups show them open in place */
+dialog.app-dialog.static[open] { position: static; margin: 8px 0; }
+
+/* Narrow: each user becomes a stacked card, so no sideways scroll */
+@media (max-width: 700px) {
+  table.users thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  table.users, table.users tbody, table.users tr, table.users td { display: block; }
+  table.users tr { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  table.users tbody tr:last-child { border-bottom: none; }
+  table.users td { border: none; padding: 3px 12px; display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 8px; align-items: center; }
+  table.users td::before { content: attr(data-label); color: var(--teal); font-size: 12px; font-weight: 700; }
+  table.users td.row-actions { text-align: left; }
+  table.users td.row-actions::before { content: ""; }
+  table.users td.row-actions .row-hint { text-align: left; }
+  table.users tr.row-error { padding: 0 0 8px; }
+  table.users tr.row-error td { display: block; }
+  table.users tr.row-error td::before { content: none; }
+  table.users tr.is-editing td:first-child { box-shadow: none; }
+  table.users tr.is-editing { box-shadow: inset 3px 0 0 var(--teal); }
+  .add-user .form-row label, .add-user .form-row label.narrow { flex: 1 1 100%; }
+  .add-user .form-row .submit { align-self: stretch; }
+}

@@ -68,7 +68,8 @@ const snapshot = () => Object.fromEntries(TABLES.map((t) => [t, app.db.prepare(`
 test('the sprints table, issue columns and indexes exist with no CHECK (AC 1-3)', () => {
   const db = openDb(tempDbPath());
   const cols = db.prepare('PRAGMA table_info(sprints)').all().map((c) => c.name);
-  assert.deepEqual(cols, ['id', 'project_id', 'name', 'goal', 'start_date', 'end_date', 'state', 'created_at', 'started_at', 'completed_at']);
+  // The baseline_* columns come from scope-change tracking (docs/specs/sprint-scope-change.md AC 2).
+  assert.deepEqual(cols, ['id', 'project_id', 'name', 'goal', 'start_date', 'end_date', 'state', 'created_at', 'started_at', 'completed_at', 'baseline_item_count', 'baseline_minutes', 'baseline_at']);
   const { sql } = db.prepare("SELECT sql FROM sqlite_master WHERE name = 'sprints'").get();
   assert.doesNotMatch(sql, /CHECK/i);
   assert.match(sql, /goal TEXT NOT NULL DEFAULT ''/);

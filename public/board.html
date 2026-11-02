@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Board</title>
-  <link rel="icon" href="data:,">
+  <link rel="icon" type="image/svg+xml" href="/css/favicon.svg">
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -105,6 +105,8 @@
             <select id="sprint-select" name="sprint_id"></select>
             <p id="sprint-na" class="sprint-na" hidden>Not applicable (epics are not part of a sprint)</p>
             <p id="sprint-note" class="hint" hidden>Completed sprints are read-only.</p>
+            <!-- "Added after start" (docs/specs/sprint-scope-change.md AC 28): the badge and when it was added; board.js fills it. -->
+            <p id="sprint-added" class="hint sprint-added" hidden></p>
           </div>
           <!-- Estimate (docs/specs/time-tracking.md AC 41-44): an item field,
                saved with Save. Read-only text for Viewers and archived
@@ -276,6 +278,7 @@
   <script src="js/session.js"></script>
   <script src="js/projectScope.js"></script>
   <script src="js/time.js"></script>
+  <script src="js/scope.js"></script>
   <script src="js/historyFormat.js"></script>
   <script src="js/richText.js"></script>
   <script src="js/filters.js"></script>

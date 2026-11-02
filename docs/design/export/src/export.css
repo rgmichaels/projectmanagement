@@ -1,0 +1,67 @@
+/* Export buttons (docs/specs/export.md; design docs/design/export).
+   src/base.css is a copy of public/css/app.css taken when this design was made.
+   Append only the block between NEW and END NEW to public/css/app.css.
+   No new colours or tokens. */
+
+/* ===== NEW: Export button ===== */
+.export-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: none; min-height: 30px; padding: 4px 10px; font-size: 13px; line-height: 1.3; white-space: nowrap; }
+.export-btn svg { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+/* Hover: teal text and a second border line (shape change, not colour alone). */
+.export-btn:hover:not([disabled]):not([aria-disabled="true"]), .export-btn.is-hover { border-color: var(--teal); color: var(--teal); box-shadow: inset 0 0 0 1px var(--teal); }
+/* Busy keeps focus (aria-disabled, not disabled) and a fixed width so nothing jumps. */
+.export-btn[aria-disabled="true"] { opacity: 0.6; cursor: progress; }
+.export-btn[aria-busy="true"] { min-width: 104px; }
+.export-btn[disabled] { opacity: 0.6; cursor: default; }
+/* The reason a button is disabled is always visible text beside it. */
+.export-why { color: var(--muted); font-size: 12px; }
+
+/* Option B only: square icon button, 32px, tooltip to the LEFT so a collapsed
+   panel (overflow: hidden) never clips it. Name comes from aria-label. */
+.export-btn.icon-only { width: 32px; height: 32px; min-height: 32px; padding: 0; position: relative; }
+.export-btn.icon-only svg { width: 16px; height: 16px; }
+.export-btn.icon-only[aria-busy="true"] { width: auto; padding: 4px 10px; }
+.export-btn[data-tip]::after { content: attr(data-tip); position: absolute; right: calc(100% + 6px); top: 50%; transform: translateY(-50%); z-index: 5; display: none; width: max-content; max-width: 220px; padding: 4px 8px; border-radius: 4px; background: var(--navy); color: #fff; font-size: 12px; font-weight: 400; white-space: normal; text-align: left; pointer-events: none; }
+.export-btn[data-tip]:hover::after, .export-btn[data-tip]:focus-visible::after, .export-btn.show-tip::after { display: block; }
+
+/* Board: the right end of the filter bar, after Clear and "Showing n of m". */
+.filter-export { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
+
+/* Messages under the control that caused them (success-empty notice, error). */
+.export-msg { padding: 10px 12px 0; }
+.export-msg.on-board { flex-basis: 100%; padding: 0; }
+.export-msg .notice, .export-msg .banner-warn { margin: 0 0 10px; }
+.export-msg .banner-warn { display: flex; }
+.export-msg .notice button.link, .export-msg .banner-warn button.link { margin-left: auto; flex: none; }
+.export-msg.on-board .notice, .export-msg.on-board .banner-warn { margin: 12px 0 0; }
+/* ===== END NEW ===== */
+
+/* ===== Mockup chrome only (not for the app) ===== */
+body { padding-bottom: 40px; }
+.intro, .frame { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+.intro { padding-top: 20px; }
+.intro h1 { margin-bottom: 6px; }
+.intro p { margin: 0 0 8px; max-width: 80ch; }
+.frame { margin-top: 28px; }
+.frame-h { font-size: 16px; margin: 0 0 4px; }
+.fn { display: inline-block; min-width: 22px; height: 22px; line-height: 22px; text-align: center; border-radius: 11px; background: var(--teal); color: #fff; font-size: 12px; margin-right: 8px; }
+.frame-ac { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+.stage { border: 1px solid var(--line); background: var(--page); }
+.stage .page { padding: 16px 20px 8px; max-width: none; }
+.anno { margin: 8px 0 0; color: var(--muted); font-size: 13px; max-width: 90ch; }
+.narrow { width: 360px; border: 1px dashed var(--teal-mid); background: var(--page); padding: 10px; }
+.narrow .page { padding: 0; }
+.narrow .filter-bar label.filter input[type="search"] { width: 100%; }
+.narrow .filter-bar label.filter { flex: 1 1 100%; }
+.narrow .filter-bar label.filter select, .narrow .filter-bar label.filter input { flex: 1; min-width: 0; }
+.narrow .sprint-pick { flex: 1 1 100%; }
+.narrow .sprint-pick select { flex: 1; min-width: 0; min-width: 0; }
+.cells { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+.cell { border: 1px solid var(--line); background: #fff; padding: 12px; border-radius: 4px; }
+.cell.on-soft { background: var(--teal-soft); }
+.cell h3 { font-size: 12px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.cell p { margin: 8px 0 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.cell code { font-size: 11px; }
+.placeholder { margin: 12px; padding: 14px; border: 1px dashed var(--teal-mid); border-radius: 4px; color: var(--muted); font-size: 13px; background: #fff; }
+.stub-board { border: 1px dashed var(--teal-mid); border-radius: 4px; padding: 14px; color: var(--muted); font-size: 13px; background: #fff; margin: 0 0 12px; }
+.tilestub { display: flex; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line2); }
+.tilestub span { flex: 1; border: 1px solid var(--teal-mid); border-radius: 4px; padding: 6px 8px; font-size: 12px; color: var(--muted); background: var(--page); }

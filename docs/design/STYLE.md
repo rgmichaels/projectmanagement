@@ -126,3 +126,42 @@ Full contract and CSS: `docs/design/time-tracking/README.md` and `docs/design/ti
 Contract: `docs/design/new-project-from-dropdown/README.md`. No new tokens or components. It reuses `.project-scope` / `select.project-select` (top bar A) and `dialog.app-dialog` (band, `.dialog-body`, `.dialog-foot` with `p.error[role="alert"]`, `button.primary`). Only addition: a narrow-width rule for the dialog (14px side padding below 600px).
 
 **Do.** Keep the separator as a disabled text option and the entry as a plain option; show server errors as text in the foot. **Don't.** Don't build a custom dropdown for the entry; don't add a key chip or extra fields to the dialog.
+
+## 9. User admin (user-admin, option A recommended)
+
+Contract: `docs/design/user-admin/README.md`. CSS: `docs/design/user-admin/src/user-admin.css` (append to `public/css/app.css`). No new tokens. Reuses `.panel`, `.form-row`, `.notice`, `.error`, `table.projects`, `.badge.archived` (for Deactivated), `dialog.app-dialog`.
+
+**New components.**
+- `.sr-only`: visually hidden text for tick/dash cells and the table's Actions header.
+- Add user panel (`.panel.add-user`): one form row (Name, Username, narrow Group, primary Add), hint and error line beneath; `input[aria-invalid="true"]` gets a 2px danger border.
+- List tools (`.list-tools`): count text plus "Show deactivated users" toggle above the table.
+- Users table states: `tr.is-inactive` (muted on page colour), `tr.is-editing` (white, 3px teal left edge, inputs), `tr.row-error` (red message row under the edited row), `.row-hint` (visible reason under a disabled button), `.you` marker.
+- Permission matrix (`table.projects.matrix`): row header = permission label, one column per group; cell = teal tick or muted dash, each with hidden "Allowed" / "Not allowed".
+- Narrow (below 700px): `table.users` rows stack as cards using `td[data-label]`.
+
+**Do.** Say Deactivated and Active in words; give every disabled button a visible reason; insert names and server messages as text. **Don't.** Don't name groups in the client; don't offer delete; don't use colour alone in the matrix.
+
+## 10. Sprint scope change (sprint-scope-change, option pending owner choice)
+
+Contract: `docs/design/sprint-scope-change/README.md`. CSS: the "NEW" block of `docs/design/sprint-scope-change/src/scope.css` (append to `public/css/app.css`). No new tokens; there is no dark mode in this app, so none is designed. Reuses `.badge`, `.sprint`, `.banner-warn`, `.card-key`, `.hint`, `.visually-hidden`.
+
+**New components (all options).**
+- Added-after-start badge (`.badge.added-late`): white, navy border and text, sentence case, leading "+" (CSS). `.short` is the Board card form: visible "Added", `title` and hidden text "Added after start".
+- Scope panel (`section.scope`): head with h3 and hint, figures, `.scope-lines` (Baseline, Adjusted in first 24h, final line), `.scope-note`, `.late-note` ("Baseline captured on <date>", pale teal with mid-teal border).
+- Scope log (`details.scope-log`, `.log-list`, `.log-item`, `.log-hours`, `.log-meta`), `.grace-tag` (dashed outline: "adjusted in first 24h", "no estimate"), `.log-empty`.
+- State messages: `.scope-msg` (Planned, not tracked, loading), error reuses `.banner-warn` with Retry inside `.scope-err`.
+- Layout, chosen option only: A `.tiles` / `.tile` (`.is-total`, `.is-growth`); B `table.scope-table` (`.is-sum`, `.is-total`); C `.split-c` with `.scope-side` (`.side-growth`).
+
+**Do.** Write signs, units ("h") and the words growth / shrink / n/a; keep Planned + net = Current visible; insert titles and actor names as text. **Don't.** Don't colour-only growth; don't add write controls; don't show a badge for grace-period adds; don't use a hover-only tooltip for the baseline explanation.
+
+## 11. Export buttons (export, option A recommended)
+
+Contract: `docs/design/export/README.md`. CSS: the NEW block of `docs/design/export/src/export.css` (append to `public/css/app.css`). No new tokens. Reuses `.notice`, `.banner-warn`, `.hint`, `button.link`.
+
+**New components.**
+- Export button (`button.export-btn`): secondary navy-outline, 30px high, 13px bold, label "Export"; hover = teal text and a second border line; busy = "Exporting..." with `aria-busy` and `aria-disabled` (keeps focus), min-width 104px. Option B only: `.icon-only` 32px square with inline SVG and a left-opening tooltip (`data-tip`).
+- Placement slots: `.filter-export` (right end of the Board filter bar), last item of `.sprint-actions` (Backlog headers), last item of `.sprint-pick` (Sprints).
+- `.export-why`: muted 12px reason beside a disabled button (only if disabled-when-empty is chosen).
+- `.export-msg` (`.on-board` variant): holds a `.notice` (role="status", headers-only) or `.banner-warn` (role="alert", "Export failed.") with a Dismiss link, under the Board filter bar or under a panel header.
+
+**Do.** Name the target in `aria-label` ("Export Sprint 4"); keep Export visible for Viewers and archived projects; set names and server text as text. **Don't.** Don't use `disabled` while busy (focus is lost); don't rely on a hover-only tooltip for meaning; don't show Export as a primary button.

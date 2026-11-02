@@ -17,6 +17,7 @@ const { EVENT } = require('../sprintEvents');
 const issues = require('./issues');
 const timeEntries = require('./timeEntries');
 const sprintHistory = require('./sprintHistory');
+const sprintScope = require('./sprintScope');
 
 const COLUMNS = 'id, project_id, name, goal, start_date, end_date, state, created_at, started_at, completed_at';
 const NAME_PATTERN = /^Sprint (\d+)$/;
@@ -156,11 +157,14 @@ function deleteSprint(db, sprint, actor) {
 }
 
 // Initial -> active. The caller checks that no other sprint is active; the
-// unique index refuses a second one anyway.
+// unique index refuses a second one anyway. The scope baseline
+// (docs/specs/sprint-scope-change.md AC 3) is captured in the same
+// transaction, with baseline_at equal to started_at.
 function startSprint(db, sprint, actor) {
   return db.transaction(() => {
     const now = new Date().toISOString();
     db.prepare('UPDATE sprints SET state = ?, started_at = ? WHERE id = ?').run(activeSprintState(), now, sprint.id);
+    sprintScope.captureBaseline(db, sprint, now);
     sprintHistory.recordSprintEvent(db, actor, getSprint(db, sprint.id), EVENT.started, {}, [], now);
     return getSprintWithCounts(db, sprint.id);
   })();

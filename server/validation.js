@@ -1,4 +1,4 @@
-// Request validation for projects, work items and discussion messages. Allowed values come from the
+// Request validation for projects, work items, discussion messages and users. Allowed values come from the
 // single-source lists; nothing here names a specific status or type.
 const { isValidStatus, defaultStatus, isTerminalStatus, terminalStatus } = require('./statuses');
 const { isValidResolution } = require('./resolutions');
@@ -6,6 +6,8 @@ const { isValidType, isEpicType } = require('./types');
 const { isValidPriority } = require('./priorities');
 const { isValidProjectStatus } = require('./projectStatuses');
 const { initialSprintState, finalSprintState } = require('./sprintStates');
+const { isValidGroup } = require('./groups');
+const { isValidUsername } = require('./usernames');
 const users = require('./data/users');
 const issues = require('./data/issues');
 const sprints = require('./data/sprints');
@@ -82,7 +84,13 @@ function checkIssueFields(db, project, body, existing) {
   }
   if (body.assignee_id !== undefined) {
     const id = toIdOrNull(body.assignee_id, 'assignee');
-    if (id !== null && !users.getUser(db, id)) throw new ValidationError('Unknown assignee.');
+    const assignee = id === null ? null : users.getUser(db, id);
+    if (id !== null && !assignee) throw new ValidationError('Unknown assignee.');
+    // A deactivated user cannot be newly assigned; an item they already
+    // have keeps them (docs/specs/user-admin.md AC 13).
+    if (assignee && !assignee.active && (!existing || existing.assignee_id !== id)) {
+      throw new ValidationError('That user is deactivated.');
+    }
     out.assignee_id = id;
   }
   if (body.epic_id !== undefined) {
@@ -243,6 +251,48 @@ function checkCompletion(db, sprint, body) {
   return out;
 }
 
+const USER_NAME_MAX = 100;
+const USERNAME_RULE =
+  'Username may only contain letters, digits, ".", "_" and "-" (1 to 30 characters).';
+
+// A user's display name (docs/specs/user-admin.md AC 2): trimmed, 1-100.
+function checkUserName(name) {
+  const text = typeof name === 'string' ? name.trim() : '';
+  if (!text) throw new ValidationError('Name is required.');
+  if ([...text].length > USER_NAME_MAX) throw new ValidationError(`Name must be ${USER_NAME_MAX} characters or fewer.`);
+  return text;
+}
+
+// A typed username (AC 3): trimmed, then the rule in server/usernames.js.
+// The case is kept; uniqueness is checked by the caller.
+function checkUsername(username) {
+  const text = typeof username === 'string' ? username.trim() : username;
+  if (!isValidUsername(text)) throw new ValidationError(USERNAME_RULE);
+  return text;
+}
+
+// The body of POST /api/users and PATCH /api/users/:id (AC 2-4, 6, 9). On
+// create, `name` is required and a blank or omitted username, or an omitted
+// group, is left out for the route to fill in. On update only present fields
+// are returned; a blank username is refused there (there is nothing to derive
+// it from but the name, which is not being changed).
+function checkUserFields(body, creating) {
+  const out = {};
+  if (creating || body.name !== undefined) out.name = checkUserName(body.name);
+  const omitted = (value) => value === undefined || (creating && value === null);
+  const blankUsername = typeof body.username === 'string' && !body.username.trim();
+  if (!omitted(body.username) && !(creating && blankUsername)) out.username = checkUsername(body.username);
+  if (!omitted(body.group)) {
+    if (!isValidGroup(body.group)) throw new ValidationError('Unknown group.');
+    out.group = body.group;
+  }
+  if (!creating && body.active !== undefined) {
+    if (typeof body.active !== 'boolean') throw new ValidationError('Active must be true or false.');
+    out.active = body.active;
+  }
+  return out;
+}
+
 const COMMENT_MAX_LENGTH = 2000;
 
 // A discussion message: plain text, trimmed (inner line breaks kept), 1-2000 chars.
@@ -281,6 +331,7 @@ module.exports = {
   FILENAME_MAX_LENGTH,
   checkFilename,
   checkCommentBody,
+  checkUserFields,
   checkProjectName,
   checkProjectKey,
   checkProjectStatus,

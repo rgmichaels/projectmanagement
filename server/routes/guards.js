@@ -14,8 +14,8 @@ const { ValidationError } = require('../validation');
 const { can, actionOf } = require('../groups');
 
 // The signed-in user's group must have `permission` (server/groups.js).
-// `project` is accepted for later per-project membership and ignored for now:
-// a project_members role would be consulted here, and only here. `action`
+// Project scope is resolved by projectPermissions middleware before routes.
+// The reserved `project` argument is retained for compatibility. `action`
 // optionally replaces the permission's wording in the message ("log time").
 // eslint-disable-next-line no-unused-vars
 function assertCan(user, permission, project, action) {

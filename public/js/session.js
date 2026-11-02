@@ -9,7 +9,11 @@ const session = (() => {
   const topbar = document.querySelector('.topbar');
   let current = null;
 
-  const can = (permission) => Boolean(current && Array.isArray(current.permissions) && current.permissions.includes(permission));
+  const can = (permission, projectId = new URLSearchParams(location.search).get('project')) => {
+    const scoped = permission !== 'manage-users' && projectId && current?.projectPermissions?.[projectId];
+    const permissions = scoped || current?.permissions;
+    return Boolean(Array.isArray(permissions) && permissions.includes(permission));
+  };
 
   async function signOut() {
     try {

@@ -265,6 +265,7 @@ const backlogPage = (() => {
       typeBadge(item),
       el('span', { class: 'card-key' }, item.key),
       el('button', { type: 'button', class: 'brow-title' }, item.title),
+      ctx.addedBadge(item), // "Added after start" (scope change AC 26)
       epic ? ctx.epicChip(epic) : null,
       el('span', { class: 'priority', title: `Priority: ${item.priority}` }, item.priority),
       el('span', { class: `status-pill${done ? ' is-done' : ''}`, title: `Status: ${item.status}` }, item.status)
