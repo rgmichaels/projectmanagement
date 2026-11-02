@@ -6,11 +6,12 @@
 // data layer only. User changes are not recorded in history.
 const express = require('express');
 const users = require('../data/users');
+const projectPermissions = require('../data/projectPermissions');
 const auth = require('../auth');
 const { groupNames, defaultGroup, managerGroups, can, matrix } = require('../groups');
 const { deriveUsername } = require('../usernames');
 const { ValidationError, checkUserFields } = require('../validation');
-const { assertCan } = require('./guards');
+const { assertCan, loadProject } = require('./guards');
 
 // The fields PATCH /api/users/:id recognises; anything else is ignored.
 const EDITABLE = ['name', 'username', 'group', 'active'];
@@ -32,8 +33,8 @@ function userRoutes(db) {
     const includeInactive = req.query.include === 'inactive' && can(req.user.group, 'manage-users');
     const list = users.listUsers(db, { includeInactive });
     if (req.query.project !== undefined) {
-      const project = require('./guards').loadProject(db, req.query.project);
-      const rows = db.prepare('SELECT user_id, group_name FROM project_permissions WHERE project_id = ?').all(project.id);
+      const project = loadProject(db, req.query.project);
+      const rows = projectPermissions.listForProject(db, project.id);
       const assigned = new Map(rows.map((r) => [r.user_id, r.group_name]));
       return res.json(list.map((u) => ({ ...u, defaultGroup: u.group, group: assigned.get(u.id) ?? u.group, inherited: !assigned.has(u.id) })));
     }
@@ -69,17 +70,17 @@ function userRoutes(db) {
     if (!user) throw new ValidationError('User not found.', 404);
     const body = req.body || {};
     if (body.project_id !== undefined) {
-      const project = require('./guards').loadProject(db, body.project_id);
+      const project = loadProject(db, body.project_id);
       if (Object.keys(body).some((key) => !['project_id', 'group'].includes(key))) throw new ValidationError('Project permission changes only accept group and project_id.');
       if (body.group === null) {
-        db.prepare('DELETE FROM project_permissions WHERE project_id = ? AND user_id = ?').run(project.id, user.id);
+        projectPermissions.clearGroup(db, project.id, user.id);
       } else {
         const fields = checkUserFields({ group: body.group }, false);
         if (fields.group === undefined) throw new ValidationError('Unknown group.');
-        db.prepare('INSERT INTO project_permissions (project_id, user_id, group_name) VALUES (?, ?, ?) ON CONFLICT(project_id, user_id) DO UPDATE SET group_name = excluded.group_name').run(project.id, user.id, fields.group);
+        projectPermissions.setGroup(db, project.id, user.id, fields.group);
       }
-      const assigned = db.prepare('SELECT group_name FROM project_permissions WHERE project_id = ? AND user_id = ?').get(project.id, user.id);
-      return res.json({ ...user, defaultGroup: user.group, group: assigned?.group_name ?? user.group, inherited: !assigned });
+      const assigned = projectPermissions.getGroup(db, project.id, user.id);
+      return res.json({ ...user, defaultGroup: user.group, group: assigned ?? user.group, inherited: !assigned });
     }
     if (!EDITABLE.some((field) => body[field] !== undefined)) throw new ValidationError('Nothing to change.');
     const fields = checkUserFields(body, false);

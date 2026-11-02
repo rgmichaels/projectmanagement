@@ -27,7 +27,13 @@ function resetSeeded() {
     usersData.updateUser(app.db, id, { group: username === 'alex' ? ADMIN : MEMBER, active: true });
   }
 }
-test.beforeEach(resetSeeded);
+// Deactivating alex through the API (the guards tests) deletes his sessions,
+// and reactivating does not restore them (AC 10), so sign the default client
+// in again when it was signed out.
+test.beforeEach(async () => {
+  resetSeeded();
+  if ((await app.get('/api/auth/me')).status === 401) await app.login('alex');
+});
 
 const count = (table) => app.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n;
 const usersRows = () => app.db.prepare('SELECT * FROM users ORDER BY id').all();

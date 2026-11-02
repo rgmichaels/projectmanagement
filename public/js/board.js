@@ -226,9 +226,10 @@
 
   // Nothing on the board can be changed when the project is archived or the
   // user's group lacks `write` (a Viewer): no create, drag, edit, comment,
-  // link or attach controls. Reading everything still works.
-  const readOnly = () => Boolean(state.project && state.project.archived) || !session.can('write');
-  const canDeleteItems = () => session.can('delete-item');
+  // link or attach controls. Reading everything still works. The user's
+  // group in this project applies when they have one (project permissions).
+  const readOnly = () => Boolean(state.project && state.project.archived) || !session.can('write', projectId);
+  const canDeleteItems = () => session.can('delete-item', projectId);
   const typeOf = (name) => state.types.find((t) => t.name === name);
   const isEpicItem = (item) => Boolean(typeOf(item.type) && typeOf(item.type).isEpic);
   const epicType = () => state.types.find((t) => t.isEpic);

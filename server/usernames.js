@@ -12,7 +12,7 @@ function isValidUsername(username) {
 }
 
 // The username derived from a display name: its first word, lower-cased
-// (`Alex Morgan` -> `alex`), reduced to the allowed characters (accents are
+// (`Eva Long` -> `eva`), reduced to the allowed characters (accents are
 // dropped, `Émile` -> `emile`; nothing left -> `user`), then made unique
 // against `taken` (a Set of lower-cased usernames) with 2, 3, ... The result
 // always satisfies isValidUsername and is added to `taken`.

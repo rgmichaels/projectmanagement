@@ -370,9 +370,12 @@ test('an old database gains unique usernames and reporter_id, data intact (AC 23
 
   const issuesAfter = db.prepare('SELECT * FROM issues').all();
   // The sprints migration (docs/specs/sprints-and-backlog.md AC 4) also adds
-  // sprint_id and sprint_rank; every other column is unchanged.
-  assert.deepEqual(issuesAfter.map(({ reporter_id, sprint_id, sprint_rank, ...rest }) => rest), issuesBefore);
+  // sprint_id and sprint_rank, and the time-tracking migration
+  // (docs/specs/time-tracking.md AC 34) estimate_minutes; every other column
+  // is unchanged.
+  assert.deepEqual(issuesAfter.map(({ reporter_id, sprint_id, sprint_rank, estimate_minutes, ...rest }) => rest), issuesBefore);
   assert.ok(issuesAfter.every((i) => i.reporter_id === null));
+  assert.ok(issuesAfter.every((i) => i.estimate_minutes === null), 'not estimated');
   assert.deepEqual(db.prepare('SELECT * FROM comments').all(), commentsBefore);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM sessions').get().n, 0, 'everyone signed out');
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM users').get().n, names.length, 'no seed users added');

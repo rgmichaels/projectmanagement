@@ -123,6 +123,7 @@ test('a fresh database file gets the schema and seed users (AC 38)', () => {
     'issue_links',
     'issue_test_cases',
     'issues',
+    'project_permissions',
     'projects',
     'sessions',
     'sprint_baseline_items',
@@ -733,7 +734,9 @@ test('the Edit project dialog uses the list endpoints and names no status (app r
   const { PROJECT_STATUSES } = require('../server/projectStatuses');
   for (const s of PROJECT_STATUSES) assert.ok(!js.includes(`'${s.name}'`), `${s.name} not hard-coded`);
   assert.match(js, /api\.patch\(`\/api\/projects\/\$\{editing\.id\}`, \{\s*name,\s*status: f\.status\.value,\s*archived: f\.archived\.checked/);
-  assert.match(js, /if \(!canManage\(\)\) return;\s*editing = project;/, 'Edit is gated on manage-projects');
+  // Gated on manage-projects in that project, so a project Admin may edit it
+  // (docs/specs/project-permissions.md).
+  assert.match(js, /if \(!canManage\(project\.id\)\) return;\s*editing = project;/, 'Edit is gated on manage-projects');
   assert.doesNotMatch(js, /innerHTML|outerHTML|insertAdjacentHTML|document.write/);
 });
 

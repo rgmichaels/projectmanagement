@@ -22,7 +22,9 @@
   };
 
   let projectStatuses = [];
-  const canManage = () => session.can('manage-projects');
+  // Without a project id: the account permission (creating projects). With
+  // one: that project's group, so a project Admin may edit it.
+  const canManage = (projectId) => session.can('manage-projects', projectId);
 
   function el(tag, attrs = {}, ...children) {
     const node = document.createElement(tag);
@@ -39,7 +41,7 @@
 
   function renderRow(project) {
     const actions = el('td', { class: 'row-actions' });
-    if (session.can('manage-projects', project.id)) {
+    if (canManage(project.id)) {
       // Name and status change in the Edit dialog; Archive/Unarchive stay as
       // one-click row actions.
       actions.append(el('button', { type: 'button', 'aria-label': `Edit ${project.name}`, onclick: () => openEdit(project) }, 'Edit'));
@@ -113,7 +115,7 @@
   }
 
   function openEdit(project) {
-    if (!session.can('manage-projects', project.id)) return;
+    if (!canManage(project.id)) return;
     editing = project;
     const f = els.editForm.elements;
     f.status.replaceChildren(...projectStatuses.map((s) => el('option', { value: s.name }, s.name)));

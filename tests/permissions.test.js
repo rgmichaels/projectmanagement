@@ -325,7 +325,8 @@ test('GET /api/users has group; the public sign-in list does not (AC 10)', async
 
 test('/api/auth/me returns group and permissions (AC 14)', async () => {
   assert.deepEqual((await app.get('/api/auth/me')).body, {
-    id: ids.alex, name: 'Alex Morgan', username: 'alex', group: ADMIN,
+    // Every user object includes `active` (docs/specs/user-admin.md AC 12).
+    id: ids.alex, name: 'Alex Morgan', username: 'alex', group: ADMIN, active: true,
     permissions: ['write', 'delete-item', 'manage-projects', 'manage-users'],
   });
   const blake = await app.client('blake');

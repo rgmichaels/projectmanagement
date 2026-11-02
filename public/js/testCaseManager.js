@@ -12,7 +12,7 @@
   let cursor = null;
   let generation = 0;
   let totalShown = 0;
-  const readonly = () => !session.can('write') || project.archived;
+  const readonly = () => !session.can('write', projectId) || project.archived;
   async function openCase(id) {
     const next = new URL(location.href);
     next.searchParams.set('case', id);
