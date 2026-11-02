@@ -36,6 +36,7 @@ const backlogPage = (() => {
     open: new Set(), // <details> keys the user opened: epics, done-sprints, history, c<id>
     dragId: null,
     focusQuick: null, // quick-create row to focus after the next render
+    focusPicker: null, // after a row sprint picker move: next row id or 'toggle'
     kinds: [], // sprint event kinds from the server
     history: { events: [], hasMore: false, loaded: false, loading: false, error: '' },
     historySeq: 0,
@@ -144,6 +145,44 @@ const backlogPage = (() => {
     label.addEventListener('click', (e) => e.stopPropagation());
     label.addEventListener('pointerdown', () => { pressOnSelect = true; });
     return label;
+  }
+
+  // The row sprint picker (docs/specs/backlog-row-sprint-picker.md): a
+  // native select at the end of a Backlog row; choosing a sprint moves that
+  // one item to the bottom of it. Like the checkbox, it is not the row: no
+  // dialog and no drag.
+  function sprintPicker(item, li) {
+    const el = ctx.el;
+    const targets = bulkTargets();
+    const select = el(
+      'select',
+      {
+        'aria-label': `Sprint for ${item.key}`,
+        disabled: view.bulkBusy || !targets.length,
+        title: targets.length ? undefined : 'Create a sprint first.',
+      },
+      el('option', { value: '' }, 'Sprint'),
+      ...targets.map((x) => el('option', { value: String(x.id) }, `${x.name} (${x.state})`))
+    );
+    select.selectedIndex = 0;
+    const cell = el('span', { class: 'brow-sprint' }, select);
+    cell.addEventListener('click', (e) => e.stopPropagation());
+    cell.addEventListener('pointerdown', () => { pressOnSelect = true; });
+    select.addEventListener('keydown', (e) => e.stopPropagation());
+    select.addEventListener('change', async () => {
+      const sprint = targets.find((x) => String(x.id) === select.value);
+      if (!sprint || view.bulkBusy) return;
+      let next = li.nextElementSibling;
+      while (next && !next.classList.contains('brow')) next = next.nextElementSibling;
+      view.focusPicker = next ? next.dataset.id : 'toggle'; // the row goes away (AC 9)
+      const ok = await moveItem(item, sprint.id, null);
+      if (!ok) {
+        // Snapped back: focus its own reset select again (AC 8).
+        const own = els.root.querySelector(`.brow[data-id="${item.id}"] .brow-sprint select`);
+        if (own) own.focus();
+      }
+    });
+    return cell;
   }
 
   // ---------- estimate cell (time-tracking AC 52, 54) ----------
@@ -271,6 +310,7 @@ const backlogPage = (() => {
       el('span', { class: `status-pill${done ? ' is-done' : ''}`, title: `Status: ${item.status}` }, item.status)
     );
     li.append(estimateCell(item, li), avatar(item));
+    if (selectable) li.append(sprintPicker(item, li));
     const error = li.querySelector('.brow-error');
     if (error) li.append(error); // under the row, after the avatar
     if (selectable) li.prepend(renderSelect(item, li));
@@ -335,7 +375,8 @@ const backlogPage = (() => {
         { class: 'brows-head', 'aria-hidden': 'true' },
         el('span', { class: 'grow' }, 'Work item'),
         el('span', { class: 'est-h' }, 'Est. (h)'),
-        el('span', { class: 'gap-avatar' })
+        el('span', { class: 'gap-avatar' }),
+        selectable ? el('span', { class: 'sprint-h' }, 'Sprint') : null
       ),
       ul
     );
@@ -787,7 +828,7 @@ const backlogPage = (() => {
     // while the save re-draws the page: keep that focus too.
     const focusedRow = !focusedEst && active && active.closest && active.closest('.brow[data-id]');
     const rowTarget = focusedRow
-      ? { id: focusedRow.dataset.id, sel: ['.brow-title', '.brow-select input', '.epic-chip'].find((x) => active.matches(x)) }
+      ? { id: focusedRow.dataset.id, sel: ['.brow-title', '.brow-select input', '.brow-sprint select', '.epic-chip'].find((x) => active.matches(x)) }
       : null;
     renderNotices();
     // Bulk move AC 5, 19: only items still in the Backlog stay selected;
@@ -834,6 +875,14 @@ const backlogPage = (() => {
         input.focus();
         view.focusEstimate = null;
       }
+    } else if (view.focusPicker && !refocus) {
+      // After a row sprint picker move: the next row's picker, else the
+      // Backlog toggle (row sprint picker AC 9).
+      const id = view.focusPicker;
+      view.focusPicker = null;
+      const target = (id !== 'toggle' && els.root.querySelector(`.brow[data-id="${id}"] .brow-sprint select`))
+        || els.root.querySelector('[data-key="backlog"] .sprint-toggle');
+      if (target) target.focus();
     } else if (rowTarget && rowTarget.sel && !refocus && !view.bulkFocus) {
       const target = els.root.querySelector(`.brow[data-id="${rowTarget.id}"] ${rowTarget.sel}`);
       if (target) target.focus();
@@ -929,13 +978,14 @@ const backlogPage = (() => {
       Object.assign(item, snapshot);
       render();
       ctx.showMessage(`Could not move ${item.key}: ${err.message}`);
-      return;
+      return false;
     }
     try {
       await ctx.reloadItems();
     } catch (err) {
       ctx.showMessage(`${item.key} was moved, but the page could not be refreshed: ${err.message}`);
     }
+    return true;
   }
 
   // ---------- bulk move (docs/specs/backlog-bulk-move.md AC 11-25) ----------

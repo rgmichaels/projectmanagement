@@ -930,6 +930,21 @@ test('bulk move: one PATCH of sprint_id per item through the shared helper, one 
   assert.doesNotMatch(read(path.join(root, 'server/routes/issues.js')), /bulk/i);
 });
 
+test('row sprint picker: Backlog rows only, bulk targets, moveItem to the bottom, not a row press', () => {
+  const js = read(path.join(root, 'public/js/backlog.js'));
+  assert.match(js, /if \(selectable\) li\.append\(sprintPicker\(item, li\)\);/);
+  const picker = js.slice(js.indexOf('function sprintPicker('), js.indexOf('// ---------- estimate cell'));
+  assert.match(picker, /const targets = bulkTargets\(\);/);
+  assert.match(picker, /'aria-label': `Sprint for \$\{item\.key\}`/);
+  assert.match(picker, /'Create a sprint first\.'/);
+  assert.match(picker, /disabled: view\.bulkBusy \|\| !targets\.length/);
+  assert.match(picker, /await moveItem\(item, sprint\.id, null\)/);
+  assert.match(picker, /stopPropagation\(\)/);
+  assert.match(picker, /pressOnSelect = true/);
+  assert.doesNotMatch(picker, /api\.patch|showModal|\(Active\)|\(Planned\)/, 'no own PATCH, no confirm, no hard-coded state');
+  assert.match(js, /selectable \? el\('span', \{ class: 'sprint-h' \}, 'Sprint'\) : null/);
+});
+
 test('bulk move: the confirm dialog matches the app dialogs; scripts load in order (AC 13)', () => {
   const html = read(path.join(root, 'public/backlog.html'));
   const start = html.indexOf('<dialog id="bulk-confirm-dialog"');
