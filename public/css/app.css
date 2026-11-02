@@ -855,6 +855,12 @@ dialog#detail .tabs.tight .tab .n { margin-left: 4px; padding: 0 5px; }
 .brow-est .est-ro { padding: 3px 6px; font-variant-numeric: tabular-nums; }
 .brow-est .est-ro.none { color: var(--muted); }
 .brow-est.is-na { visibility: hidden; }
+/* ---- Backlog row sprint picker: a compact select at the end of a Backlog row ---- */
+.brows-head .sprint-h { width: 128px; flex: none; }
+.brow-sprint { flex: none; width: 128px; }
+.brow-sprint select { width: 128px; padding: 3px 6px; font-size: 12px; border: 1px solid var(--teal-mid); border-radius: 3px; background: #fff; }
+.brow-sprint select:hover { border-color: var(--navy); }
+.brow-sprint select:disabled { background: var(--teal-soft); color: var(--muted); }
 .brow-error { flex-basis: 100%; margin: 0; padding: 0 0 0 24px; color: var(--danger); font-size: 12px; }
 .brow-error[hidden] { display: none; }
 
