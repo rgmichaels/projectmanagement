@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>work-item-sprint-field</title>
+<style>
+/* App palette (docs/design/STYLE.md part 3, app-restyle option A): the work
+   item dialog's tokens, promoted to :root so every page matches the dialog.
+   Gold is only a focus ring or accent on dark teal; mid teal is only a border
+   or rule, never text on a light background. */
+:root {
+  --teal: #0b5d66;
+  --teal-mid: #65999e;
+  --teal-soft: #e5eded;
+  --page: #f8fafa;
+  --navy: #154973;
+  --linkblue: #004dd1;
+  --gold: #face00;
+  --ink: #000000;
+  --muted: #62666a;
+  --line: #d0d0ce;
+  --line2: #e4e4e4;
+  --danger: #c0300b;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* Legacy names the shared rules read, re-pointed at the tokens above. */
+  --bg: var(--page);
+  --surface: #ffffff;
+  --column: var(--teal-soft);
+  --border: var(--line);
+  --text: var(--ink);
+  --primary: var(--teal);
+  --neutral: #62666a;
+  font-family: "Proxima Nova", "Helvetica Neue", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); }
+h1 { font-size: 20px; margin: 0; color: var(--teal); font-weight: 700; }
+h2 { font-size: 16px; margin: 0 0 12px; color: var(--teal); font-weight: 700; }
+a { color: var(--linkblue); }
+:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+button, select, input, textarea { font: inherit; }
+/* Buttons: secondary white with navy, primary deep teal, action navy. */
+button {
+  border: 1px solid var(--navy);
+  color: var(--navy);
+  background: var(--surface);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+button.primary { background: var(--teal); border-color: var(--teal); color: #fff; }
+button.navy { background: var(--navy); border-color: var(--navy); color: #fff; }
+button.danger { color: var(--danger); border-color: var(--line); }
+button[disabled] { opacity: 0.6; cursor: default; }
+button[hidden] { display: none; }
+
+/* Top bar: dark teal like the dialog band; gold focus ring on it. */
+.topbar {
+  background: var(--teal);
+  color: #fff;
+  padding: 10px 20px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.topbar :focus-visible { outline-color: var(--gold); }
+.topbar .brand { color: #fff; font-weight: 700; font-size: 15px; text-decoration: none; }
+.topbar .crumb { color: #cfe3e5; min-width: 0; overflow-wrap: anywhere; }
+.topbar .nav-link { color: #fff; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.topbar .session { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.topbar .session button { padding: 3px 10px; white-space: nowrap; background: transparent; border-color: #fff; color: #fff; }
+.topbar .session button:hover { background: #fff; color: var(--teal); }
+
+/* Sign-in page: the h1 is a teal title band across the top of the card. */
+.login { max-width: 420px; margin: 40px auto; }
+.login h1 { background: var(--teal); color: #fff; margin: -16px -16px 14px; padding: 14px 24px; border-radius: 8px 8px 0 0; font-size: 22px; }
+.user-list { border: none; padding: 0; margin: 0 0 8px; }
+.user-list legend { color: var(--ink); font-weight: 700; font-size: 12px; margin-bottom: 6px; }
+label.user-option { flex-direction: row; align-items: center; gap: 8px; font-size: 14px; font-weight: 400; color: var(--text); margin: 0; padding: 8px; border-radius: 4px; cursor: pointer; }
+label.user-option:hover { background: var(--teal-soft); }
+.user-username { color: var(--muted); font-size: 12px; }
+.hint { color: var(--muted); font-size: 12px; }
+.reporter { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+.reporter[hidden] { display: none; }
+
+.page { padding: 20px; }
+.toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.toolbar h1 { margin-right: auto; }
+.board-page .toolbar h1 { margin-right: 0; }
+.board-page .toolbar .group-by { margin-left: auto; }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; color: var(--ink); font-size: 12px; font-weight: 700; }
+label.toggle, label.group-by { flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text); }
+label[hidden] { display: none; }
+input, select, textarea { padding: 6px 8px; border: 1px solid var(--navy); border-radius: 4px; background: #fff; color: var(--text); max-width: 100%; }
+/* Field text stays regular weight inside the bold labels (the work item
+   dialog keeps its own rules). */
+.page input, .page select, .page textarea, dialog.app-dialog input, dialog.app-dialog select { font-weight: 400; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.error { color: var(--danger); min-height: 1em; margin: 4px 0; }
+
+.empty { text-align: center; padding: 40px; background: var(--surface); border: 1px dashed var(--teal-mid); border-radius: 8px; }
+
+/* Tables (Projects, Users): pale teal header, light row rules. */
+table.projects { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+table.projects th { background: var(--teal-soft); color: var(--teal); font-size: 12px; font-weight: 700; text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--teal-mid); }
+table.projects td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line2); overflow-wrap: break-word; }
+table.projects tbody tr:last-child td { border-bottom: none; }
+table.projects tbody tr:hover td { background: var(--page); }
+table.projects tr.is-archived td { color: var(--muted); background: var(--page); }
+.row-actions, table.projects td.row-actions { text-align: right; }
+.row-actions button { margin: 2px 0 2px 6px; }
+@media (max-width: 600px) {
+  table.projects th, table.projects td { padding: 8px 6px; }
+  table.projects .badge { white-space: normal; }
+  .row-actions button { padding: 5px 8px; }
+}
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; background: var(--teal-soft); border: 1px solid var(--teal-mid); color: var(--ink); font-size: 11px; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+.badge.archived { background: #fff0b3; border-color: #c9a800; color: var(--ink); }
+.badge[hidden], .badge:empty { display: none; }
+
+/* Board search and filters: one white card. */
+.filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; flex-basis: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+label.filter { flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text); }
+label.filter[hidden] { display: none; }
+label.filter input[type="search"] { width: 220px; max-width: 100%; }
+.filter-count { color: var(--muted); font-size: 13px; }
+.notice { display: flex; align-items: center; gap: 12px; background: var(--teal-soft); border: 1px solid var(--teal-mid); color: var(--text); padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; }
+.notice[hidden] { display: none; }
+
+.message { background: var(--surface); border: 1px solid var(--danger); border-left-width: 4px; color: var(--danger); font-weight: 700; padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; }
+.message[hidden] { display: none; }
+
+/* Board: pale teal columns under teal uppercase headers with a mid-teal rule. */
+.board { overflow-x: auto; }
+.board-header, .lane-body { display: grid; gap: 8px; min-width: min-content; }
+.col-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--teal);
+  background: transparent;
+  border-bottom: 2px solid var(--teal-mid);
+}
+.count { color: var(--muted); font-weight: normal; }
+.lane { margin-top: 8px; }
+.lane-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 6px 4px;
+  color: var(--teal);
+  font-weight: 700;
+  text-align: left;
+}
+.lane-header .count { font-size: 12px; }
+.column {
+  background: var(--column);
+  border-radius: 8px;
+  padding: 6px;
+  min-height: 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card {
+  --type-color: var(--neutral);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--type-color);
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(9, 30, 40, 0.12);
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.card:hover { border-color: var(--teal-mid); border-left-color: var(--type-color); }
+.card[draggable="true"] { cursor: grab; }
+.card.dragging { opacity: 0.4; }
+.card-title { margin-bottom: 8px; word-break: break-word; }
+.card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.card-key { font: 700 12px var(--mono); color: var(--ink); }
+/* Type badge: white chip with black text and a type-coloured dot (white text
+   on the type colours fails contrast). The card's left edge keeps the colour. */
+.type-badge {
+  --type-color: var(--neutral);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 11px;
+}
+.type-badge .type-icon { display: none; } /* the dot stands in for the list icon */
+.type-badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--type-color); flex: none; }
+/* Neutral fallback for a type with no defined styling. */
+.type-badge.type-fallback { --type-color: var(--neutral); }
+.epic-chip { background: #eae6ff; color: #403294; padding: 1px 6px; border-radius: 4px; font-weight: 700; cursor: pointer; }
+.epic-chip:hover, .epic-chip:focus-visible { background: #c0b6f2; text-decoration: underline; }
+/* Colours come from server/resolutions.js; each passes 4.5:1 with white. */
+.resolution-label {
+  --resolution-color: var(--neutral);
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--resolution-color);
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+}
+.priority { border: 1px solid var(--line); padding: 0 5px; border-radius: 4px; }
+.avatar {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--teal);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+}
+.avatar.unassigned { background: var(--neutral); }
+.drop-indicator { height: 4px; border-radius: 2px; background: var(--navy); }
+
+dialog { border: none; border-radius: 8px; padding: 20px; width: min(560px, 95vw); box-shadow: 0 12px 36px rgba(9, 30, 40, 0.35); }
+dialog input, dialog textarea { width: 100%; }
+
+/* Small dialogs (Edit project): the same shell as the work item dialog, a
+   teal band title, a body on the page colour and a footer with the buttons
+   right-aligned. */
+dialog.app-dialog { padding: 0; width: min(480px, 95vw); background: var(--page); color: var(--ink); }
+dialog.app-dialog::backdrop { background: rgba(9, 30, 40, 0.45); }
+dialog.app-dialog .band { background: var(--teal); color: #fff; padding: 14px 24px; border-radius: 8px 8px 0 0; display: flex; align-items: center; gap: 8px; }
+dialog.app-dialog .band :focus-visible { outline-color: var(--gold); }
+dialog.app-dialog .band h2 { color: #fff; font-size: 20px; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+dialog.app-dialog .keychip { display: inline-flex; align-items: center; font: 600 12px var(--mono); color: #000; background: #fff; border-radius: 4px; padding: 2px 8px; white-space: nowrap; flex: none; }
+dialog.app-dialog .dialog-body { padding: 16px 24px 8px; }
+dialog.app-dialog .dialog-body label { margin-bottom: 12px; }
+dialog.app-dialog label.toggle { margin-bottom: 4px; }
+dialog.app-dialog label.toggle input { width: auto; }
+dialog.app-dialog select { width: 100%; }
+dialog.app-dialog .hint { margin: 0 0 8px; }
+dialog.app-dialog .dialog-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; padding: 12px 24px; border-top: 1px solid var(--line); background: #fff; border-radius: 0 0 8px 8px; }
+dialog.app-dialog .dialog-foot .error { margin: 0; flex: 1 1 100%; overflow-wrap: anywhere; }
+dialog.app-dialog .dialog-foot .error:empty { display: none; }
+
+/* Comment count chip on cards (shown for 0 too). */
+.comment-count { display: inline-flex; align-items: center; gap: 2px; }
+.comment-icon { font-size: 11px; }
+
+/* Discussion section in the detail dialog. */
+.discussion[hidden], .comment-form[hidden], .thread-empty[hidden] { display: none; }
+.comment-form { margin-bottom: 8px; }
+.posting-as { color: var(--muted); font-size: 12px; margin: 0 0 4px; }
+.thread-empty { color: var(--muted); margin: 4px 0; }
+/* The thread scrolls inside the dialog so the form above stays in reach. */
+.thread { list-style: none; margin: 0; padding: 0; max-height: 40vh; overflow-y: auto; }
+.thread-item { border-top: 1px solid var(--border); padding: 8px 0; }
+.thread-item:first-child { border-top: none; }
+.message-head { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; font-size: 12px; color: var(--muted); }
+.message-author { font-weight: 600; color: var(--text); }
+.message-edited { font-style: italic; }
+.message-body { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; }
+.message-editor { margin-top: 4px; }
+.message-actions { margin-top: 4px; }
+button.link { border: none; background: none; padding: 0; color: var(--linkblue); font-size: 12px; font-weight: 400; text-decoration: underline; text-underline-offset: 2px; }
+button.link.danger { color: var(--danger); }
+
+/* The tab bar in the detail dialog (Children, Discussion, History, Links, Attachments). */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.tabs[hidden] { display: none; }
+.tab { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 7px 10px; color: var(--muted); font-weight: 700; white-space: nowrap; margin-bottom: -1px; }
+.tab.active, .tab[aria-selected="true"] { color: var(--primary); border-bottom-color: var(--primary); }
+
+/* History tab: read-only list, newest first, scrolling like the thread. */
+.history[hidden], .history-note[hidden], .history-error[hidden] { display: none; }
+.history-toolbar { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+label.history-filter { flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 12px; }
+.history-note { color: var(--muted); margin: 4px 0; }
+.history-error { display: flex; align-items: center; gap: 8px; }
+.history-list { list-style: none; margin: 0; padding: 0; max-height: 40vh; overflow-y: auto; }
+.history-item { border-top: 1px solid var(--border); padding: 8px 0; }
+.history-item:first-child { border-top: none; }
+.history-changes { list-style: none; margin: 4px 0 0; padding: 0; word-break: break-word; }
+.history + .actions, .history .actions { margin-top: 6px; }
+
+/* Links tab in the detail dialog. */
+.links[hidden], .links-empty[hidden], .link-form[hidden] { display: none; }
+.links h4 { font-size: 12px; color: var(--muted); font-weight: 600; margin: 6px 0 2px; }
+.links-empty { color: var(--muted); margin: 4px 0; }
+.links-group ul { list-style: none; margin: 0; padding: 0; }
+.links-row { display: flex; align-items: baseline; gap: 6px; padding: 5px 0; border-top: 1px solid var(--border); min-width: 0; }
+.links-row:first-child { border-top: none; }
+.links-row .links-key { font-weight: 600; white-space: nowrap; }
+.links-row .links-title { flex: 1; min-width: 0; text-align: left; color: var(--text); overflow-wrap: anywhere; }
+.links-row .links-status { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.link-form { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.link-form select { flex: 1; min-width: 120px; }
+
+/* Description: read view (rendered text with inline images) and edit view. */
+.field-head { display: flex; align-items: baseline; gap: 8px; }
+.field-head label { margin: 0 0 4px; }
+.description-view { white-space: pre-wrap; overflow-wrap: anywhere; padding: 6px 8px; border: 1px solid var(--border); border-radius: 3px; min-height: 2.5em; }
+.description-view.empty-text { color: var(--muted); }
+.description-view[hidden], .description-field textarea[hidden], .paste-note[hidden], .image-strip[hidden] { display: none; }
+.paste-note { color: var(--muted); font-size: 12px; margin: 4px 0; }
+.image-strip { margin-top: 6px; font-size: 12px; color: var(--muted); }
+.image-strip-thumbs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+
+/* Pasted images inside comments and the description (richText.js). */
+.inline-image-link { display: inline-block; max-width: 100%; vertical-align: top; }
+.inline-image { display: block; max-width: 100%; max-height: 400px; border: 1px solid var(--border); border-radius: 3px; }
+
+/* Attachments tab in the detail dialog (a plain section for a new item). */
+.attachments[hidden], .attachments-note[hidden], .attachments-empty[hidden], .attachment-controls[hidden] { display: none; }
+.attachments h3 { font-size: 13px; margin: 0 0 6px; }
+.attachments h3[hidden] { display: none; }
+.attachments.drop-target { outline: 2px dashed var(--primary); outline-offset: 2px; }
+.attachments-note, .attachments-empty { color: var(--muted); margin: 4px 0; }
+.attachment-controls { display: flex; align-items: center; gap: 8px; border: 1px dashed var(--border); border-radius: 4px; padding: 8px; margin-bottom: 8px; }
+.attachment-error { white-space: pre-line; }
+.attachment-list { list-style: none; margin: 0; padding: 0; max-height: 30vh; overflow-y: auto; }
+.attachment-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid var(--border); }
+.attachment-row:first-child { border-top: none; }
+.attachment-row.pending { color: var(--muted); }
+.attachment-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.attachment-name { overflow-wrap: anywhere; }
+.attachment-meta { font-size: 12px; color: var(--muted); }
+.attachment-download { font-size: 12px; }
+.attachment-thumb-link { flex: none; }
+.attachment-thumb { display: block; width: 48px; height: 48px; object-fit: cover; border: 1px solid var(--border); border-radius: 3px; }
+
+/* Children tab in the detail dialog (epic types only). */
+.epic-view[hidden], .epic-empty[hidden], .epic-actions[hidden] { display: none; }
+.epic-progress { display: flex; align-items: center; gap: 8px; }
+.progress-bar { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; width: 0; background: #36b37e; transition: width 0.2s; }
+.progress-text { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.epic-counts { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
+.epic-count strong { color: var(--text); }
+.epic-count.zero strong { color: var(--muted); font-weight: normal; }
+.epic-empty { color: var(--muted); margin: 4px 0; }
+.epic-children { list-style: none; margin: 0; padding: 0; max-height: 30vh; overflow-y: auto; }
+.epic-child { display: flex; align-items: baseline; gap: 6px; padding: 5px 0; border-top: 1px solid var(--border); min-width: 0; }
+.epic-child:first-child { border-top: none; }
+.epic-child .epic-child-key { font-weight: 600; white-space: nowrap; }
+.epic-child .epic-child-title { flex: 1; min-width: 0; text-align: left; color: var(--text); overflow-wrap: anywhere; }
+.epic-child .epic-child-status, .epic-child .epic-child-priority { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.epic-actions { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.epic-actions select { flex: 1; min-width: 120px; }
+
+/* Permission groups: the Users page */
+table.users .save-status { color: var(--muted); font-size: 0.9em; }
+table[hidden] { display: none; }
+
+/* ---------- Work item dialog (docs/specs/task-dialog-redesign.md) ----------
+   The palette tokens live in :root (app-restyle); the rules below are the
+   dialog-specific ones. Gold and mid teal are never text on a light background. */
+dialog.detail-mock {
+  color: var(--ink);
+  background: var(--page);
+  width: min(660px, 95vw);
+  padding: 0;
+  border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(9, 30, 40, 0.35);
+  overflow-x: hidden;
+}
+dialog.detail-mock [hidden] { display: none !important; }
+dialog.detail-mock button, dialog.detail-mock select, dialog.detail-mock input, dialog.detail-mock textarea { color: inherit; }
+dialog.detail-mock :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* Buttons: secondary white with navy, primary (Save) deep teal, action navy. */
+dialog.detail-mock button { border: 1px solid var(--navy); color: var(--navy); background: #fff; border-radius: 4px; font-weight: 700; }
+dialog.detail-mock button.primary { background: var(--teal); border-color: var(--teal); color: #fff; }
+dialog.detail-mock button.navy { background: var(--navy); border-color: var(--navy); color: #fff; }
+dialog.detail-mock button.danger { color: var(--danger); border-color: var(--line); }
+dialog.detail-mock button.link { border: none; background: none; padding: 0; color: var(--linkblue); font-size: 12px; font-weight: 400; text-decoration: underline; text-underline-offset: 2px; }
+dialog.detail-mock button.link.danger { color: var(--danger); }
+dialog.detail-mock button[disabled] { cursor: default; opacity: 0.6; }
+dialog.detail-mock a { color: var(--linkblue); }
+
+/* Fields: navy borders; read-only is black on pale teal, not faded grey. */
+dialog.detail-mock input, dialog.detail-mock select, dialog.detail-mock textarea { border: 1px solid var(--navy); border-radius: 4px; background: #fff; max-width: 100%; }
+dialog.detail-mock select { width: 100%; }
+dialog.detail-mock select[disabled], dialog.detail-mock input[disabled], dialog.detail-mock textarea[disabled] { background: var(--teal-soft); color: var(--ink); opacity: 1; -webkit-text-fill-color: var(--ink); }
+dialog.detail-mock label { color: var(--ink); font-weight: 700; margin: 0; }
+dialog.detail-mock .error { color: var(--danger); font-size: 13px; min-height: 0; }
+dialog.detail-mock .error:empty { margin: 0; }
+
+/* The dark teal band: key chip, epic link, Close, title. Gold lives only here
+   and in the epic summary panel. */
+dialog.detail-mock .band { background: var(--teal); color: #fff; padding: 14px 24px; border-radius: 8px 8px 0 0; }
+dialog.detail-mock .band :focus-visible { outline-color: var(--gold); }
+dialog.detail-mock .band-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+dialog.detail-mock .band-new { font-weight: 700; font-size: 14px; }
+dialog.detail-mock .keychip { display: inline-flex; align-items: center; gap: 6px; font: 600 12px var(--mono); color: #000; background: #fff; border-radius: 4px; padding: 2px 8px; white-space: nowrap; flex: none; }
+dialog.detail-mock .keychip::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--tc, #8993a4); }
+dialog.detail-mock .epicchip { border: none; background: none; color: var(--gold); text-transform: uppercase; font-weight: 700; font-size: 12px; letter-spacing: 0.02em; text-decoration: underline; text-underline-offset: 3px; padding: 2px 0; text-align: left; min-width: 0; overflow-wrap: anywhere; }
+dialog.detail-mock .epicchip::after { content: " \2192"; }
+dialog.detail-mock .epicchip:hover { color: #fff; }
+dialog.detail-mock .x { margin-left: auto; border: none; background: none; font-size: 20px; line-height: 1; padding: 2px 8px; color: #fff; flex: none; }
+dialog.detail-mock .x:hover { color: var(--gold); }
+dialog.detail-mock .title-in { display: block; width: calc(100% + 16px); margin: 10px 0 0 -8px; padding: 4px 8px; font-size: 22px; line-height: 1.25; font-weight: 700; color: #fff; background: transparent; border: 1px solid transparent; resize: none; overflow: hidden; overflow-wrap: anywhere; field-sizing: content; min-height: 2em; }
+dialog.detail-mock .title-in::placeholder { color: #cfe3e5; }
+dialog.detail-mock .title-in:hover:not([disabled]) { border-color: var(--teal-mid); }
+dialog.detail-mock .title-in:focus { border-color: var(--gold); background: rgba(255, 255, 255, 0.1); outline: none; }
+dialog.detail-mock .title-in[disabled] { background: transparent; color: #fff; -webkit-text-fill-color: #fff; }
+dialog.detail-mock .title-in.bad { border: 2px solid #fff; }
+dialog.detail-mock .band .error { display: inline-block; background: #fff; color: #a82a08; border-radius: 3px; padding: 2px 8px; margin: 6px 0 0; }
+
+/* Body: banner, status track, properties, reporter, description, tabs. */
+dialog.detail-mock .detail-body { padding: 14px 24px 18px; display: grid; gap: 16px; min-width: 0; }
+dialog.detail-mock .detail-body > * { min-width: 0; margin: 0; }
+dialog.detail-mock .banner { background: var(--teal-soft); border: 1px solid var(--teal-mid); border-radius: 4px; padding: 6px 10px; font-size: 13px; }
+
+/* Signature: the status track (a radio group). */
+dialog.detail-mock fieldset.track { border: 0; margin: 0; padding: 0; min-width: 0; }
+dialog.detail-mock .track legend { font-size: 12px; font-weight: 700; color: var(--ink); padding: 0; margin-bottom: 4px; }
+dialog.detail-mock .steps { display: flex; flex-wrap: nowrap; overflow-x: auto; }
+dialog.detail-mock label.step { --notch: 10px; flex: 1 1 0; min-width: 0; position: relative; display: block; text-align: center; padding: 9px 2px 9px calc(var(--notch) + 1px); margin-left: calc(2px - var(--notch)); font-weight: 600; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #323130; background: #f3f3f3; cursor: pointer; user-select: none;
+  clip-path: polygon(0 0, calc(100% - var(--notch)) 0, 100% 50%, calc(100% - var(--notch)) 100%, 0 100%, var(--notch) 50%); }
+dialog.detail-mock label.step:first-child { margin-left: 0; padding-left: 6px; border-radius: 16px 0 0 16px;
+  clip-path: polygon(0 0, calc(100% - var(--notch)) 0, 100% 50%, calc(100% - var(--notch)) 100%, 0 100%); }
+dialog.detail-mock label.step:last-child { padding-right: 6px; border-radius: 0 16px 16px 0;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, var(--notch) 50%); }
+dialog.detail-mock label.step:first-child:last-child { clip-path: none; border-radius: 16px; }
+dialog.detail-mock label.step input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+dialog.detail-mock label.step.past { background: #3aa655; color: #fff; }
+dialog.detail-mock label.step.past span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+dialog.detail-mock label.step.past::before { content: "\2713"; font-size: 14px; }
+dialog.detail-mock label.step.now { background: #0b4a8f; color: #fff; font-weight: 700; }
+dialog.detail-mock label.step:has(input:focus-visible) { outline: 2px solid var(--navy); outline-offset: -3px; }
+dialog.detail-mock label.step.now:has(input:focus-visible) { box-shadow: inset 0 0 0 3px #fff; }
+dialog.detail-mock .steps.locked label.step, dialog.detail-mock .steps.locked label.step input { cursor: default; }
+
+dialog.detail-mock .props { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+dialog.detail-mock .props > label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; }
+dialog.detail-mock .reporter { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+dialog.detail-mock .field-head { margin-bottom: 4px; }
+dialog.detail-mock .field-head label { font-size: 13px; color: var(--teal); }
+dialog.detail-mock .description-view { background: #fff; border-color: var(--line); border-radius: 4px; padding: 8px 10px; }
+dialog.detail-mock .description-field textarea { width: 100%; display: block; }
+
+/* Tabs and their panels; the panel keeps a minimum height so switching tabs
+   does not make the footer jump. */
+dialog.detail-mock .tab { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); padding: 7px 10px; }
+dialog.detail-mock .tab[aria-selected="true"] { color: var(--teal); border-bottom-color: var(--teal); }
+dialog.detail-mock .tab:focus-visible { outline-offset: -2px; }
+dialog.detail-mock .tab .n { background: var(--line2); color: #000; border-radius: 9px; padding: 0 6px; margin-left: 5px; font-size: 11px; font-weight: 600; }
+dialog.detail-mock .tab[aria-selected="true"] .n { background: var(--teal-soft); }
+dialog.detail-mock [role="tabpanel"] { min-height: 200px; margin-top: -4px; }
+dialog.detail-mock .posting-as { font-size: 12px; }
+dialog.detail-mock .comment-form textarea { width: 100%; display: block; }
+dialog.detail-mock .comment-form .actions { margin-top: 6px; }
+dialog.detail-mock .links h4 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 8px 0 0; }
+dialog.detail-mock .links-group ul { list-style: none; margin: 0; padding: 0; }
+dialog.detail-mock .type-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tc, #8993a4); flex: none; align-self: center; }
+
+/* Epic summary: dark teal panel with a gold progress fill. */
+dialog.detail-mock .darkpanel { background: var(--teal); color: #fff; border: 1px solid var(--teal-mid); border-radius: 16px; padding: 14px 18px; margin-bottom: 10px; }
+dialog.detail-mock .darkpanel .big { font-size: 18px; font-weight: 700; margin: 0 0 6px; }
+dialog.detail-mock .darkpanel .progress-bar { background: rgba(255, 255, 255, 0.25); }
+dialog.detail-mock .darkpanel .progress-fill { background: var(--gold); }
+dialog.detail-mock .darkpanel .epic-counts { color: #fff; margin: 8px 0 0; }
+dialog.detail-mock .darkpanel .epic-count strong, dialog.detail-mock .darkpanel .epic-count.zero strong { color: #fff; }
+
+/* Footer: stays in view at the bottom of a tall dialog. */
+dialog.detail-mock .detail-foot { position: sticky; bottom: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 24px; border-top: 1px solid var(--line); background: #fff; border-radius: 0 0 8px 8px; }
+dialog.detail-mock .detail-foot .error { margin: 0; flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+dialog.detail-mock .detail-foot .spacer { margin-left: auto; }
+
+@media (max-width: 700px) {
+  dialog.detail-mock .props { grid-template-columns: minmax(0, 1fr); }
+  dialog.detail-mock .band, dialog.detail-mock .detail-body, dialog.detail-mock .detail-foot { padding-left: 14px; padding-right: 14px; }
+  dialog.detail-mock .detail-foot .error:not(:empty) { flex-basis: 100%; }
+}
+
+/* Sprints and backlog: NEW rules to append to public/css/app.css.
+   Uses only existing tokens (STYLE.md part 3). Every colour pair was checked:
+   white on --teal 7.6:1; --teal on --teal-soft 6.4:1; --muted on white 5.9:1,
+   on --page 5.6:1, on --teal-soft 4.9:1; --danger on white 5.9:1; black on
+   white or --teal-soft > 15:1. Gold and --teal-mid are never text. */
+
+/* Project sub-navigation: Board | Backlog (first element in <main>). */
+.subnav { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 0 0 16px; }
+.subnav a { padding: 8px 14px; color: var(--muted); font-weight: 700; text-decoration: none; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.subnav a:hover { color: var(--teal); }
+.subnav a[aria-current="page"] { color: var(--teal); border-bottom-color: var(--teal); }
+
+/* A sprint or the Backlog: one white panel with a pale teal header. */
+.sprint { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+.sprint.is-active { border-top: 4px solid var(--teal); }
+.sprint.is-completed { background: var(--page); }
+.sprint-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 12px; background: var(--teal-soft); border-bottom: 1px solid var(--teal-mid); }
+.sprint-toggle { border: none; background: none; padding: 2px 6px; color: var(--teal); font-size: 14px; }
+.sprint-name { font-size: 16px; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.sprint-meta { color: var(--muted); font-size: 12px; }
+.sprint-actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.sprint-actions .hint { max-width: 220px; }
+.sprint-goal { margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line2); overflow-wrap: anywhere; }
+.sprint-goal strong { color: var(--teal); }
+.badge.state-active { background: var(--teal); border-color: var(--teal); color: #fff; }
+.badge.state-completed { background: var(--surface); border-color: var(--line); color: var(--muted); }
+.badge.overdue { background: var(--surface); border: 1px solid var(--danger); color: var(--danger); }
+
+/* Collapsible extra sections (Epics, Completed sprints, Sprint history) use
+   <details class="sprint"><summary class="sprint-head">. */
+details.sprint > summary { list-style: none; cursor: pointer; }
+details.sprint > summary::-webkit-details-marker { display: none; }
+details.sprint > summary::before { content: "\25B8"; color: var(--teal); font-size: 14px; }
+details.sprint[open] > summary::before { content: "\25BE"; }
+details.sprint > summary .sprint-name { font-size: 14px; }
+
+/* Rows. */
+.brows { list-style: none; margin: 0; padding: 0; min-height: 44px; }
+.brows.drop-target { outline: 2px dashed var(--navy); outline-offset: -2px; background: var(--teal-soft); }
+.brow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 8px 12px; border-top: 1px solid var(--line2); cursor: pointer; }
+.brow:first-child { border-top: none; }
+.brow:hover { background: var(--page); }
+.brow.dragging { opacity: 0.4; }
+.brow-handle { flex: none; width: 16px; text-align: center; color: var(--muted); cursor: grab; user-select: none; }
+.brow-title { flex: 1 1 220px; min-width: 0; border: none; background: none; padding: 0; font-weight: 400; color: var(--ink); text-align: left; overflow-wrap: anywhere; }
+.brow .avatar { margin-left: 0; flex: none; }
+.brows > .drop-indicator { margin: 0 12px; }
+.status-pill { display: inline-block; padding: 0 8px; border-radius: 10px; background: var(--teal-soft); border: 1px solid var(--teal-mid); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.status-pill.is-done::before { content: "\2713\00a0"; }
+.brows-empty { margin: 10px 12px; padding: 14px 12px; text-align: center; color: var(--muted); border: 1px dashed var(--teal-mid); border-radius: 4px; }
+
+/* Quick create row. */
+.quick { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line2); background: var(--page); }
+.quick input { flex: 1 1 220px; }
+.quick .error { flex-basis: 100%; margin: 0; }
+.quick .error:empty { display: none; }
+
+/* Warnings: visible text, never colour alone. */
+.banner-warn { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; background: var(--surface); border: 1px solid var(--danger); border-left-width: 6px; border-radius: 4px; padding: 8px 12px; margin-bottom: 12px; }
+.banner-warn strong { color: var(--danger); }
+.banner-warn .spacer { margin-left: auto; }
+
+/* Board header for the active sprint. */
+.sprint-bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--teal); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
+.sprint-bar .sprint-goal { flex-basis: 100%; padding: 0; border: none; }
+.sprint-bar a { margin-left: auto; }
+
+/* Dialog pieces. */
+input[aria-invalid="true"], textarea[aria-invalid="true"] { border: 2px solid var(--danger); }
+dialog.app-dialog textarea { width: 100%; }
+dialog.app-dialog .field-error { color: var(--danger); font-size: 12px; margin: -6px 0 10px; }
+dialog.app-dialog .field-error:empty { display: none; }
+.counter { color: var(--muted); font-size: 12px; font-weight: 400; }
+.choices { border: 0; margin: 0 0 12px; padding: 0; }
+.choices legend { font-size: 12px; font-weight: 700; padding: 0; margin-bottom: 6px; }
+.choice { display: flex; align-items: flex-start; gap: 8px; padding: 10px; margin-bottom: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; }
+.choice:has(input[type="radio"]:checked) { border: 2px solid var(--teal); background: var(--teal-soft); padding: 9px; }
+.choice > input[type="radio"] { width: auto; margin-top: 3px; }
+.choice-body { flex: 1; min-width: 0; }
+.choice-label { display: block; margin: 0; font-size: 14px; font-weight: 700; }
+.choice .hint { margin: 2px 0 0; }
+.choice select, .choice input[type="text"] { margin-top: 6px; width: 100%; }
+.choice.is-disabled { background: var(--page); color: var(--muted); }
+.summary { margin: 0 0 12px; font-size: 15px; }
+
+/* Sprint history list. */
+.hist-list { list-style: none; margin: 0; padding: 0; }
+.hist-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 8px 12px; border-top: 1px solid var(--line2); }
+.hist-item:first-child { border-top: none; }
+.hist-text { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
+.hist-time { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.hist-changes { flex-basis: 100%; list-style: none; margin: 2px 0 0; padding: 0 0 0 12px; border-left: 2px solid var(--teal-mid); font-size: 13px; overflow-wrap: anywhere; }
+.hist-more { padding: 8px 12px; border-top: 1px solid var(--line2); }
+
+/* Option B only: two panes, backlog left and one sprint right. */
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.split > .pane > .sprint { margin-bottom: 0; }
+.sprint-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.sprint-tabs [role="tab"] { border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); padding: 5px 10px; }
+.sprint-tabs [role="tab"][aria-selected="true"] { background: var(--teal); border-color: var(--teal); color: #fff; }
+@media (max-width: 900px) { .split { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) { .sprint-actions { margin-left: 0; } .subnav a { padding: 8px 10px; } }
+
+
+.mock-note{font:12px var(--mono);color:var(--muted);padding:6px 20px;background:#fff;border-bottom:1px solid var(--line2)}
+.frame{margin:0 0 40px}
+.frame-cap{font:12px var(--mono);color:#000;background:#fff;border:1px solid var(--line);border-left:4px solid var(--navy);padding:6px 10px;margin:0 0 12px}
+.frame-body{border:1px dashed var(--teal-mid);padding:12px;border-radius:8px}
+dialog.mock{position:static;margin:0 auto 12px;display:block}
+dialog.detail-mock{position:static;display:block;margin:0 auto 12px}
+.page{max-width:1400px;margin:0 auto}
+.narrow{max-width:420px;border:2px solid var(--navy);border-radius:8px;overflow:hidden;margin:0 auto}
+.board-hdr7,.lane-body7{display:grid;grid-template-columns:repeat(7,minmax(150px,1fr));gap:8px;min-width:1100px}
+
+</style></head><body>
+<div class="mock-note">Mockup: work-item-sprint-field (static, no network). Today in these mockups is 2026-10-26. Real tokens from public/css/app.css; new rules in src/sprints.css.</div>
+<main class="page" style="padding-top:0"><h1 style="margin:16px 0">Work item dialog: Sprint field and create messages</h1><section class="frame"><p class="frame-cap">Sprint field on an item in the active sprint (writer). Placed after Epic in the properties grid. Options: Backlog, then every Planned and Active sprint. Change saves at once, like the other fields.</p><div class="frame-body"><dialog open class="detail-mock" aria-label="item in active sprint">
+  <div class="band"><div class="band-top"><span class="keychip" style="--tc:#4bade8">APO-12</span><button type="button" class="x" aria-label="Close">&times;</button></div>
+  <textarea class="title-in" rows="1" aria-label="Title">Add export to CSV</textarea></div>
+  <div class="detail-body"><div class="props"><label>Assignee <select><option selected>Dana Reyes</option><option>Sam Okafor</option></select></label><label>Priority <select><option selected>Medium</option><option>High</option></select></label><label>Type <select><option selected>Task</option><option>Defect</option><option>Epic</option></select></label><label>Epic <select><option>None</option><option selected>APO-1 Reporting</option></select></label><label>Sprint <select><option>Backlog</option><option selected>Sprint 4 (Active)</option><option>Sprint 5 (Planned)</option><option>Sprint 6 (Planned)</option></select></label></div>
+  <p class="hint" style="margin:0">(Status track, description and tabs are unchanged and omitted from this excerpt.)</p></div></dialog></div></section><section class="frame"><p class="frame-cap">Item in the backlog: field shows "Backlog". After choosing another sprint the item goes to the bottom of it, and the board or backlog behind the dialog updates. A failed save shows the error in the footer and restores the old value.</p><div class="frame-body"><dialog open class="detail-mock" aria-label="item in backlog">
+  <div class="band"><div class="band-top"><span class="keychip" style="--tc:#4bade8">APO-30</span><button type="button" class="x" aria-label="Close">&times;</button></div>
+  <textarea class="title-in" rows="1" aria-label="Title">Dark mode</textarea></div>
+  <div class="detail-body"><div class="props"><label>Assignee <select><option selected>Dana Reyes</option><option>Sam Okafor</option></select></label><label>Priority <select><option selected>Medium</option><option>High</option></select></label><label>Type <select><option selected>Task</option><option>Defect</option><option>Epic</option></select></label><label>Epic <select><option>None</option><option selected>APO-1 Reporting</option></select></label><label>Sprint <select><option selected>Backlog</option><option>Sprint 4 (Active)</option><option>Sprint 5 (Planned)</option><option>Sprint 6 (Planned)</option></select></label></div>
+  <p class="hint" style="margin:0">(Status track, description and tabs are unchanged and omitted from this excerpt.)</p></div></dialog></div></section><section class="frame"><p class="frame-cap">Item in a Completed sprint: the field is disabled, shows the completed sprint, and a note says why. Other fields stay editable.</p><div class="frame-body"><dialog open class="detail-mock" aria-label="item in completed sprint">
+  <div class="band"><div class="band-top"><span class="keychip" style="--tc:#4bade8">APO-14</span><button type="button" class="x" aria-label="Close">&times;</button></div>
+  <textarea class="title-in" rows="1" aria-label="Title">Set up CI</textarea></div>
+  <div class="detail-body"><div class="props"><label>Assignee <select><option selected>Dana Reyes</option><option>Sam Okafor</option></select></label><label>Priority <select><option selected>Medium</option><option>High</option></select></label><label>Type <select><option selected>Task</option><option>Defect</option><option>Epic</option></select></label><label>Epic <select><option>None</option><option selected>APO-1 Reporting</option></select></label><div><label>Sprint <select disabled><option>Sprint 3 (Completed)</option></select></label><p class="hint" style="margin:4px 0 0">Completed sprints are read-only.</p></div></div>
+  <p class="hint" style="margin:0">(Status track, description and tabs are unchanged and omitted from this excerpt.)</p></div></dialog></div></section><section class="frame"><p class="frame-cap">Viewer or archived project: all fields disabled with the existing banner; Sprint disabled, current value shown.</p><div class="frame-body"><dialog open class="detail-mock" aria-label="read-only item">
+  <div class="band"><div class="band-top"><span class="keychip" style="--tc:#4bade8">APO-12</span><button type="button" class="x" aria-label="Close">&times;</button></div>
+  <textarea class="title-in" rows="1" aria-label="Title" disabled>Add export to CSV</textarea></div>
+  <div class="detail-body"><p class="banner" role="status">This project is archived; its work items are read-only.</p><div class="props"><label>Assignee <select disabled><option selected>Dana Reyes</option><option>Sam Okafor</option></select></label><label>Priority <select disabled><option selected>Medium</option><option>High</option></select></label><label>Type <select disabled><option selected>Task</option><option>Defect</option><option>Epic</option></select></label><label>Epic <select disabled><option>None</option><option selected>APO-1 Reporting</option></select></label><label>Sprint <select disabled><option>Backlog</option><option selected>Sprint 4 (Active)</option><option>Sprint 5 (Planned)</option><option>Sprint 6 (Planned)</option></select></label></div>
+  <p class="hint" style="margin:0">(Status track, description and tabs are unchanged and omitted from this excerpt.)</p></div></dialog></div></section><section class="frame"><p class="frame-cap">Epic: the field is replaced by fixed text (not a select). Same text appears when the Type dropdown is switched to Epic, before saving.</p><div class="frame-body"><dialog open class="detail-mock" aria-label="epic">
+  <div class="band"><div class="band-top"><span class="keychip" style="--tc:#904ee2">APO-1</span><button type="button" class="x" aria-label="Close">&times;</button></div>
+  <textarea class="title-in" rows="1" aria-label="Title">Reporting</textarea></div>
+  <div class="detail-body"><div class="props"><label>Assignee <select><option selected>Dana Reyes</option></select></label><label>Priority <select><option selected>Medium</option></select></label><label>Type <select><option>Task</option><option selected>Epic</option></select></label><div><label for="sp-na">Sprint</label><p id="sp-na" class="hint" style="margin:4px 0 0;font-size:13px;color:var(--ink)">Not applicable (epics are not part of a sprint)</p></div></div>
+  <p class="hint" style="margin:0">(Status track, description and tabs are unchanged and omitted from this excerpt.)</p></div></dialog></div></section><section class="frame"><p class="frame-cap">Create work item, a sprint is active: one line under the properties says where it will go.</p><div class="frame-body"><dialog open class="detail-mock" aria-label="create with active sprint">
+  <div class="band"><div class="band-top"><span class="keychip" style="--tc:#8993a4">New</span><button type="button" class="x" aria-label="Close">&times;</button></div>
+  <textarea class="title-in" rows="1" aria-label="Title"></textarea></div>
+  <div class="detail-body"><div class="props"><label>Assignee <select><option selected>Unassigned</option></select></label><label>Priority <select><option selected>Medium</option></select></label><label>Type <select><option selected>Task</option></select></label><label>Sprint <select><option>Backlog</option><option selected>Sprint 4 (Active)</option><option>Sprint 5 (Planned)</option><option>Sprint 6 (Planned)</option></select></label><p class="hint" role="status" style="grid-column:1/-1;margin:0;font-size:13px;color:var(--ink)">This work item will be created in Sprint 4.</p></div>
+  <p class="hint" style="margin:0">(Status track, description and tabs are unchanged and omitted from this excerpt.)</p></div></dialog></div></section><section class="frame"><p class="frame-cap">Create work item, no active sprint: the Sprint field is preset to Backlog and the line says so. The create control on the board stays available.</p><div class="frame-body"><dialog open class="detail-mock" aria-label="create with no active sprint">
+  <div class="band"><div class="band-top"><span class="keychip" style="--tc:#8993a4">New</span><button type="button" class="x" aria-label="Close">&times;</button></div>
+  <textarea class="title-in" rows="1" aria-label="Title"></textarea></div>
+  <div class="detail-body"><div class="props"><label>Assignee <select><option selected>Unassigned</option></select></label><label>Priority <select><option selected>Medium</option></select></label><label>Type <select><option selected>Task</option></select></label><label>Sprint <select><option selected>Backlog</option><option>Sprint 5 (Planned)</option><option>Sprint 6 (Planned)</option></select></label><p class="hint" role="status" style="grid-column:1/-1;margin:0;font-size:13px;color:var(--ink)">No sprint is active. This work item will be created in the Backlog.</p></div>
+  <p class="hint" style="margin:0">(Status track, description and tabs are unchanged and omitted from this excerpt.)</p></div></dialog></div></section><section class="frame"><p class="frame-cap">Create work item, type Epic: Sprint field replaced by the fixed text; the line says epics are not part of a sprint.</p><div class="frame-body"><dialog open class="detail-mock" aria-label="create epic">
+  <div class="band"><div class="band-top"><span class="keychip" style="--tc:#8993a4">New</span><button type="button" class="x" aria-label="Close">&times;</button></div>
+  <textarea class="title-in" rows="1" aria-label="Title"></textarea></div>
+  <div class="detail-body"><div class="props"><label>Assignee <select><option selected>Unassigned</option></select></label><label>Priority <select><option selected>Medium</option></select></label><label>Type <select><option>Task</option><option selected>Epic</option></select></label><p class="hint" role="status" style="grid-column:1/-1;margin:0;font-size:13px;color:var(--ink)">Epics are not part of a sprint.</p></div>
+  <p class="hint" style="margin:0">(Status track, description and tabs are unchanged and omitted from this excerpt.)</p></div></dialog></div></section></main></body></html>

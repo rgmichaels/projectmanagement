@@ -10,13 +10,14 @@ function createSession(db, token, userId, now = new Date().toISOString()) {
   );
 }
 
-// The session with its user's fields; user_name, username and user_group are
-// null when the user row no longer exists. The group is read on every
-// request, so a change applies to sessions that are already open.
+// The session with its user's fields; user_name, username, user_group and
+// user_active are null when the user row no longer exists. The group is read
+// on every request, so a change applies to sessions that are already open.
 function getSession(db, token) {
   return db
     .prepare(
-      `SELECT s.token, s.user_id, s.created_at, s.last_seen_at, u.id AS uid, u.name AS user_name, u.username, u.group_name AS user_group
+      `SELECT s.token, s.user_id, s.created_at, s.last_seen_at, u.id AS uid, u.name AS user_name, u.username,
+              u.group_name AS user_group, u.active AS user_active
        FROM sessions s LEFT JOIN users u ON u.id = s.user_id
        WHERE s.token = ?`
     )
@@ -31,7 +32,7 @@ function deleteSession(db, token) {
   db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
 }
 
-// Not used yet; for a later "sign out everywhere" or user deactivation.
+// Signs a user out everywhere (used when they are deactivated).
 function deleteSessionsForUser(db, userId) {
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
 }

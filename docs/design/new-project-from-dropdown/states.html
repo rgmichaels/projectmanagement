@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>New project from the Project dropdown: all states</title>
+<style>
+/* Tokens and shared rules copied from public/css/app.css (no new colours). */
+:root {
+  --teal: #0b5d66; --teal-mid: #65999e; --teal-soft: #e5eded; --page: #f8fafa; --navy: #154973;
+  --linkblue: #004dd1; --gold: #face00; --ink: #000; --muted: #62666a; --line: #d0d0ce; --line2: #e4e4e4;
+  --danger: #c0300b; --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --bg: var(--page); --surface: #fff; --text: var(--ink);
+  font-family: "Proxima Nova", "Helvetica Neue", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px; color: var(--text); background: var(--bg);
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+h1 { font-size: 20px; margin: 0; color: var(--teal); }
+h2 { font-size: 16px; margin: 0 0 12px; color: var(--teal); }
+a { color: var(--linkblue); }
+:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+button, select, input { font: inherit; }
+button { border: 1px solid var(--navy); color: var(--navy); background: #fff; border-radius: 4px; padding: 6px 12px; font-weight: 700; cursor: pointer; }
+button.primary { background: var(--teal); border-color: var(--teal); color: #fff; }
+button[disabled] { opacity: .6; cursor: default; }
+label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; color: var(--ink); font-size: 12px; font-weight: 700; }
+input, select { padding: 6px 8px; border: 1px solid var(--navy); border-radius: 4px; background: #fff; color: var(--text); max-width: 100%; font-weight: 400; }
+.error { color: var(--danger); min-height: 1em; margin: 4px 0; }
+.hint { color: var(--muted); font-size: 12px; }
+.empty { text-align: center; padding: 40px; background: #fff; border: 1px dashed var(--teal-mid); border-radius: 8px; }
+.page { padding: 20px; }
+.toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.subnav { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 0 0 16px; }
+.subnav a { padding: 8px 14px; color: var(--muted); font-weight: 700; text-decoration: none; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.subnav a[aria-current="page"] { color: var(--teal); border-bottom-color: var(--teal); }
+.message { background: #fff; border: 1px solid var(--danger); border-left-width: 4px; color: var(--danger); font-weight: 700; padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; }
+/* Top bar A */
+.topbar { background: var(--teal); color: #fff; padding: 10px 20px; display: flex; gap: 10px; align-items: center; }
+.topbar :focus-visible { outline-color: var(--gold); }
+.topbar .brand { color: #fff; font-weight: 700; font-size: 15px; text-decoration: none; }
+.topbar .nav-link { color: #fff; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.topbar .session { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.topbar .session button { padding: 3px 10px; white-space: nowrap; background: transparent; border-color: #fff; color: #fff; }
+.topbar .project-scope { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: 6px; }
+.topbar .project-scope > label { flex-direction: row; margin: 0; color: #cfe3e5; font-size: 12px; font-weight: 700; }
+.topbar select.project-select { width: auto; min-width: 200px; max-width: 340px; padding: 4px 8px; font-size: 13px; font-weight: 700; border: 1px solid #fff; background: #fff; color: var(--ink); text-overflow: ellipsis; }
+/* App dialog shell (dialog.app-dialog), as in app.css */
+dialog { border: none; border-radius: 8px; padding: 20px; width: min(560px, 95vw); box-shadow: 0 12px 36px rgba(9,30,40,.35); }
+dialog input { width: 100%; }
+dialog.app-dialog { padding: 0; width: min(480px, 95vw); background: var(--page); color: var(--ink); }
+dialog.app-dialog .band { background: var(--teal); color: #fff; padding: 14px 24px; border-radius: 8px 8px 0 0; display: flex; align-items: center; gap: 8px; }
+dialog.app-dialog .band h2 { color: #fff; font-size: 20px; margin: 0; }
+dialog.app-dialog .dialog-body { padding: 16px 24px 8px; }
+dialog.app-dialog .dialog-body label { margin-bottom: 12px; }
+dialog.app-dialog select { width: 100%; }
+dialog.app-dialog .dialog-body p { margin: 0 0 8px; overflow-wrap: anywhere; }
+dialog.app-dialog .dialog-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; padding: 12px 24px; border-top: 1px solid var(--line); background: #fff; border-radius: 0 0 8px 8px; }
+dialog.app-dialog .dialog-foot .error { margin: 0; flex: 1 1 100%; overflow-wrap: anywhere; }
+dialog.app-dialog .dialog-foot .error:empty { display: none; }
+input[aria-invalid="true"] { border: 2px solid var(--danger); }
+
+/* ---- Mockup-only furniture (not for app.css) ---- */
+body > header.doc { padding: 20px; }
+.frame { margin: 0 20px 28px; border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 14px; }
+.frame-h { margin: 0 0 4px; }
+.fn { display: inline-block; min-width: 24px; margin-right: 8px; padding: 0 6px; background: var(--teal); color: #fff; border-radius: 10px; text-align: center; font-size: 12px; }
+.frame-ac { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
+.anno { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+.stage { border: 1px solid var(--line); background: var(--bg); overflow: hidden; }
+.stage.side { display: flex; gap: 16px; flex-wrap: wrap; background: #fff; border: none; }
+.stage.side > div { flex: 1 1 380px; border: 1px solid var(--line); background: var(--bg); overflow: hidden; }
+.cap { font-size: 12px; font-weight: 700; padding: 4px 10px; background: var(--teal-soft); color: var(--teal); }
+.skeleton { border: 1px dashed var(--teal-mid); padding: 24px; text-align: center; color: var(--muted); background: #fff; }
+.dim { background: rgba(9,30,40,.45); padding: 24px 12px 28px; }
+.dim dialog { position: static; display: block; margin: 0 auto; }
+/* Faux open list: a native open select cannot be drawn statically. */
+.listbox { position: absolute; left: 0; top: calc(100% + 2px); z-index: 3; min-width: 100%; width: max-content; max-width: 340px; background: #fff; color: #000; border: 1px solid #767676; box-shadow: 0 4px 12px rgba(0,0,0,.3); font-size: 13px; font-weight: 400; list-style: none; margin: 0; padding: 2px 0; }
+.listbox li { padding: 3px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.listbox li.sel { background: #e6e6e6; }
+.listbox li.hl { background: #0b5d66; color: #fff; }
+.listbox li.sep { color: #767676; padding: 0 8px; line-height: 1.2; letter-spacing: -1px; overflow: hidden; }
+.listbox li.ph { color: #555; }
+.pad-open { padding-bottom: 96px; }
+.narrow { width: 380px; max-width: 100%; margin: 0 auto; border: 1px dashed var(--navy); background: var(--bg); position: relative; }
+.narrow .topbar { flex-wrap: wrap; padding: 10px 12px; }
+.narrow .topbar .project-scope { order: 3; flex: 1 1 100%; margin-left: 0; }
+.narrow .topbar select.project-select { flex: 1; max-width: none; min-width: 0; }
+.narrow .page { padding: 12px; }
+.narrow dialog.app-dialog .band, .narrow dialog.app-dialog .dialog-body, .narrow dialog.app-dialog .dialog-foot { padding-left: 14px; padding-right: 14px; }
+.narrow .dim { padding: 14px 8px; }
+.narrow dialog.app-dialog { width: 100%; }
+</style>
+</head>
+<body>
+<header class="doc">
+<h1>New project from the Project dropdown</h1>
+<p class="hint">Spec: docs/specs/new-project-from-dropdown.md. One design (no real alternative). Top bar A, dialog is the existing <code>dialog.app-dialog</code> shell. Frames 1 and 2 include real native selects you can click; the open list in frame 2 is drawn because a native open list cannot be shown statically.</p>
+</header>
+
+<!-- 1 -->
+<section class="frame" aria-labelledby="f1">
+<h2 class="frame-h" id="f1"><span class="fn">1</span>Dropdown closed: user with manage-projects and a Viewer</h2>
+<p class="frame-ac">AC 1, 2, 3</p>
+<div class="stage side">
+<div><div class="cap">Admin: same closed look as today</div>
+<header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="p1a">Project</label><select id="p1a" class="project-select"><option selected>PM - Pipeline Tracker</option><option>SFPM - Platform Migration</option><option>WEB - Website Refresh</option><option disabled>────────────</option><option value="__new__">New project...</option></select></div><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header>
+<main class="page"><nav class="subnav" aria-label="Project pages"><a href="#" aria-current="page">Board</a><a href="#">Backlog</a><a href="#">Sprints</a></nav><div class="skeleton">(page content as today)</div></main></div>
+<div><div class="cap">Viewer: no separator, no entry</div>
+<header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="p1b">Project</label><select id="p1b" class="project-select"><option selected>PM - Pipeline Tracker</option><option>SFPM - Platform Migration</option><option>WEB - Website Refresh</option></select></div><div class="session"><span>Sam Viewer</span><button type="button">Sign out</button></div></header>
+<main class="page"><nav class="subnav" aria-label="Project pages"><a href="#" aria-current="page">Board</a><a href="#">Backlog</a><a href="#">Sprints</a></nav><div class="skeleton">(page content as today)</div></main></div>
+</div>
+<p class="anno">The closed select never shows the entry on load. Archived-by-URL extra option, when present, stays before the separator.</p>
+</section>
+
+<!-- 2 -->
+<section class="frame" aria-labelledby="f2">
+<h2 class="frame-h" id="f2"><span class="fn">2</span>Dropdown open: separator and entry (drawn)</h2>
+<p class="frame-ac">AC 1, 3, 4</p>
+<div class="stage pad-open">
+<header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label>Project</label><select class="project-select" tabindex="-1" aria-hidden="true"><option>PM - Pipeline Tracker</option></select>
+<ul class="listbox" role="presentation"><li class="sel">PM - Pipeline Tracker</li><li>SFPM - Platform Migration</li><li>WEB - Website Refresh</li><li class="sep">────────────────────</li><li class="hl">New project...</li></ul></div><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header>
+<main class="page"><nav class="subnav" aria-label="Project pages"><a href="#" aria-current="page">Board</a><a href="#">Backlog</a><a href="#">Sprints</a></nav><div class="skeleton">(page content as today)</div></main>
+</div>
+<p class="anno">Native limits: option text is plain, no bold, icon, colour or "+" can be applied reliably, and the separator is a disabled option of box-drawing dashes (it greys out and cannot be chosen or focused by arrow keys in most browsers). The highlighted row is the browser's own hover or arrow highlight, not our colour.</p>
+</section>
+
+<!-- 3 -->
+<section class="frame" aria-labelledby="f3">
+<h2 class="frame-h" id="f3"><span class="fn">3</span>Modal, default (opened over the Backlog)</h2>
+<p class="frame-ac">AC 5, 6, 7</p>
+<div class="stage">
+<header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="p3">Project</label><select id="p3" class="project-select"><option>PM - Pipeline Tracker</option><option selected value="__new__">New project...</option></select></div><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header>
+<div class="dim">
+<dialog open class="app-dialog" aria-labelledby="h3">
+<form novalidate>
+<div class="band"><h2 id="h3">Create project</h2></div>
+<div class="dialog-body">
+<label>Name <input name="name" maxlength="80" required autofocus></label>
+<label>Key <input name="key" maxlength="10" placeholder="PROJ" required autocomplete="off"></label>
+<label>Status <select name="status"><option selected>Planning</option><option>In Progress</option><option>Completed</option></select></label>
+</div>
+<div class="dialog-foot"><p class="error" role="alert"></p><button type="button">Cancel</button><button type="submit" class="primary">Create</button></div>
+</form>
+</dialog>
+</div>
+</div>
+<p class="anno">Focus starts in Name (shown focused by the browser when live). Empty error area takes no space. The dropdown behind the backdrop keeps showing "New project..." only until the dialog closes; then it reverts. Name and Key labels are the Projects list labels. Key is typed lowercase and shows uppercase.</p>
+</section>
+
+<!-- 4 -->
+<section class="frame" aria-labelledby="f4">
+<h2 class="frame-h" id="f4"><span class="fn">4</span>Validation errors from the server (dialog stays open, values kept)</h2>
+<p class="frame-ac">AC 8</p>
+<div class="stage side">
+<div><div class="cap">Empty name</div><div class="dim">
+<dialog open class="app-dialog" aria-labelledby="h4a"><form novalidate>
+<div class="band"><h2 id="h4a">Create project</h2></div>
+<div class="dialog-body">
+<label>Name <input name="name" maxlength="80" required value=""></label>
+<label>Key <input name="key" maxlength="10" placeholder="PROJ" required value="WEB"></label>
+<label>Status <select><option selected>Planning</option><option>In Progress</option><option>Completed</option></select></label>
+</div>
+<div class="dialog-foot"><p class="error" role="alert">Name is required and must be 1-80 characters.</p><button type="button">Cancel</button><button type="submit" class="primary">Create</button></div>
+</form></dialog></div></div>
+<div><div class="cap">Bad key</div><div class="dim">
+<dialog open class="app-dialog" aria-labelledby="h4b"><form novalidate>
+<div class="band"><h2 id="h4b">Create project</h2></div>
+<div class="dialog-body">
+<label>Name <input name="name" maxlength="80" required value="Website Refresh"></label>
+<label>Key <input name="key" maxlength="10" placeholder="PROJ" required value="W3B"></label>
+<label>Status <select><option selected>Planning</option><option>In Progress</option><option>Completed</option></select></label>
+</div>
+<div class="dialog-foot"><p class="error" role="alert">Key must be 2-10 uppercase letters (A-Z).</p><button type="button">Cancel</button><button type="submit" class="primary">Create</button></div>
+</form></dialog></div></div>
+</div>
+<p class="anno">The message is the server's text, set with textContent, in the footer error area above the buttons (same place as Edit project). Danger text on white is 5.9:1. Focus stays on the button used or moves to the field the developer judges wrong; at minimum the message is announced by role="alert".</p>
+</section>
+
+<!-- 5 -->
+<section class="frame" aria-labelledby="f5">
+<h2 class="frame-h" id="f5"><span class="fn">5</span>Duplicate key (409) and server 403</h2>
+<p class="frame-ac">AC 8, 20</p>
+<div class="stage side">
+<div><div class="cap">409 duplicate key</div><div class="dim">
+<dialog open class="app-dialog" aria-labelledby="h5a"><form novalidate>
+<div class="band"><h2 id="h5a">Create project</h2></div>
+<div class="dialog-body">
+<label>Name <input name="name" maxlength="80" required value="Pipeline copy"></label>
+<label>Key <input name="key" maxlength="10" placeholder="PROJ" required value="PM" aria-invalid="true"></label>
+<label>Status <select><option selected>Planning</option><option>In Progress</option><option>Completed</option></select></label>
+</div>
+<div class="dialog-foot"><p class="error" role="alert">Key PM is already used by another project.</p><button type="button">Cancel</button><button type="submit" class="primary">Create</button></div>
+</form></dialog></div></div>
+<div><div class="cap">403 permission removed while open</div><div class="dim">
+<dialog open class="app-dialog" aria-labelledby="h5b"><form novalidate>
+<div class="band"><h2 id="h5b">Create project</h2></div>
+<div class="dialog-body">
+<label>Name <input name="name" maxlength="80" required value="Pipeline copy"></label>
+<label>Key <input name="key" maxlength="10" placeholder="PROJ" required value="PMC"></label>
+<label>Status <select><option selected>Planning</option><option>In Progress</option><option>Completed</option></select></label>
+</div>
+<div class="dialog-foot"><p class="error" role="alert">You do not have permission to do that.</p><button type="button">Cancel</button><button type="submit" class="primary">Create</button></div>
+</form></dialog></div></div>
+</div>
+<p class="anno">The 409 frame also marks Key with the existing <code>aria-invalid="true"</code> red 2px border (optional for the developer; only when the message starts with "Key"). The 403 wording above is a placeholder: show whatever the server returns.</p>
+</section>
+
+<!-- 6 -->
+<section class="frame" aria-labelledby="f6">
+<h2 class="frame-h" id="f6"><span class="fn">6</span>In flight</h2>
+<p class="frame-ac">AC 9</p>
+<div class="stage"><div class="dim">
+<dialog open class="app-dialog" aria-labelledby="h6" aria-busy="true"><form novalidate>
+<div class="band"><h2 id="h6">Create project</h2></div>
+<div class="dialog-body">
+<label>Name <input name="name" maxlength="80" required value="Website Refresh"></label>
+<label>Key <input name="key" maxlength="10" placeholder="PROJ" required value="WEB"></label>
+<label>Status <select><option selected>Planning</option><option>In Progress</option><option>Completed</option></select></label>
+</div>
+<div class="dialog-foot"><p class="error" role="alert"></p><button type="button">Cancel</button><button type="submit" class="primary" disabled>Creating...</button></div>
+</form></dialog></div></div>
+<p class="anno">Create is disabled and reads "Creating..." (60% opacity, existing disabled style). Cancel stays enabled as the spec says; see the open question in the README about closing during the request. The label returns to "Create" after an error.</p>
+</section>
+
+<!-- 7 -->
+<section class="frame" aria-labelledby="f7">
+<h2 class="frame-h" id="f7"><span class="fn">7</span>"No active projects." page with the dropdown</h2>
+<p class="frame-ac">AC 14</p>
+<div class="stage side">
+<div><div class="cap">Admin: dropdown open (drawn)</div>
+<header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label>Project</label><select class="project-select" tabindex="-1" aria-hidden="true"><option>Choose a project</option></select>
+<ul class="listbox" role="presentation"><li class="sel ph">Choose a project</li><li class="sep">────────────────────</li><li class="hl">New project...</li></ul></div><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header>
+<main class="page pad-open"><div class="empty"><p>No active projects.</p><p><a href="#">Go to the Projects page</a></p></div></main></div>
+<div><div class="cap">Admin: closed, and Viewer (unchanged, no dropdown)</div>
+<header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="p7">Project</label><select id="p7" class="project-select"><option selected>Choose a project</option><option disabled>────────────</option><option value="__new__">New project...</option></select></div><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header>
+<main class="page"><div class="empty"><p>No active projects.</p><p><a href="#">Go to the Projects page</a></p></div></main>
+<header class="topbar" style="margin-top:12px"><a class="brand" href="#">Projects</a><div class="session"><span>Sam Viewer</span><button type="button">Sign out</button></div></header>
+<main class="page"><div class="empty"><p>No active projects.</p><p><a href="#">Go to the Projects page</a></p></div></main></div>
+</div>
+<p class="anno">The placeholder "Choose a project" is the selected first option, as today, then the separator, then the entry. The separator is kept even with no projects so the entry reads as an action, not a project.</p>
+</section>
+
+<!-- 8 -->
+<section class="frame" aria-labelledby="f8">
+<h2 class="frame-h" id="f8"><span class="fn">8</span>"Project not found." with the entry, and the dialog opened from it</h2>
+<p class="frame-ac">AC 15</p>
+<div class="stage side">
+<div><div class="cap">Dropdown at the placeholder</div>
+<header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="p8">Project</label><select id="p8" class="project-select"><option selected>Choose a project</option><option>PM - Pipeline Tracker</option><option>WEB - Website Refresh</option><option disabled>────────────</option><option value="__new__">New project...</option></select></div><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header>
+<main class="page"><div class="message" role="alert">Project not found.</div><p><a href="#">Go to the Projects page</a></p></main></div>
+<div><div class="cap">Dialog open over it</div>
+<header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="p8b">Project</label><select id="p8b" class="project-select"><option>Choose a project</option><option selected value="__new__">New project...</option></select></div><div class="session"><span>Dana Lee</span><button type="button">Sign out</button></div></header>
+<div class="dim">
+<dialog open class="app-dialog" aria-labelledby="h8"><form novalidate>
+<div class="band"><h2 id="h8">Create project</h2></div>
+<div class="dialog-body">
+<label>Name <input name="name" maxlength="80" required></label>
+<label>Key <input name="key" maxlength="10" placeholder="PROJ" required></label>
+<label>Status <select><option selected>Planning</option><option>In Progress</option><option>Completed</option></select></label>
+</div>
+<div class="dialog-foot"><p class="error" role="alert"></p><button type="button">Cancel</button><button type="submit" class="primary">Create</button></div>
+</form></dialog></div></div>
+</div>
+<p class="anno">Cancel or Escape returns the select to "Choose a project" and focus to the select. The not-found message text is unchanged from today.</p>
+</section>
+
+<!-- 9 -->
+<section class="frame" aria-labelledby="f9">
+<h2 class="frame-h" id="f9"><span class="fn">9</span>Long and hostile text, shown literally</h2>
+<p class="frame-ac">AC 8; safety</p>
+<div class="stage side">
+<div><div class="cap">Dialog with hostile name and a long name, error shown</div><div class="dim">
+<dialog open class="app-dialog" aria-labelledby="h9"><form novalidate>
+<div class="band"><h2 id="h9">Create project</h2></div>
+<div class="dialog-body">
+<label>Name <input name="name" maxlength="80" required value="&lt;img src=x onerror=alert(1)&gt; &lt;b&gt;bold&lt;/b&gt; &amp;amp; ' &quot; 12345"></label>
+<label>Key <input name="key" maxlength="10" placeholder="PROJ" required value="ABCDEFGHIJ"></label>
+<label>Status <select><option selected>Planning</option><option>In Progress</option><option>Completed</option></select></label>
+</div>
+<div class="dialog-foot"><p class="error" role="alert">Key ABCDEFGHIJ is already used by another project. This is a deliberately long server message to show that the footer error wraps onto several lines without widening the dialog or pushing the buttons off screen, even with unbroken text: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA</p><button type="button">Cancel</button><button type="submit" class="primary">Create</button></div>
+</form></dialog></div></div>
+<div><div class="cap">Dropdown label with hostile and long project name (existing behaviour, ellipsis)</div>
+<header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="p9">Project</label><select id="p9" class="project-select"><option selected>XSS - &lt;img src=x onerror=alert(1)&gt; An extremely long project name that never fits</option><option disabled>────────────</option><option value="__new__">New project...</option></select></div></header>
+<main class="page"><div class="skeleton">(page content as today)</div></main></div>
+</div>
+<p class="anno">All user text is inserted with textContent / value, never innerHTML. The Name input is limited to 80 characters by <code>maxlength</code>. The entry label is fixed text, so a project named "New project..." is distinguishable only by the separator and the value; this is accepted (the sentinel value, not the label, decides).</p>
+</section>
+
+<!-- 10 -->
+<section class="frame" aria-labelledby="f10">
+<h2 class="frame-h" id="f10"><span class="fn">10</span>Narrow width (380px)</h2>
+<p class="frame-ac">AC 5; existing responsive top bar</p>
+<div class="stage side">
+<div style="border:none;background:#fff"><div class="cap">Top bar wraps, dropdown full width</div>
+<div class="narrow"><header class="topbar"><a class="brand" href="#">Projects</a><div class="session"><span>Dana Lee</span><button type="button">Sign out</button></div><div class="project-scope"><label for="p10">Project</label><select id="p10" class="project-select"><option selected>PM - Pipeline Tracker</option><option disabled>────────────</option><option value="__new__">New project...</option></select></div></header><main class="page"><div class="skeleton">(page content)</div></main></div></div>
+<div style="border:none;background:#fff"><div class="cap">Dialog at 380px: full width, stacked, buttons wrap</div>
+<div class="narrow"><header class="topbar"><a class="brand" href="#">Projects</a><div class="session"><span>Dana Lee</span><button type="button">Sign out</button></div><div class="project-scope"><label for="p10b">Project</label><select id="p10b" class="project-select"><option value="__new__">New project...</option></select></div></header>
+<div class="dim"><dialog open class="app-dialog" aria-labelledby="h10"><form novalidate>
+<div class="band"><h2 id="h10">Create project</h2></div>
+<div class="dialog-body">
+<label>Name <input name="name" maxlength="80" required value="Website Refresh"></label>
+<label>Key <input name="key" maxlength="10" placeholder="PROJ" required value="PM" aria-invalid="true"></label>
+<label>Status <select><option selected>Planning</option><option>In Progress</option><option>Completed</option></select></label>
+</div>
+<div class="dialog-foot"><p class="error" role="alert">Key PM is already used by another project.</p><button type="button">Cancel</button><button type="submit" class="primary">Create</button></div>
+</form></dialog></div></div></div>
+</div>
+<p class="anno">The dialog is <code>min(480px, 95vw)</code> already; below 600px the band, body and foot use 14px side padding (same as the work item dialog's narrow rule). Fields are single column at every width, so nothing else changes.</p>
+</section>
+</body>
+</html>

@@ -2,14 +2,22 @@
 // a Users link when the user may manage users, and Sign out.
 // `session.ready` resolves to { id, name, username, group, permissions } once
 // /api/auth/me has answered; pages wait for it before loading anything else.
-// `session.can(permission)` tells pages which controls to show: it uses the
-// permission names from the server and never compares group names. The server
-// checks every write anyway (403). A 401 is sent to the sign-in page by api.js.
+// `session.can(permission, projectId?)` tells pages which controls to show: it
+// uses the permission names from the server and never compares group names.
+// With a project id, the user's group in that project applies when they have
+// one (docs/specs/project-permissions.md); pages pass the id they got from
+// projectScope.ready, since only projectScope.js reads ?project=. User admin
+// always uses the account group. The server checks every write anyway (403).
+// A 401 is sent to the sign-in page by api.js.
 const session = (() => {
   const topbar = document.querySelector('.topbar');
   let current = null;
 
-  const can = (permission) => Boolean(current && Array.isArray(current.permissions) && current.permissions.includes(permission));
+  const can = (permission, projectId) => {
+    const scoped = permission !== 'manage-users' && projectId && current?.projectPermissions?.[projectId];
+    const permissions = scoped || current?.permissions;
+    return Boolean(Array.isArray(permissions) && permissions.includes(permission));
+  };
 
   async function signOut() {
     try {

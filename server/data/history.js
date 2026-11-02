@@ -5,7 +5,7 @@
 // Callers pass the same `db` from inside their own transaction, so an event
 // commits or rolls back with the write it describes. History is append-only:
 // rows go away only with their work item (deleteHistory).
-const { HISTORY_FIELDS, getField, linkField, attachmentField } = require('../historyFields');
+const { HISTORY_FIELDS, getField, linkField, attachmentField, testCaseField, timeEntryField } = require('../historyFields');
 const users = require('./users');
 
 // The actor when no signed-in user is known (entries written before login).
@@ -20,6 +20,7 @@ const clean = (v) => (empty(v) ? null : v);
 // The display text of a value of `field`, as it is now.
 function snapshot(db, field, value) {
   if (empty(value)) return { text: null, id: null };
+  if (field.format) return { text: field.format(value), id: null };
   switch (field.kind) {
     case 'long':
       return { text: null, id: null };
@@ -30,6 +31,10 @@ function snapshot(db, field, value) {
     case 'issue': {
       const i = db.prepare('SELECT key, title FROM issues WHERE id = ?').get(value);
       return { text: i ? `${i.key} ${i.title}` : null, id: value };
+    }
+    case 'sprint-name': {
+      const s = db.prepare('SELECT name FROM sprints WHERE id = ?').get(value);
+      return { text: s ? s.name : null, id: value };
     }
     default:
       return { text: String(value), id: null };
@@ -50,8 +55,8 @@ function recordCreated(db, issueId, actor, when) {
 
 // Compares `before` and `after` (work item rows) over the history fields and
 // writes one `changed` event with a row per field whose value differs.
-// Fields with no column (links, attachments) are not compared;
-// recordLinkChange and recordAttachmentChange write them.
+// Fields with no column (links, attachments, time entries) are not compared;
+// recordLinkChange, recordAttachmentChange and recordTimeEntryChange write them.
 // Writes nothing, and returns null, when nothing changed.
 function recordChanges(db, issueId, actor, before, after, when) {
   const changed = HISTORY_FIELDS.filter((f) => f.column && clean(before[f.column]) !== clean(after[f.column]));
@@ -90,8 +95,15 @@ function recordAttachmentChange(db, issueId, actor, { oldText = null, newText = 
   return recordSingleChange(db, issueId, actor, attachmentField(), { oldText, newText }, when);
 }
 
+// One `changed` event for a time entry: { newText } when logged, { oldText,
+// newText } when edited, { oldText } when deleted; the ids are the entry's.
+function recordTimeEntryChange(db, issueId, actor, change, when) {
+  return recordSingleChange(db, issueId, actor, timeEntryField(), change, when);
+}
+
 // The change as the API returns it. A field no longer in the list keeps its
-// stored key as the label and is shown as plain text.
+// stored key as the label and is shown as plain text. An empty value reads
+// as the field's emptyText when it has one (the backlog for a sprint).
 function toChange(row) {
   const field = getField(row.field) || { key: row.field, label: row.field, kind: 'text' };
   const long = field.kind === 'long';
@@ -99,8 +111,8 @@ function toChange(row) {
     field: field.key,
     label: field.label,
     kind: field.kind,
-    old: long ? null : row.old_value,
-    new: long ? null : row.new_value,
+    old: long ? null : row.old_value ?? field.emptyText ?? null,
+    new: long ? null : row.new_value ?? field.emptyText ?? null,
     old_id: row.old_id,
     new_id: row.new_id,
   };
@@ -151,11 +163,13 @@ function deleteHistory(db, issueId) {
 }
 
 module.exports = {
+  recordTestCaseChange: (db, issueId, actor, change, when) => recordSingleChange(db, issueId, actor, testCaseField(), change, when),
   UNKNOWN_ACTOR,
   recordCreated,
   recordChanges,
   recordLinkChange,
   recordAttachmentChange,
+  recordTimeEntryChange,
   listHistory,
   deleteHistory,
 };

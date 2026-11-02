@@ -8,11 +8,17 @@ const historyFormat = (() => {
 
   // `changed Status from To Do to In Progress`; a long field has no values.
   // A file field reads `added <label> <name>` or `removed <label> <name>`.
+  // A time entry reads `logged <text>`, `changed <Label> from <old> to <new>`
+  // or `deleted <label> <text>`.
   function changeLine(change) {
     if (change.kind === 'long') return `changed ${change.label}`;
     if (change.kind === 'file') {
       const label = change.label.toLowerCase();
       return change.new ? `added ${label} ${change.new}` : `removed ${label} ${value(change.old)}`;
+    }
+    if (change.kind === 'time-entry') {
+      if (change.new && !change.old) return `logged ${change.new}`;
+      if (change.old && !change.new) return `deleted ${change.label.toLowerCase()} ${change.old}`;
     }
     return `changed ${change.label} from ${value(change.old)} to ${value(change.new)}`;
   }

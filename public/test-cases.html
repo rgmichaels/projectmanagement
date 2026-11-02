@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test Cases</title>
+  <link rel="icon" type="image/svg+xml" href="/css/favicon.svg">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="/">Projects</a></header>
+  <main class="page">
+    <nav class="subnav" aria-label="Project pages">
+      <a id="nav-board" href="board.html">Board</a>
+      <a id="nav-backlog" href="backlog.html">Backlog</a>
+      <a id="nav-sprints" href="sprints.html">Sprints</a>
+      <a id="nav-test-cases" href="test-cases.html" aria-current="page">Test Cases</a>
+    </nav>
+    <section class="toolbar">
+      <h1 id="project-title">Test Cases</h1>
+      <span id="archived-badge" class="badge archived" hidden>Archived (read-only)</span>
+      <button type="button" id="tc-create" class="primary" hidden>Create test case</button>
+    </section>
+    <form id="tc-search-form" class="tc-actions" role="search">
+      <label>Search <input type="search" id="tc-search" maxlength="200" placeholder="Key, title or steps"></label>
+      <label>Lifecycle <select id="tc-lifecycle" aria-label="Lifecycle"></select></label>
+      <button type="submit">Search</button>
+      <span id="tc-count" role="status"></span>
+    </form>
+    <p id="tc-error" class="error" role="alert"></p>
+    <div id="tc-library" class="tc-library" aria-live="polite">Loading…</div>
+    <button type="button" id="tc-more" hidden>Show more</button>
+  </main>
+  <script src="js/redirect.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/session.js"></script>
+  <script src="js/projectScope.js"></script>
+  <script src="js/testCases.js"></script>
+  <script src="js/testCaseManager.js"></script>
+</body>
+</html>

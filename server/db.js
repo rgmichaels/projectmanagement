@@ -1,6 +1,8 @@
 // Opens the SQLite database (better-sqlite3), creates the schema, applies the
 // additive migrations and seeds the fixed user list on first start. This is the single schema/setup file.
-// New tables (comments, sessions, work item history, links, attachments) are created with
+// New tables (comments, sessions, work item history, links, attachments,
+// sprints, the sprint audit log, time entries and the sprint scope-change
+// log and baselines) are created with
 // CREATE TABLE IF NOT EXISTS, so existing databases gain them on start.
 // Status, type and resolution columns deliberately have no CHECK constraints:
 // their valid values come from server/statuses.js, server/types.js and
@@ -8,9 +10,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const Database = require('better-sqlite3');
-const { terminalStatus } = require('./statuses');
+const { terminalStatus, defaultStatus } = require('./statuses');
 const { defaultResolution } = require('./resolutions');
 const { defaultGroup, initialAdminGroup } = require('./groups');
+const { activeSprintState, finalSprintState } = require('./sprintStates');
+const { epicTypeNames } = require('./types');
+const { deriveUsername } = require('./usernames');
+const sprintScope = require('./data/sprintScope');
 
 const DEFAULT_DB_PATH = path.join(__dirname, '..', 'data', 'app.db');
 
@@ -22,11 +28,14 @@ const SCHEMA = `
 -- in migrateUsername). Databases created before it get it via migrateUsername.
 -- group_name is the permission group (server/groups.js; no CHECK constraint;
 -- "group" is an SQL keyword). Older databases get it via migrateGroups.
+-- active is 1, or 0 for a deactivated user (docs/specs/user-admin.md; users
+-- are never deleted). Older databases get it via migrateActive.
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   username TEXT NOT NULL,
-  group_name TEXT NOT NULL DEFAULT ${sqlText(defaultGroup())}
+  group_name TEXT NOT NULL DEFAULT ${sqlText(defaultGroup())},
+  active INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -37,6 +46,13 @@ CREATE TABLE IF NOT EXISTS projects (
   archived INTEGER NOT NULL DEFAULT 0,
   next_issue_number INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS project_permissions (
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  group_name TEXT NOT NULL,
+  PRIMARY KEY (project_id, user_id)
 );
 
 CREATE TABLE IF NOT EXISTS issues (
@@ -154,10 +170,163 @@ CREATE TABLE IF NOT EXISTS attachments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_attachments_issue ON attachments(issue_id, id);
+
+-- Sprints (server/data/sprints.js, docs/specs/sprints-and-backlog.md). state is
+-- a name from server/sprintStates.js (no CHECK constraint); dates are
+-- YYYY-MM-DD or null and are display-only. The one-active-sprint unique index
+-- and the issues.sprint_id / sprint_rank columns are added by migrateSprints.
+CREATE TABLE IF NOT EXISTS sprints (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  name TEXT NOT NULL,
+  goal TEXT NOT NULL DEFAULT '',
+  start_date TEXT,
+  end_date TEXT,
+  state TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  started_at TEXT,
+  completed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_sprints_project ON sprints(project_id);
+
+-- Sprint audit log (server/data/sprintHistory.js): append-only. sprint_id,
+-- project_id and actor_id are plain integers with no foreign key and
+-- sprint_name / actor_name are snapshots, so events outlive the sprint and
+-- the user. Kinds and tracked fields come from server/sprintEvents.js.
+CREATE TABLE IF NOT EXISTS sprint_events (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL,
+  sprint_id INTEGER,
+  sprint_name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  actor_id INTEGER,
+  actor_name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  disposition TEXT,
+  done_count INTEGER,
+  item_count INTEGER,
+  target_sprint_id INTEGER,
+  target_sprint_name TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_sprint_events_project ON sprint_events(project_id, id);
+
+CREATE TABLE IF NOT EXISTS sprint_event_changes (
+  id INTEGER PRIMARY KEY,
+  event_id INTEGER NOT NULL REFERENCES sprint_events(id) ON DELETE CASCADE,
+  field TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_sprint_event_changes_event ON sprint_event_changes(event_id);
+
+-- Sprint scope-change log (server/data/sprintScope.js,
+-- docs/specs/sprint-scope-change.md): append-only, one row per item added
+-- to, removed from or re-estimated in an Active sprint. project_id,
+-- sprint_id, issue_id and actor_id are plain integers with no foreign key
+-- and issue_key, issue_title and actor_name are snapshots, so rows outlive
+-- the item and the user. kind comes from server/scopeEvents.js (no CHECK).
+-- estimate_minutes is the estimate at the time (null = none);
+-- old_estimate_minutes is set only for estimate changes.
+CREATE TABLE IF NOT EXISTS sprint_scope_events (
+  id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL,
+  sprint_id INTEGER NOT NULL,
+  issue_id INTEGER NOT NULL,
+  issue_key TEXT NOT NULL,
+  issue_title TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  actor_id INTEGER,
+  actor_name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  estimate_minutes INTEGER,
+  old_estimate_minutes INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_sprint_scope_events_sprint ON sprint_scope_events(sprint_id, id);
+
+-- The items of a sprint at its baseline (Start, or the one-time migration of
+-- the sprint that was Active when scope tracking began). The count, total
+-- and instant are the baseline_* columns of sprints (migrateScope).
+CREATE TABLE IF NOT EXISTS sprint_baseline_items (
+  sprint_id INTEGER NOT NULL,
+  issue_id INTEGER NOT NULL,
+  issue_key TEXT NOT NULL,
+  estimate_minutes INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_sprint_baseline_items_sprint ON sprint_baseline_items(sprint_id);
+
+CREATE TABLE IF NOT EXISTS test_cases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id INTEGER NOT NULL REFERENCES projects(id),
+  number INTEGER NOT NULL,
+  key TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  preconditions TEXT NOT NULL DEFAULT '',
+  lifecycle TEXT NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 1,
+  created_by_id INTEGER NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE(project_id, number)
+);
+CREATE TABLE IF NOT EXISTS test_case_steps (
+  id INTEGER PRIMARY KEY,
+  test_case_id INTEGER NOT NULL REFERENCES test_cases(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  expected_result TEXT NOT NULL,
+  UNIQUE(test_case_id, position)
+);
+CREATE TABLE IF NOT EXISTS issue_test_cases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  issue_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+  test_case_id INTEGER NOT NULL REFERENCES test_cases(id),
+  active INTEGER NOT NULL DEFAULT 1,
+  linked_by_id INTEGER NOT NULL REFERENCES users(id),
+  linked_at TEXT NOT NULL,
+  removed_by_id INTEGER REFERENCES users(id),
+  removed_at TEXT,
+  UNIQUE(issue_id, test_case_id)
+);
+CREATE INDEX IF NOT EXISTS idx_issue_test_cases_case ON issue_test_cases(test_case_id);
+CREATE TABLE IF NOT EXISTS test_case_executions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  issue_test_case_id INTEGER NOT NULL REFERENCES issue_test_cases(id) ON DELETE CASCADE,
+  outcome TEXT NOT NULL,
+  notes TEXT NOT NULL,
+  tested_by_id INTEGER NOT NULL REFERENCES users(id),
+  tester_name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  case_revision INTEGER NOT NULL,
+  definition_snapshot_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_test_executions_link ON test_case_executions(issue_test_case_id, id);
+
+-- Time logged on a work item (server/data/timeEntries.js,
+-- docs/specs/time-tracking.md). minutes is whole minutes (quarter hours in
+-- practice, 15 to 1440); work_date is YYYY-MM-DD; user_name is a display
+-- snapshot like history actors. Existing databases gain this table on start.
+CREATE TABLE IF NOT EXISTS time_entries (
+  id INTEGER PRIMARY KEY,
+  issue_id INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id),
+  user_name TEXT NOT NULL,
+  minutes INTEGER NOT NULL,
+  work_date TEXT NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_time_entries_issue ON time_entries(issue_id);
 `;
 
-// Seed data: a small fixed list of placeholder people (no user management in
-// the UI). `name` is the display name, `username` the sign-in name, `group`
+// Seed data: a small fixed list of placeholder people (Admins add more on
+// the Users page). `name` is the display name, `username` the sign-in name, `group`
 // the permission group: the first user is the initial Admin, the rest get the
 // default group (no Viewer is seeded).
 const SEED_USERS = [
@@ -166,16 +335,6 @@ const SEED_USERS = [
   { name: 'Casey Rivera', username: 'casey', group: defaultGroup() },
   { name: 'Dana Patel', username: 'dana', group: defaultGroup() },
 ];
-
-// The username derived from a display name: its first word, lower-cased
-// (`Alex Morgan` -> `alex`), made unique against `taken` with 2, 3, ...
-function deriveUsername(name, taken) {
-  const base = (String(name).trim().split(/\s+/)[0] || 'user').toLowerCase();
-  let candidate = base;
-  for (let n = 2; taken.has(candidate); n += 1) candidate = `${base}${n}`;
-  taken.add(candidate);
-  return candidate;
-}
 
 // Databases created before the username-login spec lack users.username. Add
 // it (idempotent), backfill rows without one, and enforce uniqueness
@@ -232,6 +391,108 @@ function migrateGroups(db) {
   })();
 }
 
+// Databases created before the user-admin spec lack users.active. Add it
+// (idempotent: only when missing); every existing user stays active.
+function migrateActive(db) {
+  const columns = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
+  if (columns.includes('active')) return;
+  db.exec('ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1');
+}
+
+// Work items created before the status pipeline (To Do / In Progress / Done)
+// move to the nearest new status. In Progress keeps its name. Idempotent.
+function migrateStatuses(db) {
+  const rename = db.prepare('UPDATE issues SET status = ? WHERE status = ?');
+  db.transaction(() => {
+    rename.run(defaultStatus(), 'To Do');
+    rename.run(terminalStatus(), 'Done');
+    // Items that just reached the terminal status carry the default resolution.
+    db.prepare('UPDATE issues SET resolution = ? WHERE status = ? AND resolution IS NULL').run(defaultResolution(), terminalStatus());
+  })();
+}
+
+const SPRINT_RANK_STEP = 1000;
+
+// The partial unique index that allows one sprint per project in the active
+// state. Recreated if the active state's name in server/sprintStates.js changed.
+function ensureOneActiveIndex(db) {
+  const where = `WHERE state = ${sqlText(activeSprintState())}`;
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'idx_sprints_one_active'").get();
+  if (row && row.sql.includes(where)) return;
+  if (row) db.exec('DROP INDEX idx_sprints_one_active');
+  db.exec(`CREATE UNIQUE INDEX idx_sprints_one_active ON sprints(project_id) ${where}`);
+}
+
+// Databases created before the sprints spec lack issues.sprint_id and
+// issues.sprint_rank. Add them (only when missing, so this runs once) and,
+// per project with at least one non-epic work item, create one `Sprint 1`
+// holding every non-epic item in rank order (sprint_rank in steps of 1000):
+// Active for a non-archived project, Completed for an archived one. Epics stay
+// out of sprints (both columns null). No history, no sprint events and no
+// updated_at change. A fresh database gets the columns and no sprint.
+function migrateSprints(db) {
+  const columns = db.prepare('PRAGMA table_info(issues)').all().map((c) => c.name);
+  if (!columns.includes('sprint_id')) {
+    db.transaction(() => {
+      db.exec('ALTER TABLE issues ADD COLUMN sprint_id INTEGER REFERENCES sprints(id)');
+      db.exec('ALTER TABLE issues ADD COLUMN sprint_rank INTEGER');
+      const epics = epicTypeNames();
+      const notEpic = epics.length ? `AND type NOT IN (${epics.map(() => '?').join(', ')})` : '';
+      const now = new Date().toISOString();
+      const projectRows = db.prepare('SELECT id, archived FROM projects ORDER BY id').all();
+      const itemsOf = db.prepare(`SELECT id FROM issues WHERE project_id = ? ${notEpic} ORDER BY rank, id`);
+      const insertSprint = db.prepare(
+        `INSERT INTO sprints (project_id, name, goal, start_date, end_date, state, created_at, started_at, completed_at)
+         VALUES (?, 'Sprint 1', '', NULL, NULL, ?, ?, ?, ?)`
+      );
+      const place = db.prepare('UPDATE issues SET sprint_id = ?, sprint_rank = ? WHERE id = ?');
+      for (const project of projectRows) {
+        const items = itemsOf.all(project.id, ...epics);
+        if (items.length === 0) continue;
+        const archived = project.archived === 1;
+        const sprintId = insertSprint.run(
+          project.id,
+          archived ? finalSprintState() : activeSprintState(),
+          now,
+          now,
+          archived ? now : null
+        ).lastInsertRowid;
+        items.forEach((item, i) => place.run(sprintId, (i + 1) * SPRINT_RANK_STEP, item.id));
+      }
+    })();
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_issues_sprint ON issues(project_id, sprint_id, sprint_rank)');
+  ensureOneActiveIndex(db);
+}
+
+// Databases created before the time-tracking spec lack issues.estimate_minutes
+// (the original estimate in whole minutes; null = not estimated). Existing
+// work items stay unestimated.
+function migrateEstimate(db) {
+  const columns = db.prepare('PRAGMA table_info(issues)').all().map((c) => c.name);
+  if (columns.includes('estimate_minutes')) return;
+  db.exec('ALTER TABLE issues ADD COLUMN estimate_minutes INTEGER');
+}
+
+// Sprint scope-change tracking (docs/specs/sprint-scope-change.md AC 2, 4).
+// Adds the nullable sprints.baseline_item_count, baseline_minutes and
+// baseline_at (null = not tracked) when missing. Then, once per Active
+// sprint that has no baseline yet (the sprint running when the feature
+// first starts), captures its baseline from its current state with
+// baseline_at = now; started_at, updated_at and the items are untouched and
+// no events are backfilled. Planned sprints get a baseline at Start;
+// Completed ones stay untracked. Idempotent: a second run finds nothing.
+function migrateScope(db) {
+  const columns = db.prepare('PRAGMA table_info(sprints)').all().map((c) => c.name);
+  db.transaction(() => {
+    if (!columns.includes('baseline_item_count')) db.exec('ALTER TABLE sprints ADD COLUMN baseline_item_count INTEGER');
+    if (!columns.includes('baseline_minutes')) db.exec('ALTER TABLE sprints ADD COLUMN baseline_minutes INTEGER');
+    if (!columns.includes('baseline_at')) db.exec('ALTER TABLE sprints ADD COLUMN baseline_at TEXT');
+    const now = new Date().toISOString();
+    for (const sprint of sprintScope.activeSprintsWithoutBaseline(db)) sprintScope.captureBaseline(db, sprint, now);
+  })();
+}
+
 function openDb(dbPath = DEFAULT_DB_PATH) {
   if (dbPath !== ':memory:') {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -240,9 +501,14 @@ function openDb(dbPath = DEFAULT_DB_PATH) {
   db.pragma('foreign_keys = ON');
   db.exec(SCHEMA);
   migrateResolution(db);
+  migrateStatuses(db); // after migrateResolution: the column must exist
   migrateUsername(db);
   migrateReporter(db);
   migrateGroups(db);
+  migrateActive(db);
+  migrateSprints(db); // after migrateStatuses, so it is the last legacy step
+  migrateEstimate(db);
+  migrateScope(db); // after migrateSprints and migrateEstimate: needs sprints and estimates
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
   if (n === 0) {
     const insert = db.prepare('INSERT INTO users (name, username, group_name) VALUES (?, ?, ?)');

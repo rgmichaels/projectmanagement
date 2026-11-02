@@ -42,3 +42,14 @@ test('an attachment change reads "added/removed attachment <name>" (attachments 
   assert.equal(changeLine(change({ label: 'Attachment', kind: 'file', old: 'spec.pdf', new: null })), 'removed attachment spec.pdf');
   assert.equal(changeLine(change({ label: 'Attachment', kind: 'file', new: '<img src=x>.png' })), 'added attachment <img src=x>.png');
 });
+
+test('a time entry reads "logged", "changed" or "deleted" (time-tracking AC 31)', () => {
+  const time = (fields) => change({ label: 'Time entry', kind: 'time-entry', ...fields });
+  assert.equal(changeLine(time({ new: '1.5 h on 2026-10-28: fix' })), 'logged 1.5 h on 2026-10-28: fix');
+  assert.equal(
+    changeLine(time({ old: '1.5 h on 2026-10-28', new: '2 h on 2026-10-27' })),
+    'changed Time entry from 1.5 h on 2026-10-28 to 2 h on 2026-10-27'
+  );
+  assert.equal(changeLine(time({ old: '1.5 h on 2026-10-28' })), 'deleted time entry 1.5 h on 2026-10-28');
+  assert.equal(changeLine(time({ new: '1 h on 2026-10-28: <b>x</b>' })), 'logged 1 h on 2026-10-28: <b>x</b>');
+});

@@ -2,7 +2,7 @@
 // Everything else (board columns, swimlanes, drop targets, forms, validation,
 // the default status for new work items) is driven by this list.
 // To add a status, insert it here in the desired column position and restart.
-const STATUSES = ['To Do', 'In Progress', 'Done'];
+const STATUSES = ['Planning', 'Ready', 'In Progress', 'Internal Testing', 'UAT', 'Go Live', 'Complete'];
 
 function isValidStatus(name) {
   return STATUSES.includes(name);

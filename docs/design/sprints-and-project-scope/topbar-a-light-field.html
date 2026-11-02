@@ -1,0 +1,952 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Topbar option A: light field with visible label</title>
+<style>
+/* App palette (docs/design/STYLE.md part 3, app-restyle option A): the work
+   item dialog's tokens, promoted to :root so every page matches the dialog.
+   Gold is only a focus ring or accent on dark teal; mid teal is only a border
+   or rule, never text on a light background. */
+:root {
+  --teal: #0b5d66;
+  --teal-mid: #65999e;
+  --teal-soft: #e5eded;
+  --page: #f8fafa;
+  --navy: #154973;
+  --linkblue: #004dd1;
+  --gold: #face00;
+  --ink: #000000;
+  --muted: #62666a;
+  --line: #d0d0ce;
+  --line2: #e4e4e4;
+  --danger: #c0300b;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* Legacy names the shared rules read, re-pointed at the tokens above. */
+  --bg: var(--page);
+  --surface: #ffffff;
+  --column: var(--teal-soft);
+  --border: var(--line);
+  --text: var(--ink);
+  --primary: var(--teal);
+  --neutral: #62666a;
+  font-family: "Proxima Nova", "Helvetica Neue", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); }
+h1 { font-size: 20px; margin: 0; color: var(--teal); font-weight: 700; }
+h2 { font-size: 16px; margin: 0 0 12px; color: var(--teal); font-weight: 700; }
+a { color: var(--linkblue); }
+:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+button, select, input, textarea { font: inherit; }
+/* Buttons: secondary white with navy, primary deep teal, action navy. */
+button {
+  border: 1px solid var(--navy);
+  color: var(--navy);
+  background: var(--surface);
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+button.primary { background: var(--teal); border-color: var(--teal); color: #fff; }
+button.navy { background: var(--navy); border-color: var(--navy); color: #fff; }
+button.danger { color: var(--danger); border-color: var(--line); }
+button[disabled] { opacity: 0.6; cursor: default; }
+button[hidden] { display: none; }
+
+/* Top bar: dark teal like the dialog band; gold focus ring on it. */
+.topbar {
+  background: var(--teal);
+  color: #fff;
+  padding: 10px 20px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.topbar :focus-visible { outline-color: var(--gold); }
+.topbar .brand { color: #fff; font-weight: 700; font-size: 15px; text-decoration: none; }
+.topbar .crumb { color: #cfe3e5; min-width: 0; overflow-wrap: anywhere; }
+.topbar .nav-link { color: #fff; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.topbar .session { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.topbar .session button { padding: 3px 10px; white-space: nowrap; background: transparent; border-color: #fff; color: #fff; }
+.topbar .session button:hover { background: #fff; color: var(--teal); }
+
+/* Sign-in page: the h1 is a teal title band across the top of the card. */
+.login { max-width: 420px; margin: 40px auto; }
+.login h1 { background: var(--teal); color: #fff; margin: -16px -16px 14px; padding: 14px 24px; border-radius: 8px 8px 0 0; font-size: 22px; }
+.user-list { border: none; padding: 0; margin: 0 0 8px; }
+.user-list legend { color: var(--ink); font-weight: 700; font-size: 12px; margin-bottom: 6px; }
+label.user-option { flex-direction: row; align-items: center; gap: 8px; font-size: 14px; font-weight: 400; color: var(--text); margin: 0; padding: 8px; border-radius: 4px; cursor: pointer; }
+label.user-option:hover { background: var(--teal-soft); }
+.user-username { color: var(--muted); font-size: 12px; }
+.hint { color: var(--muted); font-size: 12px; }
+.reporter { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+.reporter[hidden] { display: none; }
+
+.page { padding: 20px; }
+.toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.toolbar h1 { margin-right: auto; }
+.board-page .toolbar h1 { margin-right: 0; }
+.board-page .toolbar .group-by { margin-left: auto; }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.form-row { display: flex; gap: 12px; flex-wrap: wrap; }
+label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; color: var(--ink); font-size: 12px; font-weight: 700; }
+label.toggle, label.group-by { flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text); }
+label[hidden] { display: none; }
+input, select, textarea { padding: 6px 8px; border: 1px solid var(--navy); border-radius: 4px; background: #fff; color: var(--text); max-width: 100%; }
+/* Field text stays regular weight inside the bold labels (the work item
+   dialog keeps its own rules). */
+.page input, .page select, .page textarea, dialog.app-dialog input, dialog.app-dialog select { font-weight: 400; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.error { color: var(--danger); min-height: 1em; margin: 4px 0; }
+
+.empty { text-align: center; padding: 40px; background: var(--surface); border: 1px dashed var(--teal-mid); border-radius: 8px; }
+
+/* Tables (Projects, Users): pale teal header, light row rules. */
+table.projects { width: 100%; border-collapse: separate; border-spacing: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+table.projects th { background: var(--teal-soft); color: var(--teal); font-size: 12px; font-weight: 700; text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--teal-mid); }
+table.projects td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line2); overflow-wrap: break-word; }
+table.projects tbody tr:last-child td { border-bottom: none; }
+table.projects tbody tr:hover td { background: var(--page); }
+table.projects tr.is-archived td { color: var(--muted); background: var(--page); }
+.row-actions, table.projects td.row-actions { text-align: right; }
+.row-actions button { margin: 2px 0 2px 6px; }
+@media (max-width: 600px) {
+  table.projects th, table.projects td { padding: 8px 6px; }
+  table.projects .badge { white-space: normal; }
+  .row-actions button { padding: 5px 8px; }
+}
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; background: var(--teal-soft); border: 1px solid var(--teal-mid); color: var(--ink); font-size: 11px; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+.badge.archived { background: #fff0b3; border-color: #c9a800; color: var(--ink); }
+.badge[hidden], .badge:empty { display: none; }
+
+/* Board search and filters: one white card. */
+.filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; flex-basis: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+label.filter { flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--text); }
+label.filter[hidden] { display: none; }
+label.filter input[type="search"] { width: 220px; max-width: 100%; }
+.filter-count { color: var(--muted); font-size: 13px; }
+.notice { display: flex; align-items: center; gap: 12px; background: var(--teal-soft); border: 1px solid var(--teal-mid); color: var(--text); padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; }
+.notice[hidden] { display: none; }
+
+.message { background: var(--surface); border: 1px solid var(--danger); border-left-width: 4px; color: var(--danger); font-weight: 700; padding: 8px 12px; border-radius: 4px; margin-bottom: 12px; }
+.message[hidden] { display: none; }
+
+/* Board: pale teal columns under teal uppercase headers with a mid-teal rule. */
+.board { overflow-x: auto; }
+.board-header, .lane-body { display: grid; gap: 8px; min-width: min-content; }
+.col-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--teal);
+  background: transparent;
+  border-bottom: 2px solid var(--teal-mid);
+}
+.count { color: var(--muted); font-weight: normal; }
+.lane { margin-top: 8px; }
+.lane-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 6px 4px;
+  color: var(--teal);
+  font-weight: 700;
+  text-align: left;
+}
+.lane-header .count { font-size: 12px; }
+.column {
+  background: var(--column);
+  border-radius: 8px;
+  padding: 6px;
+  min-height: 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card {
+  --type-color: var(--neutral);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--type-color);
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(9, 30, 40, 0.12);
+  padding: 8px 10px;
+  cursor: pointer;
+}
+.card:hover { border-color: var(--teal-mid); border-left-color: var(--type-color); }
+.card[draggable="true"] { cursor: grab; }
+.card.dragging { opacity: 0.4; }
+.card-title { margin-bottom: 8px; word-break: break-word; }
+.card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.card-key { font: 700 12px var(--mono); color: var(--ink); }
+/* Type badge: white chip with black text and a type-coloured dot (white text
+   on the type colours fails contrast). The card's left edge keeps the colour. */
+.type-badge {
+  --type-color: var(--neutral);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 11px;
+}
+.type-badge .type-icon { display: none; } /* the dot stands in for the list icon */
+.type-badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--type-color); flex: none; }
+/* Neutral fallback for a type with no defined styling. */
+.type-badge.type-fallback { --type-color: var(--neutral); }
+.epic-chip { background: #eae6ff; color: #403294; padding: 1px 6px; border-radius: 4px; font-weight: 700; cursor: pointer; }
+.epic-chip:hover, .epic-chip:focus-visible { background: #c0b6f2; text-decoration: underline; }
+/* Colours come from server/resolutions.js; each passes 4.5:1 with white. */
+.resolution-label {
+  --resolution-color: var(--neutral);
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--resolution-color);
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+}
+.priority { border: 1px solid var(--line); padding: 0 5px; border-radius: 4px; }
+.avatar {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--teal);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+}
+.avatar.unassigned { background: var(--neutral); }
+.drop-indicator { height: 4px; border-radius: 2px; background: var(--navy); }
+
+dialog { border: none; border-radius: 8px; padding: 20px; width: min(560px, 95vw); box-shadow: 0 12px 36px rgba(9, 30, 40, 0.35); }
+dialog input, dialog textarea { width: 100%; }
+
+/* Small dialogs (Edit project): the same shell as the work item dialog, a
+   teal band title, a body on the page colour and a footer with the buttons
+   right-aligned. */
+dialog.app-dialog { padding: 0; width: min(480px, 95vw); background: var(--page); color: var(--ink); }
+dialog.app-dialog::backdrop { background: rgba(9, 30, 40, 0.45); }
+dialog.app-dialog .band { background: var(--teal); color: #fff; padding: 14px 24px; border-radius: 8px 8px 0 0; display: flex; align-items: center; gap: 8px; }
+dialog.app-dialog .band :focus-visible { outline-color: var(--gold); }
+dialog.app-dialog .band h2 { color: #fff; font-size: 20px; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+dialog.app-dialog .keychip { display: inline-flex; align-items: center; font: 600 12px var(--mono); color: #000; background: #fff; border-radius: 4px; padding: 2px 8px; white-space: nowrap; flex: none; }
+dialog.app-dialog .dialog-body { padding: 16px 24px 8px; }
+dialog.app-dialog .dialog-body label { margin-bottom: 12px; }
+dialog.app-dialog label.toggle { margin-bottom: 4px; }
+dialog.app-dialog label.toggle input { width: auto; }
+dialog.app-dialog select { width: 100%; }
+dialog.app-dialog .hint { margin: 0 0 8px; }
+dialog.app-dialog .dialog-foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; padding: 12px 24px; border-top: 1px solid var(--line); background: #fff; border-radius: 0 0 8px 8px; }
+dialog.app-dialog .dialog-foot .error { margin: 0; flex: 1 1 100%; overflow-wrap: anywhere; }
+dialog.app-dialog .dialog-foot .error:empty { display: none; }
+
+/* Comment count chip on cards (shown for 0 too). */
+.comment-count { display: inline-flex; align-items: center; gap: 2px; }
+.comment-icon { font-size: 11px; }
+
+/* Discussion section in the detail dialog. */
+.discussion[hidden], .comment-form[hidden], .thread-empty[hidden] { display: none; }
+.comment-form { margin-bottom: 8px; }
+.posting-as { color: var(--muted); font-size: 12px; margin: 0 0 4px; }
+.thread-empty { color: var(--muted); margin: 4px 0; }
+/* The thread scrolls inside the dialog so the form above stays in reach. */
+.thread { list-style: none; margin: 0; padding: 0; max-height: 40vh; overflow-y: auto; }
+.thread-item { border-top: 1px solid var(--border); padding: 8px 0; }
+.thread-item:first-child { border-top: none; }
+.message-head { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; font-size: 12px; color: var(--muted); }
+.message-author { font-weight: 600; color: var(--text); }
+.message-edited { font-style: italic; }
+.message-body { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; }
+.message-editor { margin-top: 4px; }
+.message-actions { margin-top: 4px; }
+button.link { border: none; background: none; padding: 0; color: var(--linkblue); font-size: 12px; font-weight: 400; text-decoration: underline; text-underline-offset: 2px; }
+button.link.danger { color: var(--danger); }
+
+/* The tab bar in the detail dialog (Children, Discussion, History, Links, Attachments). */
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.tabs[hidden] { display: none; }
+.tab { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 7px 10px; color: var(--muted); font-weight: 700; white-space: nowrap; margin-bottom: -1px; }
+.tab.active, .tab[aria-selected="true"] { color: var(--primary); border-bottom-color: var(--primary); }
+
+/* History tab: read-only list, newest first, scrolling like the thread. */
+.history[hidden], .history-note[hidden], .history-error[hidden] { display: none; }
+.history-toolbar { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+label.history-filter { flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 12px; }
+.history-note { color: var(--muted); margin: 4px 0; }
+.history-error { display: flex; align-items: center; gap: 8px; }
+.history-list { list-style: none; margin: 0; padding: 0; max-height: 40vh; overflow-y: auto; }
+.history-item { border-top: 1px solid var(--border); padding: 8px 0; }
+.history-item:first-child { border-top: none; }
+.history-changes { list-style: none; margin: 4px 0 0; padding: 0; word-break: break-word; }
+.history + .actions, .history .actions { margin-top: 6px; }
+
+/* Links tab in the detail dialog. */
+.links[hidden], .links-empty[hidden], .link-form[hidden] { display: none; }
+.links h4 { font-size: 12px; color: var(--muted); font-weight: 600; margin: 6px 0 2px; }
+.links-empty { color: var(--muted); margin: 4px 0; }
+.links-group ul { list-style: none; margin: 0; padding: 0; }
+.links-row { display: flex; align-items: baseline; gap: 6px; padding: 5px 0; border-top: 1px solid var(--border); min-width: 0; }
+.links-row:first-child { border-top: none; }
+.links-row .links-key { font-weight: 600; white-space: nowrap; }
+.links-row .links-title { flex: 1; min-width: 0; text-align: left; color: var(--text); overflow-wrap: anywhere; }
+.links-row .links-status { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.link-form { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.link-form select { flex: 1; min-width: 120px; }
+
+/* Description: read view (rendered text with inline images) and edit view. */
+.field-head { display: flex; align-items: baseline; gap: 8px; }
+.field-head label { margin: 0 0 4px; }
+.description-view { white-space: pre-wrap; overflow-wrap: anywhere; padding: 6px 8px; border: 1px solid var(--border); border-radius: 3px; min-height: 2.5em; }
+.description-view.empty-text { color: var(--muted); }
+.description-view[hidden], .description-field textarea[hidden], .paste-note[hidden], .image-strip[hidden] { display: none; }
+.paste-note { color: var(--muted); font-size: 12px; margin: 4px 0; }
+.image-strip { margin-top: 6px; font-size: 12px; color: var(--muted); }
+.image-strip-thumbs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+
+/* Pasted images inside comments and the description (richText.js). */
+.inline-image-link { display: inline-block; max-width: 100%; vertical-align: top; }
+.inline-image { display: block; max-width: 100%; max-height: 400px; border: 1px solid var(--border); border-radius: 3px; }
+
+/* Attachments tab in the detail dialog (a plain section for a new item). */
+.attachments[hidden], .attachments-note[hidden], .attachments-empty[hidden], .attachment-controls[hidden] { display: none; }
+.attachments h3 { font-size: 13px; margin: 0 0 6px; }
+.attachments h3[hidden] { display: none; }
+.attachments.drop-target { outline: 2px dashed var(--primary); outline-offset: 2px; }
+.attachments-note, .attachments-empty { color: var(--muted); margin: 4px 0; }
+.attachment-controls { display: flex; align-items: center; gap: 8px; border: 1px dashed var(--border); border-radius: 4px; padding: 8px; margin-bottom: 8px; }
+.attachment-error { white-space: pre-line; }
+.attachment-list { list-style: none; margin: 0; padding: 0; max-height: 30vh; overflow-y: auto; }
+.attachment-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid var(--border); }
+.attachment-row:first-child { border-top: none; }
+.attachment-row.pending { color: var(--muted); }
+.attachment-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.attachment-name { overflow-wrap: anywhere; }
+.attachment-meta { font-size: 12px; color: var(--muted); }
+.attachment-download { font-size: 12px; }
+.attachment-thumb-link { flex: none; }
+.attachment-thumb { display: block; width: 48px; height: 48px; object-fit: cover; border: 1px solid var(--border); border-radius: 3px; }
+
+/* Children tab in the detail dialog (epic types only). */
+.epic-view[hidden], .epic-empty[hidden], .epic-actions[hidden] { display: none; }
+.epic-progress { display: flex; align-items: center; gap: 8px; }
+.progress-bar { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; width: 0; background: #36b37e; transition: width 0.2s; }
+.progress-text { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.epic-counts { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
+.epic-count strong { color: var(--text); }
+.epic-count.zero strong { color: var(--muted); font-weight: normal; }
+.epic-empty { color: var(--muted); margin: 4px 0; }
+.epic-children { list-style: none; margin: 0; padding: 0; max-height: 30vh; overflow-y: auto; }
+.epic-child { display: flex; align-items: baseline; gap: 6px; padding: 5px 0; border-top: 1px solid var(--border); min-width: 0; }
+.epic-child:first-child { border-top: none; }
+.epic-child .epic-child-key { font-weight: 600; white-space: nowrap; }
+.epic-child .epic-child-title { flex: 1; min-width: 0; text-align: left; color: var(--text); overflow-wrap: anywhere; }
+.epic-child .epic-child-status, .epic-child .epic-child-priority { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.epic-actions { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.epic-actions select { flex: 1; min-width: 120px; }
+
+/* Permission groups: the Users page */
+table.users .save-status { color: var(--muted); font-size: 0.9em; }
+table[hidden] { display: none; }
+
+/* ---------- Work item dialog (docs/specs/task-dialog-redesign.md) ----------
+   The palette tokens live in :root (app-restyle); the rules below are the
+   dialog-specific ones. Gold and mid teal are never text on a light background. */
+dialog#detail {
+  color: var(--ink);
+  background: var(--page);
+  width: min(660px, 95vw);
+  padding: 0;
+  border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(9, 30, 40, 0.35);
+  overflow-x: hidden;
+}
+dialog#detail [hidden] { display: none !important; }
+dialog#detail button, dialog#detail select, dialog#detail input, dialog#detail textarea { color: inherit; }
+dialog#detail :focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* Buttons: secondary white with navy, primary (Save) deep teal, action navy. */
+dialog#detail button { border: 1px solid var(--navy); color: var(--navy); background: #fff; border-radius: 4px; font-weight: 700; }
+dialog#detail button.primary { background: var(--teal); border-color: var(--teal); color: #fff; }
+dialog#detail button.navy { background: var(--navy); border-color: var(--navy); color: #fff; }
+dialog#detail button.danger { color: var(--danger); border-color: var(--line); }
+dialog#detail button.link { border: none; background: none; padding: 0; color: var(--linkblue); font-size: 12px; font-weight: 400; text-decoration: underline; text-underline-offset: 2px; }
+dialog#detail button.link.danger { color: var(--danger); }
+dialog#detail button[disabled] { cursor: default; opacity: 0.6; }
+dialog#detail a { color: var(--linkblue); }
+
+/* Fields: navy borders; read-only is black on pale teal, not faded grey. */
+dialog#detail input, dialog#detail select, dialog#detail textarea { border: 1px solid var(--navy); border-radius: 4px; background: #fff; max-width: 100%; }
+dialog#detail select { width: 100%; }
+dialog#detail select[disabled], dialog#detail input[disabled], dialog#detail textarea[disabled] { background: var(--teal-soft); color: var(--ink); opacity: 1; -webkit-text-fill-color: var(--ink); }
+dialog#detail label { color: var(--ink); font-weight: 700; margin: 0; }
+dialog#detail .error { color: var(--danger); font-size: 13px; min-height: 0; }
+dialog#detail .error:empty { margin: 0; }
+
+/* The dark teal band: key chip, epic link, Close, title. Gold lives only here
+   and in the epic summary panel. */
+dialog#detail .band { background: var(--teal); color: #fff; padding: 14px 24px; border-radius: 8px 8px 0 0; }
+dialog#detail .band :focus-visible { outline-color: var(--gold); }
+dialog#detail .band-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+dialog#detail .band-new { font-weight: 700; font-size: 14px; }
+dialog#detail .keychip { display: inline-flex; align-items: center; gap: 6px; font: 600 12px var(--mono); color: #000; background: #fff; border-radius: 4px; padding: 2px 8px; white-space: nowrap; flex: none; }
+dialog#detail .keychip::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--tc, #8993a4); }
+dialog#detail .epicchip { border: none; background: none; color: var(--gold); text-transform: uppercase; font-weight: 700; font-size: 12px; letter-spacing: 0.02em; text-decoration: underline; text-underline-offset: 3px; padding: 2px 0; text-align: left; min-width: 0; overflow-wrap: anywhere; }
+dialog#detail .epicchip::after { content: " \2192"; }
+dialog#detail .epicchip:hover { color: #fff; }
+dialog#detail .x { margin-left: auto; border: none; background: none; font-size: 20px; line-height: 1; padding: 2px 8px; color: #fff; flex: none; }
+dialog#detail .x:hover { color: var(--gold); }
+dialog#detail .title-in { display: block; width: calc(100% + 16px); margin: 10px 0 0 -8px; padding: 4px 8px; font-size: 22px; line-height: 1.25; font-weight: 700; color: #fff; background: transparent; border: 1px solid transparent; resize: none; overflow: hidden; overflow-wrap: anywhere; field-sizing: content; min-height: 2em; }
+dialog#detail .title-in::placeholder { color: #cfe3e5; }
+dialog#detail .title-in:hover:not([disabled]) { border-color: var(--teal-mid); }
+dialog#detail .title-in:focus { border-color: var(--gold); background: rgba(255, 255, 255, 0.1); outline: none; }
+dialog#detail .title-in[disabled] { background: transparent; color: #fff; -webkit-text-fill-color: #fff; }
+dialog#detail .title-in.bad { border: 2px solid #fff; }
+dialog#detail .band .error { display: inline-block; background: #fff; color: #a82a08; border-radius: 3px; padding: 2px 8px; margin: 6px 0 0; }
+
+/* Body: banner, status track, properties, reporter, description, tabs. */
+dialog#detail .detail-body { padding: 14px 24px 18px; display: grid; gap: 16px; min-width: 0; }
+dialog#detail .detail-body > * { min-width: 0; margin: 0; }
+dialog#detail .banner { background: var(--teal-soft); border: 1px solid var(--teal-mid); border-radius: 4px; padding: 6px 10px; font-size: 13px; }
+
+/* Signature: the status track (a radio group). */
+dialog#detail fieldset.track { border: 0; margin: 0; padding: 0; min-width: 0; }
+dialog#detail .track legend { font-size: 12px; font-weight: 700; color: var(--ink); padding: 0; margin-bottom: 4px; }
+dialog#detail .steps { display: flex; flex-wrap: nowrap; overflow-x: auto; }
+dialog#detail label.step { --notch: 10px; flex: 1 1 0; min-width: 0; position: relative; display: block; text-align: center; padding: 9px 2px 9px calc(var(--notch) + 1px); margin-left: calc(2px - var(--notch)); font-weight: 600; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #323130; background: #f3f3f3; cursor: pointer; user-select: none;
+  clip-path: polygon(0 0, calc(100% - var(--notch)) 0, 100% 50%, calc(100% - var(--notch)) 100%, 0 100%, var(--notch) 50%); }
+dialog#detail label.step:first-child { margin-left: 0; padding-left: 6px; border-radius: 16px 0 0 16px;
+  clip-path: polygon(0 0, calc(100% - var(--notch)) 0, 100% 50%, calc(100% - var(--notch)) 100%, 0 100%); }
+dialog#detail label.step:last-child { padding-right: 6px; border-radius: 0 16px 16px 0;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, var(--notch) 50%); }
+dialog#detail label.step:first-child:last-child { clip-path: none; border-radius: 16px; }
+dialog#detail label.step input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+dialog#detail label.step.past { background: #3aa655; color: #fff; }
+dialog#detail label.step.past span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+dialog#detail label.step.past::before { content: "\2713"; font-size: 14px; }
+dialog#detail label.step.now { background: #0b4a8f; color: #fff; font-weight: 700; }
+dialog#detail label.step:has(input:focus-visible) { outline: 2px solid var(--navy); outline-offset: -3px; }
+dialog#detail label.step.now:has(input:focus-visible) { box-shadow: inset 0 0 0 3px #fff; }
+dialog#detail .steps.locked label.step, dialog#detail .steps.locked label.step input { cursor: default; }
+
+dialog#detail .props { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+dialog#detail .props > label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; }
+dialog#detail .reporter { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+dialog#detail .field-head { margin-bottom: 4px; }
+dialog#detail .field-head label { font-size: 13px; color: var(--teal); }
+dialog#detail .description-view { background: #fff; border-color: var(--line); border-radius: 4px; padding: 8px 10px; }
+dialog#detail .description-field textarea { width: 100%; display: block; }
+
+/* Tabs and their panels; the panel keeps a minimum height so switching tabs
+   does not make the footer jump. */
+dialog#detail .tab { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; color: var(--muted); padding: 7px 10px; }
+dialog#detail .tab[aria-selected="true"] { color: var(--teal); border-bottom-color: var(--teal); }
+dialog#detail .tab:focus-visible { outline-offset: -2px; }
+dialog#detail .tab .n { background: var(--line2); color: #000; border-radius: 9px; padding: 0 6px; margin-left: 5px; font-size: 11px; font-weight: 600; }
+dialog#detail .tab[aria-selected="true"] .n { background: var(--teal-soft); }
+dialog#detail [role="tabpanel"] { min-height: 200px; margin-top: -4px; }
+dialog#detail .posting-as { font-size: 12px; }
+dialog#detail .comment-form textarea { width: 100%; display: block; }
+dialog#detail .comment-form .actions { margin-top: 6px; }
+dialog#detail .links h4 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 8px 0 0; }
+dialog#detail .links-group ul { list-style: none; margin: 0; padding: 0; }
+dialog#detail .type-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--tc, #8993a4); flex: none; align-self: center; }
+
+/* Epic summary: dark teal panel with a gold progress fill. */
+dialog#detail .darkpanel { background: var(--teal); color: #fff; border: 1px solid var(--teal-mid); border-radius: 16px; padding: 14px 18px; margin-bottom: 10px; }
+dialog#detail .darkpanel .big { font-size: 18px; font-weight: 700; margin: 0 0 6px; }
+dialog#detail .darkpanel .progress-bar { background: rgba(255, 255, 255, 0.25); }
+dialog#detail .darkpanel .progress-fill { background: var(--gold); }
+dialog#detail .darkpanel .epic-counts { color: #fff; margin: 8px 0 0; }
+dialog#detail .darkpanel .epic-count strong, dialog#detail .darkpanel .epic-count.zero strong { color: #fff; }
+
+/* Footer: stays in view at the bottom of a tall dialog. */
+dialog#detail .detail-foot { position: sticky; bottom: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 24px; border-top: 1px solid var(--line); background: #fff; border-radius: 0 0 8px 8px; }
+dialog#detail .detail-foot .error { margin: 0; flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
+dialog#detail .detail-foot .spacer { margin-left: auto; }
+
+@media (max-width: 700px) {
+  dialog#detail .props { grid-template-columns: minmax(0, 1fr); }
+  dialog#detail .band, dialog#detail .detail-body, dialog#detail .detail-foot { padding-left: 14px; padding-right: 14px; }
+  dialog#detail .detail-foot .error:not(:empty) { flex-basis: 100%; }
+}
+
+/* ---------- Sprints and backlog (docs/specs/sprints-and-backlog.md,
+   docs/design/sprints-and-backlog option A, STYLE.md part 4) ----------
+   Uses only existing tokens (STYLE.md part 3). Every colour pair was checked:
+   white on --teal 7.6:1; --teal on --teal-soft 6.4:1; --muted on white 5.9:1,
+   on --page 5.6:1, on --teal-soft 4.9:1; --danger on white 5.9:1; black on
+   white or --teal-soft > 15:1. Gold and --teal-mid are never text. */
+
+/* Project sub-navigation: Board | Backlog (first element in <main>). */
+.subnav { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 0 0 16px; }
+.subnav a { padding: 8px 14px; color: var(--muted); font-weight: 700; text-decoration: none; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.subnav a:hover { color: var(--teal); }
+.subnav a[aria-current="page"] { color: var(--teal); border-bottom-color: var(--teal); }
+
+/* A sprint or the Backlog: one white panel with a pale teal header. */
+.sprint { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+.sprint.is-active { border-top: 4px solid var(--teal); }
+.sprint.is-completed { background: var(--page); }
+.sprint-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 12px; background: var(--teal-soft); border-bottom: 1px solid var(--teal-mid); }
+.sprint-toggle { border: none; background: none; padding: 2px 6px; color: var(--teal); font-size: 14px; }
+.sprint-name { font-size: 16px; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.sprint-meta { color: var(--muted); font-size: 12px; }
+.sprint-actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.sprint-actions .hint { max-width: 220px; }
+.sprint-goal { margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line2); overflow-wrap: anywhere; }
+.sprint-goal strong { color: var(--teal); }
+.badge.state-active { background: var(--teal); border-color: var(--teal); color: #fff; }
+.badge.state-completed { background: var(--surface); border-color: var(--line); color: var(--muted); }
+.badge.overdue { background: var(--surface); border: 1px solid var(--danger); color: var(--danger); }
+
+/* Collapsible extra sections (Epics, Completed sprints, Sprint history) use
+   <details class="sprint"><summary class="sprint-head">. */
+details.sprint > summary { list-style: none; cursor: pointer; }
+details.sprint > summary::-webkit-details-marker { display: none; }
+details.sprint > summary::before { content: "\25B8"; color: var(--teal); font-size: 14px; }
+details.sprint[open] > summary::before { content: "\25BE"; }
+details.sprint > summary .sprint-name { font-size: 14px; }
+
+/* Rows. */
+.brows { list-style: none; margin: 0; padding: 0; min-height: 44px; }
+.brows.drop-target { outline: 2px dashed var(--navy); outline-offset: -2px; background: var(--teal-soft); }
+.brow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 8px 12px; border-top: 1px solid var(--line2); cursor: pointer; }
+.brow:first-child { border-top: none; }
+.brow:hover { background: var(--page); }
+.brow.dragging { opacity: 0.4; }
+.brow-handle { flex: none; width: 16px; text-align: center; color: var(--muted); cursor: grab; user-select: none; }
+.brow-title { flex: 1 1 220px; min-width: 0; border: none; background: none; padding: 0; font-weight: 400; color: var(--ink); text-align: left; overflow-wrap: anywhere; }
+.brow .avatar { margin-left: 0; flex: none; }
+.brows > .drop-indicator { margin: 0 12px; }
+.status-pill { display: inline-block; padding: 0 8px; border-radius: 10px; background: var(--teal-soft); border: 1px solid var(--teal-mid); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.status-pill.is-done::before { content: "\2713\00a0"; }
+.brows-empty { margin: 10px 12px; padding: 14px 12px; text-align: center; color: var(--muted); border: 1px dashed var(--teal-mid); border-radius: 4px; }
+
+/* Quick create row. */
+.quick { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line2); background: var(--page); }
+.quick input { flex: 1 1 220px; }
+.quick .error { flex-basis: 100%; margin: 0; }
+.quick .error:empty { display: none; }
+
+/* Warnings: visible text, never colour alone. */
+.banner-warn { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; background: var(--surface); border: 1px solid var(--danger); border-left-width: 6px; border-radius: 4px; padding: 8px 12px; margin-bottom: 12px; }
+.banner-warn strong { color: var(--danger); }
+.banner-warn .spacer { margin-left: auto; }
+
+/* Board header for the active sprint. */
+.sprint-bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--teal); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
+.sprint-bar .sprint-goal { flex-basis: 100%; padding: 0; border: none; }
+.sprint-bar a { margin-left: auto; }
+
+/* Dialog pieces. */
+input[aria-invalid="true"], textarea[aria-invalid="true"] { border: 2px solid var(--danger); }
+dialog.app-dialog textarea { width: 100%; }
+dialog.app-dialog .field-error { color: var(--danger); font-size: 12px; margin: -6px 0 10px; }
+dialog.app-dialog .field-error:empty { display: none; }
+.counter { color: var(--muted); font-size: 12px; font-weight: 400; }
+.choices { border: 0; margin: 0 0 12px; padding: 0; }
+.choices legend { font-size: 12px; font-weight: 700; padding: 0; margin-bottom: 6px; }
+.choice { display: flex; align-items: flex-start; gap: 8px; padding: 10px; margin-bottom: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; }
+.choice:has(input[type="radio"]:checked) { border: 2px solid var(--teal); background: var(--teal-soft); padding: 9px; }
+.choice > input[type="radio"] { width: auto; margin-top: 3px; }
+.choice-body { flex: 1; min-width: 0; }
+.choice-label { display: block; margin: 0; font-size: 14px; font-weight: 700; }
+.choice .hint { margin: 2px 0 0; }
+.choice select, .choice input[type="text"] { margin-top: 6px; width: 100%; }
+.choice.is-disabled { background: var(--page); color: var(--muted); }
+.summary { margin: 0 0 12px; font-size: 15px; }
+
+/* Sprint history list. */
+.hist-list { list-style: none; margin: 0; padding: 0; }
+.hist-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 8px 12px; border-top: 1px solid var(--line2); }
+.hist-item:first-child { border-top: none; }
+.hist-text { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
+.hist-time { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.hist-changes { flex-basis: 100%; list-style: none; margin: 2px 0 0; padding: 0 0 0 12px; border-left: 2px solid var(--teal-mid); font-size: 13px; overflow-wrap: anywhere; }
+.hist-more { padding: 8px 12px; border-top: 1px solid var(--line2); }
+@media (max-width: 600px) { .sprint-actions { margin-left: 0; } .subnav a { padding: 8px 10px; } }
+
+/* Built-page additions: hidden states, the Backlog page wrapper and the
+   Sprint field in the work item dialog. */
+.sprint-bar[hidden], .banner-warn[hidden], .sprint[hidden], .brows-empty[hidden] { display: none; }
+.backlog-page .toolbar h1 { margin-right: 0; }
+.backlog-page .toolbar #create-sprint { margin-left: auto; }
+.backlog .empty { margin-bottom: 12px; }
+.backlog .empty p { margin: 0 0 8px; }
+.sprint-body[hidden] { display: none; }
+.sprint-head .badge { flex: none; }
+.sprint-foot { margin: 0; padding: 8px 12px; border-top: 1px solid var(--line2); }
+.brow .card-key { flex: none; }
+.brow .epic-chip { min-width: 0; overflow-wrap: anywhere; }
+.form-row .grow { flex: 1 1 140px; }
+.hist-loading { margin: 0; padding: 8px 12px; color: var(--muted); }
+.banner-warn.hist-error { margin: 12px; }
+dialog#detail .props > .sprint-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; }
+dialog#detail .props > .sprint-field[hidden] { display: none; }
+dialog#detail .sprint-field label { font-size: 12px; }
+dialog#detail .sprint-field .hint, dialog#detail .sprint-na { margin: 0; }
+dialog#detail .sprint-na, dialog#detail .sprint-where { font-size: 13px; color: var(--ink); }
+dialog#detail .sprint-where { grid-column: 1 / -1; margin: 0; }
+.lane-head-row { display: flex; align-items: center; gap: 8px; }
+.lane-head-row .lane-header { width: auto; flex: 1 1 auto; min-width: 0; }
+.lane-head-row .lane-epic-open { flex: none; }
+/* Board with no active sprint: filters and Group by hidden, Create stays right. */
+.filter-bar[hidden] { display: none; }
+.board-page .toolbar .group-by[hidden] + #create-item { margin-left: auto; }
+
+/* ---------- Backlog bulk move (docs/specs/backlog-bulk-move.md,
+   docs/design/backlog-bulk-move option B, STYLE.md part 5) ----------
+   The design's shared block and its option B block, without the mockup
+   stand-ins (.is-hover, .is-focus, .scrollbox). Only existing tokens. */
+/* Row checkbox: a 30px hit area around an 18px box, before the drag handle. */
+.brow-select { display: inline-flex; align-items: center; justify-content: center; flex: none; margin: 0 0 0 -6px; padding: 6px; cursor: pointer; }
+.brow-select input { width: 18px; height: 18px; margin: 0; padding: 0; accent-color: var(--teal); cursor: pointer; }
+.brow-select input:disabled { cursor: default; }
+/* Selected row: pale teal fill AND a 3px teal left edge AND the ticked box (never colour alone). */
+.brow.is-selected, .brow.is-selected:hover { background: var(--teal-soft); box-shadow: inset 3px 0 0 var(--teal); }
+.brows.is-busy .brow { cursor: default; }
+/* Header pieces. */
+.sel-count { font-weight: 700; color: var(--teal); font-size: 13px; white-space: nowrap; }
+.sel-count:empty { display: none; }
+.bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.bulk label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 13px; font-weight: 700; }
+.bulk select { min-width: 180px; max-width: 260px; }
+.bulk select:disabled { background: var(--teal-soft); color: var(--muted); }
+.bulk .hint { margin: 0; }
+.bulk-note { margin: 0; color: var(--muted); font-size: 12px; }
+/* Result message inside the Backlog panel, under the header. */
+.bulk-result { padding: 10px 12px 0; }
+.bulk-result .notice, .bulk-result .banner-warn { margin: 0 0 10px; }
+.bulk-result .banner-warn { display: block; }
+.bulk-result p { margin: 0 0 4px; }
+.bulk-result .lead { display: flex; gap: 8px; align-items: baseline; }
+.bulk-result .lead > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.fail-list { margin: 4px 0 4px; padding-left: 20px; overflow-wrap: anywhere; }
+.fail-list .card-key { margin-right: 2px; }
+.bulk-result .notice button.link, .bulk-result .banner-warn button.link { margin-left: auto; flex: none; }
+.bulk-result .notice .tick { color: var(--teal); font-weight: 700; }
+dialog.app-dialog .dialog-body p { margin: 0 0 8px; overflow-wrap: anywhere; }
+
+/* Option B: a dark teal selection strip inside the (sticky) Backlog header. */
+.sprint.sticky { overflow: visible; }
+.sprint.sticky > .sprint-head { position: sticky; top: 0; z-index: 2; }
+.sel-strip { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; background: var(--teal); color: #fff; margin: 6px -12px -10px; padding: 8px 12px; }
+.sel-strip .sel-count { color: #fff; font-size: 14px; }
+.sel-strip .bulk { margin-left: auto; }
+.sel-strip .bulk label, .sel-strip .bulk-note { color: #fff; }
+.sel-strip :focus-visible { outline-color: var(--gold); }
+.sel-strip button { background: #fff; color: var(--teal); border-color: #fff; }
+.sel-strip button[disabled] { opacity: 0.75; }
+.sel-strip select:disabled { background: #fff; color: var(--muted); }
+
+/* Built-page additions: nothing drawn with no selection (the count stays in
+   the DOM as the live region), hidden states, the "Clear selection" link in
+   white on the strip, and the rounded top corners of the sticky header. */
+.sel-strip.is-empty { display: contents; }
+.bulk[hidden] { display: none; }
+.sel-strip button.link { background: none; border: none; padding: 0; color: #fff; font-size: 13px; font-weight: 400; }
+.sprint.sticky > .sprint-head { border-radius: 7px 7px 0 0; }
+.sprint.sticky > .sprint-body > :last-child { border-radius: 0 0 7px 7px; }
+/* The strip spans the header edge to edge (flex-basis 100% plus the two 12px negative margins). */
+.sprint-head > .sel-strip { flex-basis: calc(100% + 24px); }
+
+
+/* ===== Project dropdown (docs/specs/global-project-scope.md AC 1-6) ===== */
+.topbar .project-scope { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: 6px; }
+.topbar .project-scope > label { flex-direction: row; margin: 0; color: #cfe3e5; font-size: 12px; font-weight: 700; }
+.topbar select.project-select { width: auto; min-width: 200px; max-width: 340px; padding: 4px 8px; font-size: 13px; font-weight: 700; border: 1px solid #fff; background: #fff; color: var(--ink); text-overflow: ellipsis; }
+/* Option B: outlined, transparent, white text, own chevron. */
+.topbar .project-scope.outlined select.project-select { appearance: none; background: rgba(255,255,255,.12) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23fff'/%3E%3C/svg%3E") no-repeat right 9px center; color: #fff; border-color: #cfe3e5; padding-right: 28px; }
+.topbar .project-scope.outlined select.project-select option { color: #000; background: #fff; }
+.topbar .sep { width: 1px; align-self: stretch; background: rgba(255,255,255,.35); margin: 2px 2px 2px 4px; }
+/* Option C: the Board / Backlog / Sprints links move into the bar. */
+.topbar.has-nav { align-items: flex-end; padding-bottom: 0; }
+.topbar.has-nav > * { margin-bottom: 8px; }
+.topbar.has-nav > .topnav { margin-bottom: 0; }
+.topbar .topnav { display: flex; gap: 2px; margin-left: 10px; }
+.topbar .topnav a { color: #cfe3e5; font-weight: 700; text-decoration: none; padding: 8px 12px 6px; border-bottom: 3px solid transparent; }
+.topbar .topnav a:hover { color: #fff; }
+.topbar .topnav a[aria-current="page"] { color: #fff; border-bottom-color: #fff; }
+.is-focus { outline: 2px solid var(--teal); outline-offset: 2px; }
+.topbar .is-focus { outline-color: var(--gold); }
+.page .is-focus { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+/* ===== Sprint dropdown + summary (docs/specs/sprints-screen.md AC 3, 4, 6, 8) ===== */
+.sprint-pick { display: flex; align-items: center; gap: 6px; min-width: 0; position: relative; }
+.sprint-pick label { flex-direction: row; align-items: center; margin: 0; font-size: 13px; font-weight: 700; }
+.page .sprint-pick select { min-width: 220px; max-width: 100%; font-weight: 700; }
+.sprint-pick select:disabled { background: var(--teal-soft); color: var(--muted); }
+.sprint-why { margin: 0; padding: 6px 12px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line2); }
+.sprint-why.bare { padding: 4px 0 0; border: none; }
+.sprint-sum { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.sprint-sum strong { color: var(--ink); }
+.manage-link { margin-left: auto; font-size: 13px; }
+
+/* ===== Sortable table (sprints-screen.md AC 9-23) ===== */
+.table-wrap { overflow-x: auto; }
+.table-wrap.card { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table.sprint-table { width: 100%; min-width: 720px; border-collapse: separate; border-spacing: 0; background: var(--surface); }
+table.sprint-table th { background: var(--teal-soft); border-bottom: 1px solid var(--teal-mid); padding: 0; text-align: left; }
+table.sprint-table th[aria-sort="ascending"], table.sprint-table th[aria-sort="descending"] { box-shadow: inset 0 -3px 0 var(--teal); }
+button.sort { display: flex; align-items: center; gap: 4px; width: 100%; border: none; border-radius: 0; background: none; color: var(--teal); font-size: 12px; font-weight: 700; padding: 9px 12px; text-align: left; white-space: nowrap; }
+button.sort:hover { text-decoration: underline; }
+button.sort:focus-visible, button.sort.is-focus { outline: 2px solid var(--teal); outline-offset: -3px; }
+button.sort .arrow { color: var(--muted); font-size: 11px; font-weight: 400; }
+th[aria-sort="ascending"] .arrow, th[aria-sort="descending"] .arrow { color: var(--teal); font-weight: 700; }
+table.sprint-table td { padding: 8px 12px; border-bottom: 1px solid var(--line2); vertical-align: middle; overflow-wrap: anywhere; }
+table.sprint-table tbody tr:last-child td { border-bottom: none; }
+table.sprint-table tbody tr:hover td, table.sprint-table tbody tr.is-hover td { background: var(--page); }
+table.sprint-table td.c-key { white-space: nowrap; }
+table.sprint-table td.c-title { min-width: 220px; }
+table.sprint-table td.c-nowrap { white-space: nowrap; }
+.key-btn { border: none; background: none; padding: 0; font: 700 12px var(--mono); color: var(--ink); }
+.title-btn { border: none; background: none; padding: 0; font-weight: 400; color: var(--ink); text-align: left; overflow-wrap: anywhere; }
+.key-btn:hover, .title-btn:hover { text-decoration: underline; }
+.assignee { display: inline-flex; align-items: center; gap: 6px; }
+table.sprint-table .avatar { margin-left: 0; flex: none; }
+.cell-none { color: var(--muted); }
+.sort-line { display: flex; align-items: center; gap: 10px; padding: 6px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line2); }
+.sort-line strong { color: var(--ink); }
+.sort-line button.link { margin-left: auto; }
+.sort-line.bare { padding: 0 0 6px; border: none; }
+.compact table.sprint-table td { padding: 5px 12px; }
+.compact button.sort { padding: 7px 12px; }
+
+/* ===== Confirm dialogs reuse dialog.app-dialog; only danger text button is new use ===== */
+dialog.app-dialog .dialog-foot button.is-focus { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+
+body { padding-bottom: 40px; }
+.doc-head, .frame { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+.doc-head { padding-top: 20px; }
+.doc-head p { margin: 4px 0; max-width: 80ch; }
+.frame { margin-bottom: 30px; }
+.frame-h { font-size: 15px; margin: 0 0 4px; color: var(--ink); }
+.frame-h .fn { display: inline-block; min-width: 24px; padding: 0 6px; margin-right: 6px; background: var(--navy); color: #fff; border-radius: 4px; text-align: center; }
+.frame-ac { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
+.stage { position: relative; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.stage > .topbar:first-child { border-radius: 8px 8px 0 0; }
+.stage.tall { min-height: 300px; }
+.stage .page { padding: 16px 20px 20px; }
+.anno { margin: 8px 0 0; padding: 6px 10px; border-left: 4px solid var(--navy); background: #fff; font-size: 12px; }
+.anno code, .frame-ac code { font-family: var(--mono); }
+.skeleton { margin: 0 0 12px; padding: 24px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; background: var(--surface); }
+.fake-list { position: absolute; top: calc(100% + 4px); left: 0; z-index: 5; width: max-content; min-width: 100%; max-width: 440px; background: #fff; color: #000; border: 1px solid #767676; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,.25); padding: 2px 0; font-size: 13px; font-weight: 400; }
+.fake-list div { padding: 4px 10px; overflow-wrap: anywhere; }
+.fake-list .hi { background: var(--teal); color: #fff; }
+.fake-list .cap { font-size: 10px; color: var(--muted); border-top: 1px solid var(--line2); margin-top: 2px; padding-top: 3px; }
+.narrow { width: 380px; max-width: 100%; margin: 12px; border: 1px dashed var(--navy); background: var(--bg); position: relative; }
+.narrow .topbar { flex-wrap: wrap; padding: 10px 12px; }
+.narrow .topbar .project-scope { order: 3; flex: 1 1 100%; margin-left: 0; }
+.narrow .topbar select.project-select { flex: 1; max-width: none; min-width: 0; }
+.narrow .topbar .topnav { order: 4; flex: 1 1 100%; margin-left: 0; overflow-x: auto; }
+.narrow .topbar .sep { display: none; }
+.narrow .subnav a { padding: 8px 10px; }
+.narrow .page { padding: 12px; }
+.narrow .sprint-head { gap: 6px; }
+.narrow .page .sprint-pick { flex: 1 1 100%; }
+.narrow .page .sprint-pick select { flex: 1; min-width: 0; }
+.narrow .manage-link { margin-left: 0; flex-basis: 100%; }
+.narrow .toolbar { gap: 8px 12px; }
+.dim { background: rgba(9,30,40,.45); padding: 24px 16px; border-radius: 0 0 8px 8px; }
+.mini-detail { max-width: 560px; margin: 0 auto; background: var(--page); border-radius: 8px; overflow: hidden; }
+.mini-detail .band { background: var(--teal); color: #fff; padding: 12px 20px; font-weight: 700; display: flex; gap: 8px; align-items: center; }
+.mini-detail .band .keychip { font: 600 12px var(--mono); color: #000; background: #fff; border-radius: 4px; padding: 2px 8px; }
+.mini-detail .band .x { margin-left: auto; background: none; border: none; color: #fff; font-size: 20px; padding: 0 4px; }
+.mini-detail .lines { padding: 12px 20px; color: var(--muted); }
+.mini-detail .foot { display: flex; gap: 8px; justify-content: flex-end; padding: 10px 20px; border-top: 1px solid var(--line); background: #fff; }
+.dim dialog { position: static; display: block; margin: -28px auto 0; box-shadow: 0 8px 24px rgba(9,30,40,.5); }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; }
+.th-demo { display: flex; gap: 28px; flex-wrap: wrap; }
+.th-demo table { width: auto; min-width: 0; }
+.cap-small { font-size: 11px; color: var(--muted); margin: 4px 0 0; }
+
+</style>
+</head>
+<body>
+<div class="doc-head">
+<h1>Topbar option A: light field with visible label</h1>
+<p>Mockup for <code>docs/specs/global-project-scope.md</code>. <strong>Option A (recommended).</strong> A white select with a small visible "Project" label sits right of the brand; the sub-navigation stays in the page. Same frame numbers in all three topbar files. Open straight from disk; no scripts. Open lists are drawn (the real list is the operating system's); focus is drawn with <code>.is-focus</code>.</p>
+</div>
+<section class="frame" aria-labelledby="f1">
+<h2 class="frame-h" id="f1"><span class="fn">1</span>Closed, on the Board</h2>
+<p class="frame-ac">Scope AC 1, 3, 4, 13</p>
+<div class="stage">
+<div><header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="ps1">Project</label><select id="ps1" class="project-select"><option selected>PM - Pipeline Tracker</option><option>SFPM - Platform Migration</option><option>WEB - Website Refresh</option></select></div><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header>
+<main class="page">
+<nav class="subnav" aria-label="Project pages"><a href="#" aria-current="page">Board</a><a href="#">Backlog</a><a href="#">Sprints</a></nav>
+<section class="toolbar"><h1>Board</h1></section>
+<div class="skeleton">(page content as today)</div>
+</main></div>
+</div>
+<p class="anno">Selected option is the current project. Option text is <code>KEY - name</code>. Order is the server order.</p>
+</section>
+<section class="frame" aria-labelledby="f2">
+<h2 class="frame-h" id="f2"><span class="fn">2</span>Keyboard focus on the dropdown</h2>
+<p class="frame-ac">Scope AC 5</p>
+<div class="stage">
+<div><header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="ps2">Project</label><select id="ps2" class="project-select is-focus"><option selected>PM - Pipeline Tracker</option><option>SFPM - Platform Migration</option><option>WEB - Website Refresh</option></select></div><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header>
+<main class="page">
+<nav class="subnav" aria-label="Project pages"><a href="#" aria-current="page">Board</a><a href="#">Backlog</a><a href="#">Sprints</a></nav>
+<section class="toolbar"><h1>Board</h1></section>
+<div class="skeleton">(page content as today)</div>
+</main></div>
+</div>
+<p class="anno">Reached by Tab from the brand (A, B) and before the nav links (C). Gold 2px ring on the teal bar (existing <code>.topbar :focus-visible</code>). Arrow keys change the value; the change navigates.</p>
+</section>
+<section class="frame" aria-labelledby="f3">
+<h2 class="frame-h" id="f3"><span class="fn">3</span>Open</h2>
+<p class="frame-ac">Scope AC 3, 5</p>
+<div class="stage tall">
+<div><header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="ps3">Project</label><select id="ps3" class="project-select is-focus"><option selected>PM - Pipeline Tracker</option><option>SFPM - Platform Migration</option><option>WEB - Website Refresh</option></select><div class="fake-list" aria-hidden="true"><div>PM - Pipeline Tracker</div><div class="hi">SFPM - Platform Migration</div><div>WEB - Website Refresh</div><div class="cap">drawn approximation of the operating system list</div></div></div><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header>
+<main class="page">
+<nav class="subnav" aria-label="Project pages"><a href="#" aria-current="page">Board</a><a href="#">Backlog</a><a href="#">Sprints</a></nav>
+<section class="toolbar"><h1>Board</h1></section>
+<div class="skeleton">(page content as today)</div>
+</main></div>
+</div>
+<p class="anno">Only live projects. No archived entries, no search, no "Show archived".</p>
+</section>
+<section class="frame" aria-labelledby="f4">
+<h2 class="frame-h" id="f4"><span class="fn">4</span>Archived project opened by URL: extra last option</h2>
+<p class="frame-ac">Scope AC 3a, 19; Sprints AC 25</p>
+<div class="stage">
+<div><header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="ps4">Project</label><select id="ps4" class="project-select"><option>PM - Pipeline Tracker</option><option>SFPM - Platform Migration</option><option>WEB - Website Refresh</option><option selected>OLD - Legacy Intake (archived)</option></select></div><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header>
+<main class="page">
+<nav class="subnav" aria-label="Project pages"><a href="#" aria-current="page">Board</a><a href="#">Backlog</a><a href="#">Sprints</a></nav>
+<section class="toolbar"><h1>Board</h1><span class="badge archived">Archived (read-only)</span></section>
+<div class="skeleton">(page content as today)</div>
+</main></div>
+</div>
+<p class="anno">The extra option <code>OLD - Legacy Intake (archived)</code> is last and selected. Page shows the existing Archived badge. Once another project is picked the option is gone (next frame).</p>
+</section>
+<section class="frame" aria-labelledby="f5">
+<h2 class="frame-h" id="f5"><span class="fn">5</span>Archived extra option, list open</h2>
+<p class="frame-ac">Scope AC 3a</p>
+<div class="stage tall">
+<div><header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="ps5">Project</label><select id="ps5" class="project-select"><option>PM - Pipeline Tracker</option><option>SFPM - Platform Migration</option><option>WEB - Website Refresh</option><option selected>OLD - Legacy Intake (archived)</option></select><div class="fake-list" aria-hidden="true"><div>PM - Pipeline Tracker</div><div>SFPM - Platform Migration</div><div>WEB - Website Refresh</div><div class="hi">OLD - Legacy Intake (archived)</div><div class="cap">drawn approximation of the operating system list</div></div></div><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header>
+<main class="page">
+<nav class="subnav" aria-label="Project pages"><a href="#" aria-current="page">Board</a><a href="#">Backlog</a><a href="#">Sprints</a></nav>
+<section class="toolbar"><h1>Board</h1><span class="badge archived">Archived (read-only)</span></section>
+<div class="skeleton">(page content as today)</div>
+</main></div>
+</div>
+
+</section>
+<section class="frame" aria-labelledby="f6">
+<h2 class="frame-h" id="f6"><span class="fn">6</span>No active projects</h2>
+<p class="frame-ac">Scope AC 9c</p>
+<div class="stage">
+<div><header class="topbar"><a class="brand" href="#">Projects</a><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header><main class="page"><div class="empty" role="status"><p style="margin:0 0 8px"><strong>No active projects.</strong></p><a href="#">Go to the Projects page</a></div></main></div>
+</div>
+<p class="anno">No dropdown, no sub-navigation (there is no project). The link goes to <code>/</code>.</p>
+</section>
+<section class="frame" aria-labelledby="f7">
+<h2 class="frame-h" id="f7"><span class="fn">7</span>Project not found</h2>
+<p class="frame-ac">Scope AC 10</p>
+<div class="stage">
+<div><header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="ps7">Project</label><select id="ps7" class="project-select"><option value="" disabled selected hidden>Choose a project</option><option>PM - Pipeline Tracker</option><option>SFPM - Platform Migration</option><option>WEB - Website Refresh</option></select></div><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header>
+<main class="page">
+
+<section class="toolbar"><h1>Board</h1></section>
+<div class="empty"><p role="alert" style="margin:0 0 8px"><strong>Project not found.</strong></p><a href="#">Go to the Projects page</a></div>
+</main></div>
+</div>
+<p class="anno">Dropdown still lists the projects; it shows a disabled placeholder <code>Choose a project</code> (new, shown only in this state) because no option is current. The Board / Backlog / Sprints links are not rendered, because they would have no project to carry.</p>
+</section>
+<section class="frame" aria-labelledby="f8">
+<h2 class="frame-h" id="f8"><span class="fn">8</span>Project list failed to load</h2>
+<p class="frame-ac">Scope AC 6</p>
+<div class="stage">
+<div><header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="ps8">Project</label><select id="ps8" class="project-select"><option selected>SFPM - Platform Migration</option></select></div><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header>
+<main class="page">
+<nav class="subnav" aria-label="Project pages"><a href="#" aria-current="page">Board</a><a href="#">Backlog</a><a href="#">Sprints</a></nav>
+<section class="toolbar"><h1>Board</h1></section>
+<div class="message" role="alert">Could not load the project list. Showing the current project only.</div><div class="skeleton">(page content as today)</div>
+</main></div>
+</div>
+<p class="anno">Dropdown shows the current project only; the error uses the existing <code>.message</code> area; the page keeps working.</p>
+</section>
+<section class="frame" aria-labelledby="f9">
+<h2 class="frame-h" id="f9"><span class="fn">9</span>Long and hostile project names</h2>
+<p class="frame-ac">Scope AC 3</p>
+<div class="stage tall">
+<div><header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="ps9">Project</label><select id="ps9" class="project-select"><option>PM - Pipeline Tracker</option><option>X1 - &lt;img src=x onerror=alert(1)&gt; &amp; &quot;Q3&quot; &lt;b&gt;bold&lt;/b&gt;</option><option selected>LONG - Enterprise-wide cross-agency platform consolidation and records modernisation programme, phase two (remaining workstreams)</option></select><div class="fake-list" aria-hidden="true"><div>PM - Pipeline Tracker</div><div class="hi">X1 - &lt;img src=x onerror=alert(1)&gt; &amp; &quot;Q3&quot; &lt;b&gt;bold&lt;/b&gt;</div><div>LONG - Enterprise-wide cross-agency platform consolidation and records modernisation programme, phase two (remaining workstreams)</div><div class="cap">drawn approximation of the operating system list</div></div></div><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header>
+<main class="page">
+<nav class="subnav" aria-label="Project pages"><a href="#" aria-current="page">Board</a><a href="#">Backlog</a><a href="#">Sprints</a></nav>
+<section class="toolbar"><h1>Board</h1></section>
+<div class="skeleton">(page content as today)</div>
+</main></div>
+</div>
+<p class="anno">Select is capped at 340px and clips with an ellipsis; the open list wraps. Markup and quotes are shown literally (inserted as text).</p>
+</section>
+<section class="frame" aria-labelledby="f10">
+<h2 class="frame-h" id="f10"><span class="fn">10</span>Narrow window (380px frame; real rule is a max-width: 600px media query)</h2>
+<p class="frame-ac">Scope AC 1 (responsive)</p>
+<div class="stage">
+<div class="narrow"><header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="ps10">Project</label><select id="ps10" class="project-select"><option>PM - Pipeline Tracker</option><option>X1 - &lt;img src=x onerror=alert(1)&gt; &amp; &quot;Q3&quot; &lt;b&gt;bold&lt;/b&gt;</option><option selected>LONG - Enterprise-wide cross-agency platform consolidation and records modernisation programme, phase two (remaining workstreams)</option></select></div><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header>
+<main class="page">
+<nav class="subnav" aria-label="Project pages"><a href="#" aria-current="page">Board</a><a href="#">Backlog</a><a href="#">Sprints</a></nav>
+<section class="toolbar"><h1>Board</h1></section>
+<div class="skeleton">(page content as today)</div>
+</main></div>
+</div>
+<p class="anno">The bar wraps: brand and session on row one, the dropdown full width on row two; the sub-navigation stays in the page.</p>
+</section>
+<section class="frame" aria-labelledby="f11">
+<h2 class="frame-h" id="f11"><span class="fn">11</span>Viewer</h2>
+<p class="frame-ac">Scope AC 6</p>
+<div class="stage">
+<div><header class="topbar"><a class="brand" href="#">Projects</a><div class="project-scope"><label for="ps11">Project</label><select id="ps11" class="project-select"><option selected>PM - Pipeline Tracker</option><option>SFPM - Platform Migration</option><option>WEB - Website Refresh</option></select></div><div class="session"><span>Vic Viewer</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header>
+<main class="page">
+<nav class="subnav" aria-label="Project pages"><a href="#" aria-current="page">Board</a><a href="#">Backlog</a><a href="#">Sprints</a></nav>
+<section class="toolbar"><h1>Board</h1></section>
+<div class="skeleton">(page content as today)</div>
+</main></div>
+</div>
+<p class="anno">Identical to frame 1: the dropdown is not permission-gated. Signed-in users without the Users permission see no Users link (existing behaviour).</p>
+</section>
+<section class="frame" aria-labelledby="f12">
+<h2 class="frame-h" id="f12"><span class="fn">12</span>Pages without the dropdown: Projects, Users, sign-in</h2>
+<p class="frame-ac">Scope AC 16, 17, 18</p>
+<div class="stage">
+<div><header class="topbar"><a class="brand" href="#">Projects</a><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header><main class="page" style="padding:10px 20px"><p class="hint">Projects list (index.html): unchanged.</p></main></div><div style="margin-top:12px"><header class="topbar"><a class="brand" href="#">Projects</a><span class="crumb">/ Users</span><div class="session"><span>Dana Lee</span><a class="nav-link" href="#">Users</a><button type="button">Sign out</button></div></header><main class="page" style="padding:10px 20px"><p class="hint">Users (users.html): unchanged, keeps its "/ Users" crumb.</p></main></div><div style="margin-top:12px"><header class="topbar"><span class="brand">Projects</span></header><main class="page" style="padding:10px 20px"><p class="hint">Sign-in (login.html): unchanged.</p></main></div>
+</div>
+<p class="anno">The brand link "Projects" goes to <code>/</code> and carries nothing (Scope AC 13). Opening <code>/</code> never redirects.</p>
+</section>
+</body>
+</html>

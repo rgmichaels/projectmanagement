@@ -45,13 +45,45 @@ Only the author may edit or delete a message, and only the uploader may delete a
 
 **Adding or changing a group:** edit `GROUPS` in `server/groups.js` (the only file that names groups and their permissions: `write`, `delete-item`, `manage-projects`, `manage-users`) and restart. The client only uses the permission list from `/api/auth/me`.
 
-## Tests
+## Project navigation
+
+The top bar of Board, Backlog, Sprints and Test Cases has a **Project** dropdown (`public/js/projectScope.js`, spec `docs/specs/global-project-scope.md`) listing the live projects as `KEY - name`. Picking one reloads the same page for that project (other query parameters such as `?sprint=` are dropped), and the Board / Backlog / Sprints / Test Cases links always carry `?project=<id>`. The URL is the source of truth; the last live project is remembered in this browser (`localStorage` key `pm.project`), so opening a project page without `?project=` lands in it (else the first live project; with none, "No active projects."). A bad or unknown id shows "Project not found.". `/` stays the Projects list. Archived projects are not listed, but one opened by URL works read-only and shows as an extra "(archived)" option. Closing the work item dialog (X, Close, Escape), re-pointing it, or switching project with unsaved fields or an unposted message asks first ("Discard changes?"); leaving the page then gets the browser's own prompt.
+
+Users with the `manage-projects` permission also see **New project...** as the last option of the dropdown (spec `docs/specs/new-project-from-dropdown.md`), also on the "No active projects." and "Project not found." pages. It opens a "Create project" dialog (Name, Key, Status) over the current page; creating goes to the same page for the new project, and Cancel or Escape puts the dropdown back.
+
+## Sprints screen
+
+**Sprints** (`sprints.html`, beside Board and Backlog; spec `docs/specs/sprints-screen.md`) shows one sprint at a time: a **Sprint** dropdown with every sprint of the project as `name (state)` (completed ones included), the sprint's state, dates, counts, overdue badge and goal, and a read-only table of its work items (Key, Title, Type, Epic, Priority, Status, Assignee, Estimate, Logged). It opens on the active sprint, else the next planned one, else the most recently completed one (with a note saying why). The choice is in the URL as `?sprint=<id>` (Back returns to the previous sprint); an unknown id falls back with "Sprint not found; showing ... instead.". Click a column heading to sort, again to reverse; ties keep sprint order, and **Reset sort** returns to it. The sort is not remembered. Key or Title opens the work item dialog; sprint management stays on the Backlog. The pure logic (`defaultSprint`, `resolveSprintParam`, `sortRows`) is in `public/js/sprintView.js` and unit tested in `tests/sprintView.test.js`.
+
+## Test case manager
+
+Open **Test Cases** beside Board and Backlog to manage the project's reusable manual test cases. Each case has a key such as `PM-TC-1`, a title, preconditions, and ordered action/expected-result steps. Search the library or filter Active/Archived/All. Cases can exist without tickets; archive and restore them to control which ones can be added or executed.
+
+Opening an existing case shows a read-only detail view with formatted preconditions, numbered steps, and creation/update information. Choose **Edit** to open its editor. Saving updates the detail view; closing the editor leaves the detail view open. New cases open directly in the creation form.
+
+Open a saved ticket's **Test Cases** tab to **Add existing** cases or **Create test case** directly into its library and ticket. Cases can be reused across tickets within the same project. **Record result** saves Pass, Fail, Blocked or Not Run with notes, tester and time. **Execution history** retains the exact definition tested. Editing a definition flags older results as needing retest, and results on one ticket do not affect another.
+
+Removing a ticket link preserves previous results; re-adding it exposes them again. A case's detail lists both current and previous ticket links, with access to their execution history. Deleting a ticket deletes its links/results while keeping the library case. Test actions save independently of unsaved ticket edits. Members and Admins can write; Viewers and archived projects are read-only.
+
+Restart the server after updating to load the new routes and additive SQLite tables. Existing projects begin with empty test libraries. No manual database reset is required. Spec: `docs/specs/test-case-manager.md`; verification: `docs/qa/test-case-manager.md`.
+
+## Time tracking and estimates
+
+Every work item except an epic has an optional **Estimate** (the original estimate, in hours) in the dialog's properties beside Sprint, and in the create form; it is saved with Save like any field, changes appear in History ("Estimate 8 to 12"), and Viewers and archived projects see it read-only. The Backlog lists have an **Est. (h)** column: type a value and press Enter or leave the field to save it (Escape restores it), so a whole sprint can be estimated without opening each item.
+
+The dialog's **Time** tab (not for epics) shows the estimate, the hours logged and what remains (or how far over it is), a **Log time** form (Hours in quarter hours from 0.25 to 24, a Date that is not in the future, an optional note) and the entries, newest work date first. Anyone who can edit work items can log time on any item, also in a completed sprint; only the person who logged an entry can edit or delete it (Admins included). Time entries save on their own buttons and are not part of Save; an edited entry shows "edited". Logging, editing and deleting an entry each appear in History ("logged 1.5 h on 2026-10-28: note", "changed Time entry from 1.5 h on 2026-10-28 to 2 h on 2026-10-28", "deleted time entry 1.5 h on 2026-10-28"), and the History filter has a **Time entry** option.
+
+Each sprint shows its hours logged against hours estimated, for example `12 h logged / 20 h est.`, on the Board's sprint bar, the Sprints page summary and the Backlog sprint headers (the last two add "(n not estimated)"); the totals cover the items now in the sprint. The Sprints table has Estimate and Logged columns. Spec: `docs/specs/time-tracking.md`.
+
+API: `GET|POST /api/issues/:id/time` (POST body `{ hours, date?, note? }`; GET returns `{ entries, total_hours }`), `PATCH|DELETE /api/time/:id`. Work items carry `estimate_hours` (set it with `estimate_hours` on create or `PATCH /api/issues/:id`; null or empty clears it), `time_spent_hours` and, for non-epics, `remaining_hours`; sprints carry `time_spent_hours`, `estimate_hours` and `unestimated_count`. Restart the server after updating: the `time_entries` table and `issues.estimate_minutes` column are added on start.
+
+## Running tests
 
 ```sh
 npm test
 ```
 
-Tests use the built-in `node:test` runner against the API, each with its own temporary database and a scratch attachment directory (never `data/files/`). The test client in `tests/helpers.js` is signed in as `alex`; `app.client(username)` gives a second, independent signed-in client and `app.raw(...)` sends requests with no cookie. `public/js/time.js` (Discussion and History timestamps), `public/js/historyFormat.js` (History lines), `public/js/richText.js` (comment and description rendering) and `public/js/redirect.js` (the sign-in `next` rule) are also unit tested directly. There are no browser (UI) tests.
+Tests use the built-in `node:test` runner against the API, each with its own temporary database and a scratch attachment directory (never `data/files/`). The test client in `tests/helpers.js` is signed in as `alex`; `app.client(username)` gives a second, independent signed-in client and `app.raw(...)` sends requests with no cookie. `public/js/time.js` (Discussion and History timestamps, and the hours and sprint figure texts), `public/js/historyFormat.js` (History lines), `public/js/richText.js` (comment and description rendering) and `public/js/redirect.js` (the sign-in `next` rule) are also unit tested directly. There are no browser (UI) tests.
 
 ## Stack
 
@@ -81,7 +113,7 @@ The board toolbar has a search box (key, title or description, ignoring case) an
 
 ## Discussion
 
-The work item dialog has a dark header band (key, epic link, title), a status track you click to change status, the properties and description, then one tab bar: Children (epics only), Discussion, History, Links and Attachments, each with a count. Open a work item to see its Discussion tab: post plain-text messages (newest first) as the signed-in user, and edit or delete your own; the server refuses changes to other people's messages (403). Cards show each item's message count. The detail view also shows the work item's Reporter (who created it; empty for items created before sign-in existed). Archived projects show discussions read-only.
+The work item dialog has a dark header band (key, epic link, title), a status track you click to change status, the properties and description, then one tab bar: Children (epics only), Discussion, History, Links, Time (not for epics), Test Cases and Attachments, each with a count. Open a work item to see its Discussion tab: post plain-text messages (newest first) as the signed-in user, and edit or delete your own; the server refuses changes to other people's messages (403). Cards show each item's message count. The detail view also shows the work item's Reporter (who created it; empty for items created before sign-in existed). Archived projects show discussions read-only.
 
 ## Resolution
 
@@ -122,5 +154,11 @@ Paste a screenshot (Ctrl/Cmd+V) into the Discussion box, a message being edited,
 Limits: 10 MB per file, 25 files per work item. Allowed: png, jpg/jpeg, gif, webp (previewable images), pdf, txt, md, csv, log, docx, xlsx, pptx, zip. SVG, HTML, JavaScript and executables are refused, and an image whose bytes do not match its extension is refused. Only the uploader may delete an attachment. Adding and removing appear in History ("added attachment ...", "removed attachment ..."). Deleting a work item deletes its attachments and their files.
 
 API: `GET /api/attachment-types` (types and limits), `GET|POST /api/issues/:id/attachments` (POST body: the raw file bytes, header `X-Filename`: the URL-encoded file name), `GET /api/attachments/:id` (details), `GET /api/attachments/:id/download`, `GET /api/attachments/:id/preview` (images only), `DELETE /api/attachments/:id`. To allow a new type, add an entry to `server/attachmentTypes.js` and restart.
+
+## Sprints and backlog
+
+Each project has a **Backlog** page (the Board / Backlog links under the top bar). It lists the active sprint, then planned sprints, then the Backlog (work items in no sprint), then read-only Epics, Completed sprints and Sprint history sections. Drag rows to reorder them or to move them between the backlog and any open sprint; the quick-create row at the bottom of each list adds an item there. Sprints are created (name prefilled as the next "Sprint n"), edited, started (one active sprint per project) and completed from their headers; completing asks where unfinished items go: to the top of the backlog, to the bottom of a planned sprint, or to a new sprint created on the spot. Done items stay in the completed sprint. The work item dialog has a **Sprint** field (keyboard alternative to dragging). To move many items at once, tick their checkboxes in the Backlog section and use **Move to [sprint]** in the Backlog header (one `PATCH` per item, best effort, in Backlog order; moving 10 or more into the active sprint asks first). The board shows only the active sprint's items (epics are never cards) with the sprint's name, goal and dates, warns when the sprint is past its end date, and shows an empty state when no sprint is active (new items then go to the backlog). Viewers and archived projects are read-only. Existing databases are migrated once: each project's non-epic items go into an Active `Sprint 1` (Completed for archived projects).
+
+API: `GET /api/sprint-states`, `GET /api/sprint-event-kinds`, `GET|POST /api/projects/:id/sprints`, `GET /api/projects/:id/sprints/next-name`, `PATCH|DELETE /api/sprints/:id`, `POST /api/sprints/:id/start`, `POST /api/sprints/:id/complete` (body `{ disposition: 'backlog' | 'next-sprint' | 'new-sprint', next_sprint_id?, new_sprint_name? }`), `GET /api/projects/:id/sprint-history?limit=&before=`, and `GET /api/projects/:id/issues?sprint=backlog|active|<id>`. Items carry `sprint_id` and `sprint_rank`, both settable through `PATCH /api/issues/:id`. Sprint states live in `server/sprintStates.js`, sprint event kinds and tracked fields in `server/sprintEvents.js`.
 
 See `CLAUDE.md` for how the AI dev team (product manager, developer, QA) builds this.

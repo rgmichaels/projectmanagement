@@ -1,0 +1,10 @@
+/* OPTION B: light chrome, teal only as accent */
+.topbar{background:#fff;color:var(--teal);padding:10px 20px;display:flex;gap:10px;align-items:center;border-bottom:3px solid var(--teal)}
+.topbar .brand{color:var(--teal);font-weight:700;text-decoration:none;font-size:15px}
+.topbar .crumb{color:var(--muted)}
+.topbar .nav-link{color:var(--linkblue);font-weight:700}
+.topbar .session{margin-left:auto;display:flex;align-items:center;gap:12px;color:var(--ink)}
+.topbar .session button{padding:3px 10px}
+.column{background:#fff;border:1px solid var(--line);border-radius:8px}
+.col-header{background:var(--teal-soft);border-radius:8px;margin-bottom:6px}
+.login h1{margin-bottom:12px}

@@ -1,0 +1,117 @@
+/* ===== Time tracking and estimates (docs/specs/time-tracking.md; design time-tracking, STYLE.md part 7) =====
+   Only existing tokens. Contrast: --danger on white 5.9:1, on --teal-soft 5.2:1; --muted on white 5.9:1;
+   --teal-mid is used only as a border (3.0:1 against white) and never as text. */
+
+/* ---- Sprint figure: "12 h logged / 20 h est." (Board bar, Sprints summary, Backlog sprint headers) ---- */
+.sprint-fig { display: inline-block; font-size: 13px; font-weight: 700; color: var(--ink); background: var(--surface); border: 1px solid var(--teal-mid); border-radius: 4px; padding: 1px 8px; white-space: nowrap; }
+.sprint-fig .fig-note { font-weight: 400; color: var(--muted); }
+.sprint-fig.is-over { border-color: var(--danger); color: var(--danger); }
+.sprint-fig.is-over .fig-note { color: var(--danger); }
+
+/* ---- Estimate field in the dialog's Properties grid (sits right of Sprint) ---- */
+dialog#detail .props > .est-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; }
+dialog#detail .props > .est-field[hidden] { display: none; }
+dialog#detail .est-input { display: flex; align-items: center; gap: 6px; }
+dialog#detail .est-input input { width: 100%; max-width: 120px; }
+dialog#detail .est-unit { font-size: 13px; font-weight: 700; }
+dialog#detail .est-field .hint, dialog#detail .est-field .error { margin: 0; }
+dialog#detail .est-ro { margin: 0; font-size: 14px; background: var(--teal-soft); border: 1px solid var(--navy); border-radius: 4px; padding: 6px 8px; overflow-wrap: anywhere; }
+dialog#detail .est-ro.none { color: var(--ink); font-style: italic; }
+dialog#detail .props input[aria-invalid="true"] { border: 2px solid var(--danger); }
+
+/* ---- Time tab: summary, form, entries ---- */
+dialog#detail .time-sum { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+dialog#detail .time-sum.is-over { border-left: 6px solid var(--danger); }
+dialog#detail .time-sum dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 14px; margin: 0; }
+dialog#detail .time-sum dt { font-size: 12px; font-weight: 700; color: var(--muted); }
+dialog#detail .time-sum dd { margin: 2px 0 0; font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+dialog#detail .time-sum dd.none { font-size: 14px; font-weight: 400; color: var(--muted); }
+dialog#detail .time-sum dd.bal-over { color: var(--danger); }
+dialog#detail .time-bar { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+dialog#detail .time-bar .progress-bar { background: var(--teal-soft); border: 1px solid var(--teal-mid); height: 10px; }
+dialog#detail .time-bar .progress-fill { background: var(--teal); transition: none; }
+dialog#detail .time-bar.is-over .progress-fill { background: var(--danger); }
+dialog#detail .time-bar-text { font-size: 12px; color: var(--muted); white-space: nowrap; }
+dialog#detail .time-h { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--teal); }
+dialog#detail .time-form { display: grid; grid-template-columns: 96px 150px minmax(0, 1fr) auto; gap: 8px 10px; align-items: end; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+dialog#detail .time-form > .time-h, dialog#detail .time-form > .hint, dialog#detail .time-form > .error { grid-column: 1 / -1; margin: 0; }
+dialog#detail .time-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; }
+dialog#detail .time-form input { width: 100%; }
+dialog#detail .time-list-head { display: flex; align-items: baseline; gap: 8px; margin: 14px 0 4px; }
+dialog#detail .time-list-head .time-h { margin: 0; }
+dialog#detail .time-list-head .hint { margin: 0; }
+dialog#detail .time-list { list-style: none; margin: 0; padding: 0; }
+dialog#detail .time-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 8px 0; border-top: 1px solid var(--line2); }
+dialog#detail .time-item:first-child { border-top: none; }
+dialog#detail .time-main { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
+dialog#detail .time-who { font-weight: 700; overflow-wrap: anywhere; }
+dialog#detail .time-hours { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+dialog#detail .time-date { font: 12px var(--mono); white-space: nowrap; }
+dialog#detail .time-when { font-size: 12px; color: var(--muted); }
+dialog#detail .time-edited { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; padding: 0 6px; white-space: nowrap; }
+dialog#detail .time-note { grid-column: 1 / -1; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+dialog#detail .time-actions { display: flex; gap: 12px; align-self: start; }
+dialog#detail .time-item.is-editing { display: block; background: var(--teal-soft); border: 1px solid var(--teal-mid); border-radius: 4px; padding: 10px; margin: 4px 0; }
+dialog#detail .time-item.is-editing .time-form { margin: 0; padding: 0; border: none; grid-template-columns: 96px 150px minmax(0, 1fr); }
+dialog#detail .time-item.is-editing .time-edit-actions { grid-column: 1 / -1; display: flex; gap: 8px; }
+dialog#detail .time-empty { margin: 4px 0; color: var(--muted); }
+dialog#detail .time-loading { margin: 4px 0; color: var(--muted); }
+dialog#detail .time-load-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border: 1px solid var(--danger); border-left-width: 6px; border-radius: 4px; background: #fff; padding: 8px 12px; }
+dialog#detail .time-load-error strong { color: var(--danger); }
+
+/* ---- Option B only: summary strip under the Properties grid, visible on every tab ---- */
+dialog#detail .time-strip { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; background: #fff; border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; font-size: 13px; }
+dialog#detail .time-strip strong { font-weight: 700; }
+dialog#detail .time-strip.is-over { border-left: 6px solid var(--danger); }
+dialog#detail .time-strip .over { color: var(--danger); font-weight: 700; }
+dialog#detail .time-strip button.link { margin-left: auto; }
+
+/* ---- Option C only: Time as a collapsible section instead of a tab ---- */
+dialog#detail details.time-sec { background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+dialog#detail details.time-sec > summary { list-style: none; cursor: pointer; padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; font-weight: 700; }
+dialog#detail details.time-sec > summary::-webkit-details-marker { display: none; }
+dialog#detail details.time-sec > summary::before { content: "\25B8"; color: var(--teal); }
+dialog#detail details.time-sec[open] > summary::before { content: "\25BE"; }
+dialog#detail details.time-sec > .time-sec-body { padding: 0 12px 12px; }
+
+/* ---- Tab bar fit (recommended with the seventh tab): tighter tabs, still scrolls as a safety net ---- */
+dialog#detail .tabs.tight { gap: 0; }
+dialog#detail .tabs.tight .tab { padding: 7px 7px; }
+dialog#detail .tabs.tight .tab .n { margin-left: 4px; padding: 0 5px; }
+
+/* ---- Backlog Estimate column (list view): fixed cell before the avatar, header strip above the rows ---- */
+.brows-head { display: flex; align-items: center; gap: 8px; padding: 4px 12px; background: var(--page); border-bottom: 1px solid var(--line2); font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; }
+.brows-head .grow { flex: 1; }
+.brows-head .est-h { width: 76px; text-align: right; }
+.brows-head .gap-avatar { width: 24px; flex: none; }
+.brow-est { flex: none; width: 76px; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.brow-est input { width: 76px; padding: 3px 6px; text-align: right; border: 1px solid var(--teal-mid); border-radius: 3px; background: #fff; font-variant-numeric: tabular-nums; }
+.brow-est input::placeholder { color: var(--muted); opacity: 1; }
+.brow-est input:hover { border-color: var(--navy); }
+.brow-est input[disabled] { background: var(--teal-soft); color: var(--muted); }
+.brow-est .est-state { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.brow-est .est-ro { padding: 3px 6px; font-variant-numeric: tabular-nums; }
+.brow-est .est-ro.none { color: var(--muted); }
+.brow-est.is-na { visibility: hidden; }
+.brow-error { flex-basis: 100%; margin: 0; padding: 0 0 0 24px; color: var(--danger); font-size: 12px; }
+.brow-error[hidden] { display: none; }
+/* Option B for the Backlog cell: text until clicked */
+.brow-est .est-btn { border: 1px solid transparent; background: none; border-radius: 3px; padding: 3px 6px; width: 76px; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+.brow-est .est-btn:hover { border-color: var(--navy); }
+.brow-est .est-btn .none { color: var(--muted); }
+
+/* ---- Sprints table: Estimate and Logged columns, right aligned ---- */
+table.sprint-table th.num button.sort { justify-content: flex-end; }
+table.sprint-table td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+table.sprint-table.with-time { min-width: 880px; }
+
+@media (max-width: 600px) {
+  dialog#detail .time-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  dialog#detail .time-form > .note-field, dialog#detail .time-form > button { grid-column: 1 / -1; }
+  dialog#detail .time-sum dl { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  dialog#detail .time-item.is-editing .time-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .brows-head { display: none; }
+}
+
+/* The tab bar scrolls sideways only: never show a vertical scrollbar from the -1px tab margin. */
+dialog#detail .tabs { overflow-y: hidden; }

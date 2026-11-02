@@ -19,7 +19,7 @@ const is4xx = (res) => res.status >= 400 && res.status < 500;
 
 async function doneItem(projectId, fields = {}) {
   const item = await createItem(app, projectId, fields);
-  return (await app.patch(`/api/issues/${item.id}`, { status: 'Done' })).body;
+  return (await app.patch(`/api/issues/${item.id}`, { status: 'Complete' })).body;
 }
 
 test('GET /api/resolutions returns the list in order with one default (AC 1)', async () => {
@@ -30,7 +30,7 @@ test('GET /api/resolutions returns the list in order with one default (AC 1)', a
 });
 
 test('the terminal status is the last status (AC 2)', async () => {
-  assert.deepEqual((await app.get('/api/terminal-status')).body, { status: 'Done' });
+  assert.deepEqual((await app.get('/api/terminal-status')).body, { status: 'Complete' });
 });
 
 test('a new work item has no resolution, in GET and list responses (AC 5, 14)', async () => {
@@ -46,7 +46,7 @@ test('a new work item has no resolution, in GET and list responses (AC 5, 14)', 
 test('moving to Done sets the default; moving out clears it (AC 6, 8)', async () => {
   const p = await createProject(app);
   const item = await createItem(app, p.id);
-  const done = await app.patch(`/api/issues/${item.id}`, { status: 'Done' });
+  const done = await app.patch(`/api/issues/${item.id}`, { status: 'Complete' });
   assert.equal(done.status, 200);
   assert.equal(done.body.resolution, 'Fixed', 'PATCH response carries the server-set default');
   assert.equal((await getItem(item.id)).resolution, 'Fixed');
@@ -57,8 +57,8 @@ test('moving to Done sets the default; moving out clears it (AC 6, 8)', async ()
   assert.equal((await getItem(item.id)).resolution, null);
 
   // Explicit null when leaving the terminal status is allowed.
-  await app.patch(`/api/issues/${item.id}`, { status: 'Done' });
-  const reopened = await app.patch(`/api/issues/${item.id}`, { status: 'To Do', resolution: null });
+  await app.patch(`/api/issues/${item.id}`, { status: 'Complete' });
+  const reopened = await app.patch(`/api/issues/${item.id}`, { status: 'Planning', resolution: null });
   assert.equal(reopened.status, 200);
   assert.equal(reopened.body.resolution, null);
 });
@@ -66,7 +66,7 @@ test('moving to Done sets the default; moving out clears it (AC 6, 8)', async ()
 test('a supplied valid resolution is stored instead of the default (AC 7)', async () => {
   const p = await createProject(app);
   const item = await createItem(app, p.id);
-  const res = await app.patch(`/api/issues/${item.id}`, { status: 'Done', resolution: 'Duplicate' });
+  const res = await app.patch(`/api/issues/${item.id}`, { status: 'Complete', resolution: 'Duplicate' });
   assert.equal(res.status, 200);
   assert.equal(res.body.resolution, 'Duplicate');
   assert.equal((await getItem(item.id)).resolution, 'Duplicate');
@@ -88,15 +88,15 @@ test('updates that keep the item in Done keep its resolution (AC 9)', async () =
   await app.patch(`/api/issues/${item.id}`, { resolution: 'Cannot Reproduce' });
 
   // Other fields edited, with status sent unchanged (as the detail form does).
-  await app.patch(`/api/issues/${item.id}`, { title: 'renamed', status: 'Done', priority: 'High' });
+  await app.patch(`/api/issues/${item.id}`, { title: 'renamed', status: 'Complete', priority: 'High' });
   assert.equal((await getItem(item.id)).resolution, 'Cannot Reproduce');
   // Reorder within the Done column.
-  await app.patch(`/api/issues/${item.id}`, { status: 'Done', rank: other.rank - 1 });
+  await app.patch(`/api/issues/${item.id}`, { status: 'Complete', rank: other.rank - 1 });
   // Lane change while staying in Done.
-  await app.patch(`/api/issues/${item.id}`, { status: 'Done', assignee_id: users[0].id });
-  await app.patch(`/api/issues/${item.id}`, { status: 'Done', priority: 'Lowest' });
+  await app.patch(`/api/issues/${item.id}`, { status: 'Complete', assignee_id: users[0].id });
+  await app.patch(`/api/issues/${item.id}`, { status: 'Complete', priority: 'Lowest' });
   // Moving to Done when already Done.
-  await app.patch(`/api/issues/${item.id}`, { status: 'Done' });
+  await app.patch(`/api/issues/${item.id}`, { status: 'Complete' });
 
   const saved = await getItem(item.id);
   assert.equal(saved.resolution, 'Cannot Reproduce');
@@ -112,7 +112,7 @@ test('an unknown resolution is rejected and the item is unchanged (AC 12)', asyn
     const a = await app.patch(`/api/issues/${done.id}`, { resolution, title: 'changed' });
     assert.ok(is4xx(a), `resolution ${JSON.stringify(resolution)}`);
     assert.match(a.body.error, /resolution/i);
-    const b = await app.patch(`/api/issues/${todo.id}`, { status: 'Done', resolution });
+    const b = await app.patch(`/api/issues/${todo.id}`, { status: 'Complete', resolution });
     assert.ok(is4xx(b));
   }
   assert.deepEqual(await getItem(done.id), done);
@@ -126,11 +126,11 @@ test('resolution on a non-terminal item, or null on a terminal one, is rejected 
 
   let res = await app.patch(`/api/issues/${todo.id}`, { resolution: 'Fixed' });
   assert.ok(is4xx(res));
-  res = await app.patch(`/api/issues/${done.id}`, { status: 'To Do', resolution: 'Fixed' });
+  res = await app.patch(`/api/issues/${done.id}`, { status: 'Planning', resolution: 'Fixed' });
   assert.ok(is4xx(res));
   res = await app.patch(`/api/issues/${done.id}`, { resolution: null });
   assert.ok(is4xx(res));
-  res = await app.patch(`/api/issues/${todo.id}`, { status: 'Done', resolution: null });
+  res = await app.patch(`/api/issues/${todo.id}`, { status: 'Complete', resolution: null });
   assert.ok(is4xx(res));
   // A new item never starts with a resolution.
   res = await app.post(`/api/projects/${p.id}/issues`, { title: 'x', resolution: 'Fixed' });
@@ -148,22 +148,22 @@ test('a cross-lane drop into Done sets the default in the same update (AC 19)', 
   const b = await createItem(app, p.id);
   const c = await createItem(app, p.id, { priority: 'Low' });
 
-  let res = await app.patch(`/api/issues/${a.id}`, { status: 'Done', rank: 1000, assignee_id: users[1].id });
+  let res = await app.patch(`/api/issues/${a.id}`, { status: 'Complete', rank: 1000, assignee_id: users[1].id });
   assert.equal(res.status, 200);
   assert.equal(res.body.resolution, 'Fixed');
   assert.equal(res.body.assignee_id, users[1].id);
 
-  res = await app.patch(`/api/issues/${b.id}`, { status: 'Done', rank: 2000, epic_id: epic.id });
+  res = await app.patch(`/api/issues/${b.id}`, { status: 'Complete', rank: 2000, epic_id: epic.id });
   assert.equal(res.body.resolution, 'Fixed');
   assert.equal(res.body.epic_id, epic.id);
 
-  res = await app.patch(`/api/issues/${c.id}`, { status: 'Done', rank: 3000, priority: 'Highest' });
+  res = await app.patch(`/api/issues/${c.id}`, { status: 'Complete', rank: 3000, priority: 'Highest' });
   assert.equal(res.body.resolution, 'Fixed');
   assert.equal(res.body.priority, 'Highest');
 
   // A failed cross-lane drop (bad lane value) changes nothing.
   const before = await getItem(epic.id);
-  res = await app.patch(`/api/issues/${epic.id}`, { status: 'Done', assignee_id: 9999 });
+  res = await app.patch(`/api/issues/${epic.id}`, { status: 'Complete', assignee_id: 9999 });
   assert.ok(is4xx(res));
   assert.deepEqual(await getItem(epic.id), before);
 });
@@ -172,7 +172,7 @@ test('a rejected epic-into-epic-lane drop changes nothing, including resolution 
   const p = await createProject(app);
   const epicA = await createItem(app, p.id, { type: 'Epic' });
   const epicB = await createItem(app, p.id, { type: 'Epic' });
-  const res = await app.patch(`/api/issues/${epicB.id}`, { status: 'Done', epic_id: epicA.id });
+  const res = await app.patch(`/api/issues/${epicB.id}`, { status: 'Complete', epic_id: epicA.id });
   assert.ok(is4xx(res));
   assert.deepEqual(await getItem(epicB.id), epicB);
 });
@@ -191,8 +191,8 @@ test('archived projects: resolutions readable, writes rejected, archiving keeps 
 
   for (const [id, body] of [
     [done.id, { resolution: 'Fixed' }],
-    [done.id, { status: 'To Do' }],
-    [todo.id, { status: 'Done' }],
+    [done.id, { status: 'Planning' }],
+    [todo.id, { status: 'Complete' }],
   ]) {
     const res = await app.patch(`/api/issues/${id}`, body);
     assert.ok(is4xx(res));
@@ -225,7 +225,7 @@ test('existing Done items get the default resolution when the column is added (A
     `INSERT INTO issues (project_id, number, key, type, title, status, priority, rank, created_at, updated_at)
      VALUES (1, ?, ?, 'Task', 't', ?, 'Medium', ?, '2026-01-01', '2026-01-01')`
   );
-  ['To Do', 'In Progress', 'Done', 'Done'].forEach((status, i) => insert.run(i + 1, `OLD-${i + 1}`, status, i));
+  ['Planning', 'In Progress', 'Complete', 'Complete'].forEach((status, i) => insert.run(i + 1, `OLD-${i + 1}`, status, i));
   old.close();
 
   const db = openDb(dbPath);
@@ -238,4 +238,26 @@ test('existing Done items get the default resolution when the column is added (A
   assert.equal(again.prepare('SELECT resolution FROM issues WHERE number = 3').get().resolution, 'Duplicate');
   assert.equal(again.prepare("SELECT sql FROM sqlite_master WHERE name = 'issues'").get().sql.includes('CHECK'), false);
   again.close();
+});
+
+// App restyle: the board shows resolution labels as white text on the list's
+// colour, so every colour must meet WCAG AA (4.5:1) against white.
+function contrastWithWhite(hex) {
+  const lin = [1, 3, 5]
+    .map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  const l = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+  return 1.05 / (l + 0.05);
+}
+
+test('resolution colours come from the list and pass 4.5:1 with white text (app restyle)', async () => {
+  const list = (await app.get('/api/resolutions')).body;
+  const { RESOLUTIONS } = require('../server/resolutions');
+  assert.deepEqual(list.map((r) => r.color), RESOLUTIONS.map((r) => r.color), 'served as defined');
+  for (const r of list) {
+    if (r.color === undefined) continue; // optional: the board falls back to neutral
+    assert.match(r.color, /^#[0-9a-f]{6}$/i, `${r.name} colour is #rrggbb`);
+    assert.ok(contrastWithWhite(r.color) >= 4.5, `${r.name} ${r.color} is ${contrastWithWhite(r.color).toFixed(2)}:1`);
+  }
+  assert.ok(contrastWithWhite('#62666a') >= 4.5, 'the neutral fallback passes too');
 });

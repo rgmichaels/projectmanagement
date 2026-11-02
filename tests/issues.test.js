@@ -44,7 +44,7 @@ test('keys start at 1 per project, increment, and are never reused (AC 13, 18)',
 
 test('the four work item types, default Task, no Story/Bug (AC 12)', async () => {
   const types = (await app.get('/api/types')).body;
-  assert.deepEqual(types.map((t) => t.name), ['Defect', 'Task', 'Issue', 'Epic']);
+  assert.deepEqual(types.map((t) => t.name), ['Defect', 'Task', 'Issue', 'Enhancement', 'Epic']);
   assert.deepEqual(types.filter((t) => t.isEpic).map((t) => t.name), ['Epic']);
   assert.deepEqual(types.filter((t) => t.isDefault).map((t) => t.name), ['Task']);
 
@@ -54,7 +54,7 @@ test('the four work item types, default Task, no Story/Bug (AC 12)', async () =>
   assert.equal(def.priority, 'Medium');
   assert.equal(def.assignee_id, null);
   assert.equal(def.epic_id, null);
-  for (const type of ['Defect', 'Task', 'Issue', 'Epic']) {
+  for (const type of ['Defect', 'Task', 'Issue', 'Enhancement', 'Epic']) {
     assert.equal((await createItem(app, p.id, { type })).type, type);
   }
   for (const type of ['Story', 'Bug', 'task', '']) {
@@ -79,11 +79,11 @@ test('title, priority and assignee validation (AC 12, 15)', async () => {
   assert.equal((await app.post(`/api/projects/${p.id}/issues`, { title: 'x', assignee_id: 9999 })).status, 400);
 });
 
-test('new work items get the first status; statuses are To Do, In Progress, Done (AC 14)', async () => {
-  assert.deepEqual((await app.get('/api/statuses')).body, ['To Do', 'In Progress', 'Done']);
+test('new work items get the first status; statuses are the seven-step pipeline (AC 14)', async () => {
+  assert.deepEqual((await app.get('/api/statuses')).body, ['Planning', 'Ready', 'In Progress', 'Internal Testing', 'UAT', 'Go Live', 'Complete']);
   const p = await createProject(app);
-  const item = await createItem(app, p.id, { status: 'Done' });
-  assert.equal(item.status, 'To Do');
+  const item = await createItem(app, p.id, { status: 'Complete' });
+  assert.equal(item.status, 'Planning');
 });
 
 test('status change via API persists (AC 22) and invalid status/type is rejected (AC 30)', async () => {
@@ -183,31 +183,31 @@ test('in-column reorder by rank persists, including when no gap is left (AC 24)'
   const a = await createItem(app, p.id, { title: 'A' });
   const b = await createItem(app, p.id, { title: 'B' });
   const c = await createItem(app, p.id, { title: 'C' });
-  assert.deepEqual(await columnOrder(p.id, 'To Do'), ['A', 'B', 'C']);
+  assert.deepEqual(await columnOrder(p.id, 'Planning'), ['A', 'B', 'C']);
 
   // Move C between A and B using the midpoint rank, as the board does.
   await app.patch(`/api/issues/${c.id}`, { rank: Math.floor((a.rank + b.rank) / 2) });
-  assert.deepEqual(await columnOrder(p.id, 'To Do'), ['A', 'C', 'B']);
+  assert.deepEqual(await columnOrder(p.id, 'Planning'), ['A', 'C', 'B']);
 
   // Move C to the top.
   await app.patch(`/api/issues/${c.id}`, { rank: a.rank - 1000 });
-  assert.deepEqual(await columnOrder(p.id, 'To Do'), ['C', 'A', 'B']);
+  assert.deepEqual(await columnOrder(p.id, 'Planning'), ['C', 'A', 'B']);
 
   // No gap: send the rank of the card to drop in front of; the server renumbers.
   await app.patch(`/api/issues/${a.id}`, { rank: 10 });
   await app.patch(`/api/issues/${b.id}`, { rank: 11 });
   await app.patch(`/api/issues/${c.id}`, { rank: 12 });
-  assert.deepEqual(await columnOrder(p.id, 'To Do'), ['A', 'B', 'C']);
+  assert.deepEqual(await columnOrder(p.id, 'Planning'), ['A', 'B', 'C']);
   await app.patch(`/api/issues/${c.id}`, { rank: 11 });
-  assert.deepEqual(await columnOrder(p.id, 'To Do'), ['A', 'C', 'B']);
+  assert.deepEqual(await columnOrder(p.id, 'Planning'), ['A', 'C', 'B']);
   const ranks = (await items(p.id)).map((i) => i.rank);
   assert.equal(new Set(ranks).size, ranks.length);
 
   // Moving to another column with a rank places it there.
   const d = await createItem(app, p.id, { title: 'D' });
-  await app.patch(`/api/issues/${a.id}`, { status: 'Done' });
-  await app.patch(`/api/issues/${d.id}`, { status: 'Done', rank: (await getItem(a.id)).rank - 1000 });
-  assert.deepEqual(await columnOrder(p.id, 'Done'), ['D', 'A']);
+  await app.patch(`/api/issues/${a.id}`, { status: 'Complete' });
+  await app.patch(`/api/issues/${d.id}`, { status: 'Complete', rank: (await getItem(a.id)).rank - 1000 });
+  assert.deepEqual(await columnOrder(p.id, 'Complete'), ['D', 'A']);
 
   assert.equal((await app.patch(`/api/issues/${a.id}`, { rank: 1.5 })).status, 400);
 });
@@ -229,18 +229,18 @@ test('lane drops update the grouped field and status in one request (AC 35)', as
   assert.equal((await getItem(item.id)).assignee_id, null);
 
   // Epic lane, then No epic.
-  await app.patch(`/api/issues/${item.id}`, { status: 'Done', epic_id: epic.id });
+  await app.patch(`/api/issues/${item.id}`, { status: 'Complete', epic_id: epic.id });
   saved = await getItem(item.id);
   assert.equal(saved.epic_id, epic.id);
-  assert.equal(saved.status, 'Done');
-  await app.patch(`/api/issues/${item.id}`, { status: 'Done', epic_id: null });
+  assert.equal(saved.status, 'Complete');
+  await app.patch(`/api/issues/${item.id}`, { status: 'Complete', epic_id: null });
   assert.equal((await getItem(item.id)).epic_id, null);
 
   // Priority lane.
-  await app.patch(`/api/issues/${item.id}`, { status: 'To Do', priority: 'Highest' });
+  await app.patch(`/api/issues/${item.id}`, { status: 'Planning', priority: 'Highest' });
   saved = await getItem(item.id);
   assert.equal(saved.priority, 'Highest');
-  assert.equal(saved.status, 'To Do');
+  assert.equal(saved.status, 'Planning');
 
   // Same lane, different column: only status changes.
   const before = await getItem(item.id);
@@ -256,10 +256,10 @@ test('an epic cannot be dropped into another epic lane (AC 36)', async () => {
   const p = await createProject(app);
   const epicA = await createItem(app, p.id, { type: 'Epic' });
   const epicB = await createItem(app, p.id, { type: 'Epic' });
-  const res = await app.patch(`/api/issues/${epicB.id}`, { status: 'Done', epic_id: epicA.id });
+  const res = await app.patch(`/api/issues/${epicB.id}`, { status: 'Complete', epic_id: epicA.id });
   assert.ok(res.status >= 400 && res.status < 500);
   const saved = await getItem(epicB.id);
-  assert.equal(saved.status, 'To Do');
+  assert.equal(saved.status, 'Planning');
   assert.equal(saved.epic_id, null);
 });
 

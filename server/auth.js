@@ -53,7 +53,8 @@ function clearSessionCookie(res) {
 }
 
 // The live session for this request's cookie, or null. Unknown, malformed,
-// expired and user-less sessions count as absent; the stale row is removed.
+// expired and user-less sessions, and those of a deactivated user, count as
+// absent; the stale row is removed.
 function resolveSession(db, req) {
   const token = readCookie(req, COOKIE_NAME);
   if (token === undefined) return { present: false, session: null };
@@ -61,7 +62,7 @@ function resolveSession(db, req) {
   const session = sessions.getSession(db, token);
   if (!session) return { present: true, session: null };
   const idle = Date.now() - Date.parse(session.last_seen_at);
-  if (session.uid === null || !(idle <= IDLE_LIMIT_MS)) {
+  if (session.uid === null || session.user_active !== 1 || !(idle <= IDLE_LIMIT_MS)) {
     sessions.deleteSession(db, token);
     return { present: true, session: null };
   }
@@ -135,6 +136,12 @@ function signOut(db, req, res) {
   clearSessionCookie(res);
 }
 
+// Ends every session of a user (deactivation, docs/specs/user-admin.md AC 10);
+// their open browsers get 401 on the next request.
+function signOutUser(db, userId) {
+  sessions.deleteSessionsForUser(db, userId);
+}
+
 module.exports = {
   COOKIE_NAME,
   IDLE_LIMIT_MS,
@@ -143,6 +150,7 @@ module.exports = {
   pageGate,
   signIn,
   signOut,
+  signOutUser,
   safeNext,
   loginUrl,
 };

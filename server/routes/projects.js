@@ -59,9 +59,18 @@ function projectRoutes(db) {
     res.json(projects.updateProject(db, project.id, changes));
   });
 
+  // ?sprint=backlog|active|<sprint id> narrows the list to one container
+  // (never epics); without it every item, epics included.
   router.get('/projects/:id/issues', (req, res) => {
     const project = loadProject(db, req.params.id);
-    res.json(issues.listIssues(db, project.id));
+    let sprint = null;
+    if (req.query.sprint !== undefined) {
+      const raw = req.query.sprint;
+      if (raw === 'backlog' || raw === 'active') sprint = raw;
+      else if (typeof raw === 'string' && /^\d+$/.test(raw) && Number(raw) > 0) sprint = Number(raw);
+      else throw new ValidationError('sprint must be backlog, active or a sprint id.');
+    }
+    res.json(issues.listIssues(db, project.id, sprint));
   });
 
   router.post('/projects/:id/issues', (req, res) => {

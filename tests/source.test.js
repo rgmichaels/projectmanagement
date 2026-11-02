@@ -20,11 +20,11 @@ const sourceFiles = [...walk(path.join(root, 'server')), ...walk(path.join(root,
   /\.(js|html|css)$/.test(f)
 );
 
-// The single-source list files (and seed data in db.js) may name these values.
-const LIST_FILES = new Set(['server/statuses.js', 'server/types.js', 'server/projectStatuses.js']);
+// The single-source list files (and legacy-status migration in db.js) may name these values.
+const LIST_FILES = new Set(['server/statuses.js', 'server/types.js', 'server/projectStatuses.js', 'server/db.js']);
 
 test('no hard-coded work item status or type names outside their list files (AC 27)', () => {
-  const names = ['To Do', 'In Progress', 'Done', 'Defect', 'Task', 'Issue', 'Epic'];
+  const names = ['To Do', 'In Progress', 'Done', 'Defect', 'Task', 'Issue', 'Enhancement', 'Epic'];
   const offenders = [];
   for (const file of sourceFiles) {
     if (LIST_FILES.has(rel(file))) continue;
@@ -121,9 +121,21 @@ test('a fresh database file gets the schema and seed users (AC 38)', () => {
     'issue_history_changes',
     'issue_history_events',
     'issue_links',
+    'issue_test_cases',
     'issues',
+    'project_permissions',
     'projects',
     'sessions',
+    'sprint_baseline_items',
+    'sprint_event_changes',
+    'sprint_events',
+    'sprint_scope_events',
+    'sprints',
+    'sqlite_sequence',
+    'test_case_executions',
+    'test_case_steps',
+    'test_cases',
+    'time_entries',
     'users',
   ]);
   const users = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
@@ -587,15 +599,19 @@ test('filters are read-only UI, stored per project with try/catch (search AC 15,
   const js = boardJs();
   assert.match(js, /FILTERS_STORAGE_PREFIX = 'pm\.filters\.'/);
   assert.match(section, /\$\{FILTERS_STORAGE_PREFIX\}\$\{state\.project\.id\}/);
-  const helpers = js.slice(js.indexOf('function storageGet'), js.indexOf('const state = {'));
-  assert.equal((helpers.match(/try \{/g) || []).length, 2, 'reads and writes wrapped');
-  assert.equal((js.match(/localStorage\./g) || []).length, (helpers.match(/localStorage\./g) || []).length, 'no unguarded localStorage use');
+  const helpers = read(path.join(root, 'public/js/projectScope.js'));
+  assert.equal((helpers.match(/try \{ return localStorage|try \{ if \(value/g) || []).length, 2, 'shared reads and writes wrapped');
+  assert.match(js, /const \{ storageGet, storageSet \} = projectScope/);
+  assert.doesNotMatch(js, /localStorage\./, 'storage is shared with project navigation');
 });
 
-test('lanes come from every item and drag ranks from the full column (search AC 18, 19)', () => {
+// Since sprints the board's items are the active sprint's
+// (docs/specs/sprints-and-backlog.md AC 24, 29); lanes still come from all of
+// them, not from the filtered set.
+test('lanes come from every board item and drag ranks from the full column (search AC 18, 19)', () => {
   const js = boardJs();
   const lanes = js.slice(js.indexOf('function computeLanes('), js.indexOf('// ---------- rendering ----------'));
-  assert.match(lanes, /const items = state\.items;/, 'lane list from the unfiltered set');
+  assert.match(lanes, /const items = boardItems\(\);/, 'lane list from the unfiltered board items');
   assert.match(lanes, /visible\.filter\(/, 'lane contents from the filtered set');
   const rank = js.slice(js.indexOf('function computeRank('), js.indexOf('async function moveItem('));
   assert.match(rank, /const column = state\.items\.filter\(/, 'neighbours from the unfiltered column');
@@ -638,7 +654,7 @@ test('the status track is built from the server list and names no status (redesi
   assert.doesNotMatch(html, /<select name="status"/, 'the select is replaced');
 });
 
-test('the dialog has one tab bar with five tabs and a panel for each (redesign AC 14-16)', () => {
+test('the dialog has one tab bar with seven tabs and a panel for each (redesign AC 14-16, test cases, time tracking AC 22)', () => {
   const html = detailMarkup();
   const open = html.indexOf('<div id="activity-tabs"');
   const bar = html.slice(open, html.indexOf('</div>', open));
@@ -646,10 +662,10 @@ test('the dialog has one tab bar with five tabs and a panel for each (redesign A
   const tabs = bar.match(/<button\b[^>]*>/gi) || [];
   assert.deepEqual(
     tabs.map((b) => b.match(/id="([^"]+)"/)[1]),
-    ['tab-children', 'tab-discussion', 'tab-history', 'tab-links', 'tab-attachments'],
+    ['tab-children', 'tab-discussion', 'tab-history', 'tab-links', 'tab-time', 'tab-test-cases', 'tab-attachments'],
     'in spec order'
   );
-  const panels = { 'tab-children': 'epic-view', 'tab-discussion': 'discussion', 'tab-history': 'history', 'tab-links': 'links', 'tab-attachments': 'attachments' };
+  const panels = { 'tab-children': 'epic-view', 'tab-discussion': 'discussion', 'tab-history': 'history', 'tab-links': 'links', 'tab-time': 'time', 'tab-test-cases': 'ticket-test-cases', 'tab-attachments': 'attachments' };
   for (const b of tabs) {
     assert.match(b, /type="button"/, b);
     assert.match(b, /role="tab"/, b);
@@ -683,21 +699,45 @@ test('the dialog renders text only and only Save submits (redesign AC 13, 31, 33
   assert.match(detailSection(), /'Title is required\. Enter a title and save again\.'/);
 });
 
-test('the dialog palette is scoped to dialog#detail, not :root (redesign AC 35)', () => {
+test('the dialog palette is the app palette in :root (app restyle, supersedes redesign AC 35)', () => {
   const css = read(path.join(root, 'public/css/app.css'));
   const rootBlock = css.slice(css.indexOf(':root {'), css.indexOf('}', css.indexOf(':root {')));
-  for (const token of ['--teal', '--navy', '--gold', '--linkblue', '#0b5d66', '#face00']) {
-    assert.ok(!rootBlock.includes(token), `${token} not in :root`);
+  for (const decl of ['--teal: #0b5d66', '--teal-mid: #65999e', '--teal-soft: #e5eded', '--page: #f8fafa', '--navy: #154973',
+    '--linkblue: #004dd1', '--gold: #face00', '--muted: #62666a', '--danger: #c0300b', '--primary: var(--teal)',
+    '--bg: var(--page)', '--column: var(--teal-soft)', '--border: var(--line)', '--text: var(--ink)', '--neutral: #62666a']) {
+    assert.ok(rootBlock.includes(decl), decl);
   }
+  assert.match(rootBlock, /font-family: "Proxima Nova"/);
+  // The dialog no longer carries its own copy of the tokens.
   const scoped = css.slice(css.indexOf('dialog#detail {'), css.indexOf('}', css.indexOf('dialog#detail {')));
-  for (const decl of ['--teal: #0b5d66', '--teal-soft: #e5eded', '--navy: #154973', '--linkblue: #004dd1', '--gold: #face00', '--danger: #c0300b']) {
-    assert.ok(scoped.includes(decl), decl);
-  }
-  // Gold appears only on the band and the dark summary panel.
+  assert.doesNotMatch(scoped, /--teal:|--primary:/);
+  // The old blues are gone, and nothing puts white text on a type colour.
+  for (const old of ['#0052cc', '#de350b', '#deebff', '#4c9aff']) assert.ok(!css.includes(old), old);
+  const badge = css.slice(css.indexOf('.type-badge {'), css.indexOf('}', css.indexOf('.type-badge {')));
+  assert.match(badge, /color: var\(--ink\)/);
+  assert.doesNotMatch(badge, /background: var\(--type-color\)/);
+  // Gold appears only on dark teal: the top bar, the dialog bands, the dark
+  // summary panel and the Backlog selection strip (backlog bulk move option B).
   for (const line of css.split('\n').filter((l) => /var\(--gold\)/.test(l))) {
-    assert.match(line, /\.band|\.epicchip|\.x:hover|\.title-in:focus|\.darkpanel/, line);
+    assert.match(line, /\.topbar|\.band|\.epicchip|\.x:hover|\.title-in:focus|\.darkpanel|\.sel-strip/, line);
   }
+  assert.match(css, /^:focus-visible \{ outline: 2px solid var\(--teal\)/m, 'global focus ring');
   assert.doesNotMatch(css, /@import|url\(\s*['"]?https?:/, 'no external fonts or images');
+});
+
+test('the Edit project dialog uses the list endpoints and names no status (app restyle)', () => {
+  const html = read(path.join(root, 'public/index.html'));
+  assert.match(html, /<dialog id="edit-project" class="app-dialog" aria-labelledby="edit-heading">/);
+  const buttons = html.slice(html.indexOf('<dialog')).match(/<button[^>]*>/gi) || [];
+  assert.deepEqual(buttons.filter((b) => !/type="button"/.test(b)), ['<button type="submit" class="primary">'], 'only Save submits');
+  const js = read(path.join(root, 'public/js/projects.js'));
+  const { PROJECT_STATUSES } = require('../server/projectStatuses');
+  for (const s of PROJECT_STATUSES) assert.ok(!js.includes(`'${s.name}'`), `${s.name} not hard-coded`);
+  assert.match(js, /api\.patch\(`\/api\/projects\/\$\{editing\.id\}`, \{\s*name,\s*status: f\.status\.value,\s*archived: f\.archived\.checked/);
+  // Gated on manage-projects in that project, so a project Admin may edit it
+  // (docs/specs/project-permissions.md).
+  assert.match(js, /if \(!canManage\(project\.id\)\) return;\s*editing = project;/, 'Edit is gated on manage-projects');
+  assert.doesNotMatch(js, /innerHTML|outerHTML|insertAdjacentHTML|document.write/);
 });
 
 test('description image thumbnails show under the read view too (redesign AC 12)', () => {
@@ -709,4 +749,531 @@ test('description image thumbnails show under the read view too (redesign AC 12)
   assert.match(strip, /editing\.description/, 'read view uses the saved text');
   assert.match(strip, /els\.description\.value/, 'edit view uses the textarea');
   assert.doesNotMatch(strip, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
+});
+
+// ---------- sprints and backlog (docs/specs/sprints-and-backlog.md AC 28, 32, 50, 51) ----------
+
+const SPRINT_SERVER_FILES = ['server/data/sprints.js', 'server/data/sprintHistory.js', 'server/routes/sprints.js', 'server/sprintStates.js', 'server/sprintEvents.js'];
+const SPRINT_CLIENT_FILES = ['public/js/backlog.js', 'public/js/sprints.js', 'public/js/bulkMove.js', 'public/backlog.html'];
+
+test('sprint SQL appears only in server/data/ and the schema; routes call the data layer (AC 50)', () => {
+  const sprintSql = /\b(FROM|INTO|UPDATE|JOIN)\s+sprints\b/i;
+  const offenders = sourceFiles.filter((f) => rel(f) !== 'server/db.js' && !rel(f).startsWith('server/data/') && sprintSql.test(read(f))).map(rel);
+  assert.deepEqual(offenders, []);
+  // The audit log tables only in sprintHistory.js (and the schema).
+  assert.deepEqual(offendersOf(/\bsprint_event(s|_changes)\b/, new Set(['server/db.js', 'server/data/sprintHistory.js', 'server/sprintEvents.js'])), []);
+  assert.match(read(path.join(root, 'server/data/sprints.js')), /INSERT INTO sprints/);
+  assert.match(read(path.join(root, 'server/data/sprintHistory.js')), /INSERT INTO sprint_events/);
+  const route = read(path.join(root, 'server/routes/sprints.js'));
+  assert.doesNotMatch(route, /\.prepare\(|\bdb\.exec\(/, 'no SQL in the route');
+  assert.match(route, /require\('\.\.\/data\/sprints'\)/);
+  assert.match(route, /require\('\.\.\/data\/sprintHistory'\)/);
+  // Sprint writes record their events through the data layer, in their transaction.
+  const data = read(path.join(root, 'server/data/sprints.js'));
+  for (const fn of ['createSprint', 'updateSprint', 'deleteSprint', 'startSprint', 'completeSprint']) {
+    const body = data.slice(data.indexOf(`function ${fn}(`), data.indexOf('\n}\n', data.indexOf(`function ${fn}(`)));
+    assert.match(body, /db\.transaction\(/, fn);
+    assert.match(body, /sprintHistory\.recordSprintEvent\(/, fn);
+  }
+  // Bulk moves record history per item, not with one raw UPDATE.
+  assert.match(data, /issues\.moveToContainer\(/);
+  assert.match(read(path.join(root, 'server/data/issues.js')), /function moveToContainer[\s\S]*?history\.recordChanges\(/);
+});
+
+test('no sprint state name outside server/sprintStates.js; no event kind in the sprint code (AC 51)', () => {
+  const { SPRINT_STATES } = require('../server/sprintStates');
+  const { SPRINT_EVENT_KINDS } = require('../server/sprintEvents');
+  // projectStatuses.js and sprintEvents.js are list files whose own values
+  // (a project status, an event label) may coincide with a state name, as
+  // may the scope panel's figure labels in public/js/scope.js ("Planned"
+  // hours; the scope tests check that file outside its TILE_LABELS).
+  const allowed = new Set(['server/sprintStates.js', 'server/db.js', 'server/projectStatuses.js', 'server/sprintEvents.js', 'server/testCaseMetadata.js', 'public/js/scope.js']);
+  const files = sourceFiles.filter((f) => /^(server\/|public\/js\/|public\/(board|backlog)\.html$)/.test(rel(f)) && !allowed.has(rel(f)));
+  const offenders = [];
+  for (const file of files) {
+    const text = read(file);
+    for (const st of SPRINT_STATES) if (quoted(st.name).test(text)) offenders.push(`${rel(file)}: ${st.name}`);
+  }
+  assert.deepEqual(offenders, []);
+  // Event kinds and their labels: only in sprintEvents.js. (The work item
+  // history has its own `created` kind in history.js and historyFormat.js.)
+  const kindFiles = [...SPRINT_SERVER_FILES.filter((f) => !/sprint(Events|States)\.js$/.test(f)), ...SPRINT_CLIENT_FILES];
+  for (const file of kindFiles) {
+    const text = read(path.join(root, file));
+    for (const k of SPRINT_EVENT_KINDS) for (const name of [k.key, k.label]) if (quoted(name).test(text)) offenders.push(`${file}: ${name}`);
+  }
+  assert.deepEqual(offenders, []);
+  // The migration and the unique index take the state names from the list.
+  const db = read(path.join(root, 'server/db.js'));
+  assert.match(db, /require\('\.\/sprintStates'\)/);
+  for (const st of SPRINT_STATES) assert.ok(!quoted(st.name).test(db), `db.js names ${st.name}`);
+});
+
+test('the new sprint code names no status or type; epics come from the isEpic flag (AC 51)', () => {
+  const { STATUSES } = require('../server/statuses');
+  const { TYPES } = require('../server/types');
+  const { PRIORITIES } = require('../server/priorities');
+  const names = new Set([...STATUSES, ...TYPES.flatMap((t) => [t.name, t.label]), ...PRIORITIES]);
+  const offenders = [];
+  for (const file of [...SPRINT_SERVER_FILES, ...SPRINT_CLIENT_FILES]) {
+    const text = read(path.join(root, file));
+    for (const name of names) if (quoted(name).test(text)) offenders.push(`${file}: ${name}`);
+  }
+  assert.deepEqual(offenders, []);
+  assert.match(read(path.join(root, 'server/data/sprints.js')), /epicTypeNames\(\)/);
+  assert.match(read(path.join(root, 'server/db.js')), /epicTypeNames\(\)/);
+  assert.match(read(path.join(root, 'public/js/backlog.js')), /ctx\.isEpicItem/);
+});
+
+test('the Backlog page renders text only; only the intended buttons submit (AC 32, 33)', () => {
+  for (const file of SPRINT_CLIENT_FILES) {
+    assert.doesNotMatch(read(path.join(root, file)), /innerHTML|outerHTML|insertAdjacentHTML|document\.write/, file);
+  }
+  const js = read(path.join(root, 'public/js/backlog.js'));
+  for (const call of js.match(/el\(\s*'button',\s*\{[^}]*\}/g) || []) {
+    assert.match(call, /type: '(button|submit)'/, call);
+    if (/type: 'submit'/.test(call)) assert.match(call, /class: 'navy' \}/, 'only the quick-create Create submits');
+  }
+  // The sprint dialogs: only the Create/Save button submits.
+  const html = read(path.join(root, 'public/backlog.html'));
+  const sprintDialogs = html.slice(html.indexOf('<dialog id="sprint-dialog"'), html.indexOf('<dialog id="detail"'));
+  const submits = (sprintDialogs.match(/<button\b[^>]*>/gi) || []).filter((b) => !/type="button"/.test(b));
+  assert.deepEqual(submits, ['<button type="submit" class="primary" id="sprint-save">']);
+});
+
+test('the Backlog page shows the same work item dialog as the board', () => {
+  const dialogOf = (file) => {
+    const html = read(path.join(root, file)).replace(/\r\n/g, '\n');
+    const start = html.indexOf('<dialog id="detail"');
+    return html.slice(start, html.indexOf('</dialog>', start));
+  };
+  assert.ok(dialogOf('public/board.html').length > 1000);
+  assert.equal(dialogOf('public/backlog.html'), dialogOf('public/board.html'));
+  assert.equal(dialogOf('public/sprints.html'), dialogOf('public/board.html'), 'and the Sprints page (Sprints AC 14)');
+  const backlog = read(path.join(root, 'public/backlog.html'));
+  assert.match(backlog, /<body data-page="backlog">/);
+  const order = ['src="js/filters.js"', 'src="js/sprints.js"', 'src="js/backlog.js"', 'src="js/board.js"'];
+  const positions = order.map((s) => backlog.indexOf(s));
+  assert.ok(positions.every((p) => p !== -1));
+  assert.deepEqual([...positions].sort((a, b) => a - b), positions, 'backlog.js loads before board.js');
+});
+
+test('the project pages have the sub-navigation with the current page marked (AC 28; Sprints AC 1)', () => {
+  for (const [file, current] of [['public/board.html', 'nav-board'], ['public/backlog.html', 'nav-backlog'], ['public/sprints.html', 'nav-sprints']]) {
+    const html = read(path.join(root, file));
+    const main = html.slice(html.indexOf('<main'));
+    assert.match(main, /^<main[^>]*>\s*<!--[^>]*-->\s*<nav class="subnav" aria-label="Project pages">|^<main[^>]*>\s*<nav class="subnav" aria-label="Project pages">/, `${file}: first in main`);
+    const nav = main.slice(main.indexOf('<nav'), main.indexOf('</nav>'));
+    assert.match(nav, new RegExp(`id="${current}"[^>]*aria-current="page"`), file);
+    assert.equal((nav.match(/aria-current/g) || []).length, 1, file);
+    // Board, Backlog, Sprints in this order (Sprints AC 1).
+    const ids = (nav.match(/id="nav-[a-z-]+"/g) || []).map((m) => m.slice(4, -1));
+    assert.deepEqual(ids.slice(0, 3), ['nav-board', 'nav-backlog', 'nav-sprints'], file);
+  }
+});
+
+test('one overdue rule for the board and the Backlog page (Decision 11, 19)', () => {
+  const shared = read(path.join(root, 'public/js/sprints.js'));
+  assert.match(shared, /function isOverdue\(/);
+  for (const file of ['public/js/board.js', 'public/js/backlog.js']) {
+    const text = read(path.join(root, file));
+    assert.match(text, /sprintUtil\.isOverdue\(/, file);
+    assert.doesNotMatch(text, /localToday\(|today\s*>/, `${file} does not decide overdue itself`);
+  }
+});
+
+test('the sprint styles from the design are appended to app.css (design src/sprints.css)', () => {
+  const css = read(path.join(root, 'public/css/app.css'));
+  const design = read(path.join(root, 'docs/design/sprints-and-backlog/src/sprints.css'));
+  const optionA = design.slice(0, design.indexOf('/* Option B only'));
+  const rules = optionA.split('\n').filter((l) => /^[.a-z].*\{.*\}\s*$/i.test(l.trim()));
+  assert.ok(rules.length > 40);
+  for (const rule of rules) assert.ok(css.includes(rule.trim()), rule);
+  assert.ok(!css.includes('.split {'), 'Option B is not built');
+});
+
+// ---------- backlog bulk move (docs/specs/backlog-bulk-move.md AC 1, 2, 8-13, 19, 21, 27) ----------
+
+test('bulk move: checkboxes only on writable Backlog rows, no select-all, one confirm constant (AC 1, 2, 13, 19)', () => {
+  const js = read(path.join(root, 'public/js/backlog.js'));
+  assert.match(js, /const BULK_CONFIRM_MIN = 10;/);
+  assert.equal((js.match(/BULK_CONFIRM_MIN = /g) || []).length, 1, 'defined once');
+  assert.match(js, /ctx\.isActiveSprint\(sprint\) && items\.length >= BULK_CONFIRM_MIN/);
+  // Row checkboxes: only for the writable list of the Backlog (sprintId null).
+  assert.match(js, /const selectable = writable && sprintId === null;/);
+  assert.equal((js.match(/type: 'checkbox'/g) || []).length, 1, 'one checkbox, the row one');
+  assert.match(js, /'aria-label': `Select \$\{item\.key\} \$\{item\.title\}`/);
+  // The epics list builds its own rows, without renderRow, so no checkbox.
+  const epics = js.slice(js.indexOf('function renderEpics('), js.indexOf('function renderCompleted('));
+  assert.doesNotMatch(epics, /renderRow\(|renderSelect\(|checkbox/);
+  // No select-all or other select-many shortcut.
+  for (const file of ['public/js/backlog.js', 'public/backlog.html', 'public/js/bulkMove.js']) {
+    assert.doesNotMatch(read(path.join(root, file)), /select[ -]?all|selectAll/i, file);
+  }
+  // A checkbox click never opens the dialog or starts a drag.
+  const select = js.slice(js.indexOf('function renderSelect('), js.indexOf('function renderRow('));
+  assert.match(select, /stopPropagation\(\)/);
+  assert.match(js, /if \(pressOnSelect\) \{\s*e\.preventDefault\(\);/);
+});
+
+test('bulk move: one PATCH of sprint_id per item through the shared helper, one reload (AC 21, 25)', () => {
+  const js = read(path.join(root, 'public/js/backlog.js'));
+  const run = js.slice(js.indexOf('async function startBulkMove('), js.indexOf('// ---------- quick create'));
+  assert.match(run, /bulkMoveUtil\.run\(/);
+  assert.match(run, /api\.patch\(`\/api\/issues\/\$\{item\.id\}`, \{ sprint_id: sprint\.id \}\)/);
+  assert.doesNotMatch(run, /sprint_rank/, 'no rank: the server places each at the bottom');
+  assert.equal((run.match(/ctx\.reloadItems\(\)/g) || []).length, 1);
+  assert.doesNotMatch(run, /Promise\.all/, 'never in parallel');
+  // The targets: active then planned, from the state helpers (AC 9).
+  assert.match(js, /const bulkTargets = \(\) => \[ctx\.activeSprint\(\), \.\.\.plannedSprints\(\)\]\.filter\(Boolean\);/);
+  // No new server endpoint (Decision 2).
+  assert.doesNotMatch(read(path.join(root, 'server/routes/issues.js')), /bulk/i);
+});
+
+test('bulk move: the confirm dialog matches the app dialogs; scripts load in order (AC 13)', () => {
+  const html = read(path.join(root, 'public/backlog.html'));
+  const start = html.indexOf('<dialog id="bulk-confirm-dialog"');
+  assert.ok(start > 0);
+  const dialog = html.slice(start, html.indexOf('</dialog>', start));
+  assert.match(dialog, /class="app-dialog" aria-labelledby="bulk-confirm-heading"/);
+  assert.match(dialog, /<div class="band"><h2 id="bulk-confirm-heading">/);
+  assert.match(dialog, /<p class="hint">They keep their Backlog order and go to the bottom of the sprint\.<\/p>/);
+  const buttons = dialog.match(/<button\b[^>]*>/g);
+  assert.deepEqual(buttons, ['<button type="button" id="bulk-confirm-cancel">', '<button type="button" id="bulk-confirm-ok" class="primary">']);
+  const order = ['src="js/sprints.js"', 'src="js/bulkMove.js"', 'src="js/backlog.js"'].map((s) => html.indexOf(s));
+  assert.ok(order.every((p) => p !== -1));
+  assert.deepEqual([...order].sort((a, b) => a - b), order);
+  const js = read(path.join(root, 'public/js/backlog.js'));
+  assert.match(js, /els\.bulkDialog\.showModal\(\);\s*els\.bulkCancel\.focus\(\);/, 'Cancel is focused');
+});
+
+test('bulk move: the option B styles from the design are in app.css; options A and C are not', () => {
+  const css = read(path.join(root, 'public/css/app.css'));
+  const design = read(path.join(root, 'docs/design/backlog-bulk-move/b-selection-strip.html'));
+  const block = design.slice(design.indexOf('/* ===== Backlog bulk move'), design.indexOf('.mock-note'));
+  const mock = /is-hover|is-focus|scrollbox/;
+  const rules = block.split('\n').map((l) => l.trim()).filter((l) => /^[.a-z].*\{.*\}$/i.test(l) && !mock.test(l));
+  assert.ok(rules.length > 30, String(rules.length));
+  for (const rule of rules) assert.ok(css.includes(rule), rule);
+  assert.ok(!css.includes('.hide-check'), 'option C is not built');
+});
+
+// ---------- project scope and Sprints screen (docs/specs/global-project-scope.md, docs/specs/sprints-screen.md) ----------
+
+const PROJECT_PAGES = ['public/board.html', 'public/backlog.html', 'public/sprints.html'];
+
+test('project scope: the shared script loads after session.js on every project page; no breadcrumb (Scope AC 1, 2)', () => {
+  for (const file of PROJECT_PAGES) {
+    const html = read(path.join(root, file));
+    const order = ['src="js/session.js"', 'src="js/projectScope.js"', 'src="js/board.js"'].map((s) => html.indexOf(s));
+    assert.ok(order.every((p) => p !== -1), file);
+    assert.deepEqual([...order].sort((a, b) => a - b), order, file);
+    assert.doesNotMatch(html, /id="crumb"/, `${file}: the dropdown replaces the breadcrumb`);
+  }
+  // Not on the Projects, Users and sign-in pages (Scope AC 16).
+  for (const file of ['public/index.html', 'public/users.html', 'public/login.html']) {
+    assert.doesNotMatch(read(path.join(root, file)), /projectScope\.js/, file);
+  }
+});
+
+test('project scope: only projectScope.js reads ?project= and the remembered-project key (Scope AC 7, 8)', () => {
+  const scope = read(path.join(root, 'public/js/projectScope.js'));
+  assert.match(scope, /const STORAGE_KEY = 'pm\.project';/);
+  const clientFiles = sourceFiles.filter((f) => /^public\/(js\/.*\.js|.*\.html)$/.test(rel(f)) && rel(f) !== 'public/js/projectScope.js');
+  const offenders = [];
+  for (const file of clientFiles) {
+    const text = read(file);
+    if (/pm\.project\b/.test(text)) offenders.push(`${rel(file)}: storage key`);
+    if (/\.(get|has)\(\s*['"]project['"]\s*\)/.test(text)) offenders.push(`${rel(file)}: reads ?project=`);
+  }
+  assert.deepEqual(offenders, []);
+  // The dropdown: a native select with a visible "Project" label, built as text.
+  assert.match(scope, /el\('select', \{ id: 'project-select', class: 'project-select' \}\)/);
+  assert.match(scope, /el\('label', \{ for: 'project-select' \}, 'Project'\)/);
+  assert.match(scope, /api\.get\('\/api\/projects'\)/, 'live projects only');
+  assert.doesNotMatch(scope, /includeArchived/);
+  assert.match(scope, /history\.replaceState\(/, 'the resolved project is written into the URL');
+  assert.doesNotMatch(scope, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
+});
+
+test('project scope: one dirty flag and one confirm helper guard the work item dialog (Scope AC 14-14f)', () => {
+  const js = boardJs();
+  assert.match(js, /projectScope\.guard\.isDirty = isDetailDirty;/);
+  assert.match(js, /projectScope\.confirmDialog\(projectScope\.DISCARD_CONFIRM\)/);
+  assert.doesNotMatch(js, /confirm\('Discard changes|confirm\('You have unsaved/, 'no second confirm');
+  // X, Close and Escape all go through closeDetail; Escape only when dirty.
+  assert.match(js, /els\.closeBtn\.addEventListener\('click', \(\) => closeDetail\(els\.closeBtn\)\)/);
+  assert.match(js, /els\.closeX\.addEventListener\('click', \(\) => closeDetail\(els\.closeX\)\)/);
+  assert.match(js, /addEventListener\('cancel', \(e\) => \{\s*if \(!isDetailDirty\(\)\) return;[^}]*e\.preventDefault\(\);/);
+  // Re-pointing asks too; beforeunload only while dirty.
+  assert.match(js, /async function openDetail\(item\) \{\s*if \(isDetailDirty\(\) && !\(await confirmDiscard\(/);
+  assert.match(js, /window\.addEventListener\('beforeunload', onBeforeUnload\)/);
+  assert.match(js, /window\.removeEventListener\('beforeunload', onBeforeUnload\)/);
+  const scope = read(path.join(root, 'public/js/projectScope.js'));
+  assert.match(scope, /if \(result\.guard\.isDirty\(\)\) \{\s*const ok = await confirmDialog\(SWITCH_CONFIRM\);/);
+});
+
+test('board.js tells the three pages apart; the Sprints page does not run the board (Sprints AC 1)', () => {
+  const js = boardJs();
+  assert.match(js, /const page = document\.body\.dataset\.page \|\| 'board';/);
+  assert.match(js, /const onBoard = page === 'board';/);
+  assert.match(js, /else if \(page === 'sprints'\) sprintsPage\.init\(backlogContext\(\)\);/);
+  assert.match(js, /if \(page === 'sprints' && typeof sprintsPage !== 'undefined'\) sprintsPage\.render\(\);/);
+  const html = read(path.join(root, 'public/sprints.html'));
+  assert.match(html, /<body data-page="sprints">/);
+  const order = ['src="js/sprints.js"', 'src="js/sprintView.js"', 'src="js/board.js"'].map((s) => html.indexOf(s));
+  assert.ok(order.every((p) => p !== -1));
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'sprintView.js loads before board.js');
+  assert.doesNotMatch(html, /src="js\/backlog\.js"|src="js\/bulkMove\.js"/);
+  assert.doesNotMatch(html, /sprint-dialog|sprint-delete-dialog|bulk-confirm-dialog|sprint-complete-dialog/, 'no sprint management dialogs');
+});
+
+test('the Sprints page names no sprint state, status, type or priority (Sprints AC 26)', () => {
+  const { STATUSES } = require('../server/statuses');
+  const { TYPES } = require('../server/types');
+  const { PRIORITIES } = require('../server/priorities');
+  const { SPRINT_STATES } = require('../server/sprintStates');
+  const names = new Set([...STATUSES, ...TYPES.flatMap((t) => [t.name, t.label]), ...PRIORITIES, ...SPRINT_STATES.map((s) => s.name)]);
+  const offenders = [];
+  for (const file of ['public/js/sprintView.js', 'public/sprints.html', 'public/js/projectScope.js']) {
+    const text = read(path.join(root, file));
+    for (const name of names) if (quoted(name).test(text)) offenders.push(`${file}: ${name}`);
+  }
+  assert.deepEqual(offenders, []);
+  const js = read(path.join(root, 'public/js/sprintView.js'));
+  // Orders and states come from the server lists.
+  assert.match(js, /types: s\(\)\.types\.map\(/);
+  assert.match(js, /priorities: s\(\)\.priorities/);
+  assert.match(js, /statuses: s\(\)\.statuses/);
+  assert.match(js, /sprintView\.defaultSprint\(s\(\)\.sprints, s\(\)\.sprintStates\)/);
+  assert.match(js, /sprintUtil\.isOverdue\(/, 'the one overdue rule');
+});
+
+test('the Sprints table renders text only, is read-only and fetches one sprint (Sprints AC 9, 12, 15, 16, 21, 23)', () => {
+  const js = read(path.join(root, 'public/js/sprintView.js'));
+  assert.doesNotMatch(js, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
+  assert.match(js, /api\.get\(`\/api\/projects\/\$\{s\(\)\.project\.id\}\/issues\?sprint=\$\{sprint\.id\}`\)/);
+  assert.doesNotMatch(js, /api\.(post|patch|del)\(/, 'nothing on this page writes');
+  assert.doesNotMatch(js, /draggable|checkbox|dragstart/, 'no handles, checkboxes or drag');
+  for (const call of js.match(/el\(\s*'button',\s*\{[^}]*\}/g) || []) assert.match(call, /type: 'button'/, call);
+  // Sort headings: a button in a th scope="col" with aria-sort; an announcement.
+  assert.match(js, /el\('th', \{ scope: 'col', 'aria-sort': dir \}, button\)/);
+  assert.match(js, /`Sorted by \$\{columnLabel\(column\)\}, \$\{view\.sort\.direction\}\.`/);
+  // The sort is not saved (Decision 2): no storage, and only ?sprint= in the URL.
+  assert.doesNotMatch(js, /localStorage|storageSet|searchParams\.set\('sort/);
+  const html = read(path.join(root, 'public/sprints.html'));
+  assert.match(html, /<p id="sort-status" class="visually-hidden" role="status"><\/p>/);
+  assert.match(html, /<label for="sprint-pick">Sprint<\/label>/);
+  assert.match(html, /<h1>Sprints<\/h1>/);
+  assert.match(html, />Manage sprints on the Backlog<\/a>/);
+});
+
+test('the project dropdown and Sprints styles from the design are in app.css (topbar A, Sprints A)', () => {
+  const css = read(path.join(root, 'public/css/app.css'));
+  const design = read(path.join(root, 'docs/design/sprints-and-project-scope/sprints-a-panel.html'));
+  const block = design.slice(design.indexOf('/* ===== Project dropdown'), design.indexOf('/* ===== Confirm dialogs'));
+  // Mock-only rules and the other options' rules are not built.
+  const skip = /is-focus|is-hover|\.outlined|\.sep\b|has-nav|topnav|\.compact|\.bare|\.table-wrap\.card/;
+  const rules = block.split('\n').map((l) => l.trim()).filter((l) => /^[.a-z].*\{.*\}$/i.test(l) && !skip.test(l));
+  assert.ok(rules.length > 25, String(rules.length));
+  for (const rule of rules) assert.ok(css.includes(rule), rule);
+  assert.ok(!css.includes('.project-scope.outlined'), 'topbar B is not built');
+  assert.ok(!css.includes('.topbar.has-nav'), 'topbar C is not built');
+  assert.match(css, /@media \(max-width: 600px\) \{\s*\.topbar \{ flex-wrap: wrap; \}/);
+});
+
+// ---------- time tracking (docs/specs/time-tracking.md) ----------
+
+test('time entry SQL appears only in server/data/ and the schema (time tracking data model)', () => {
+  const pattern = /\b(FROM|INTO|UPDATE|JOIN)\s+time_entries\b/i;
+  const offenders = sourceFiles.filter((f) => rel(f) !== 'server/db.js' && !rel(f).startsWith('server/data/') && pattern.test(read(f))).map(rel);
+  assert.deepEqual(offenders, []);
+  const routes = read(path.join(root, 'server/routes/time.js'));
+  assert.match(routes, /isEpicType\(issue\.type\)/, 'the epic check uses the isEpic flag');
+  // The user (and history actor, AC 31) is the signed-in one, via actorFrom(req).
+  assert.match(routes, /createEntry\(db, issue\.id, actorFrom\(req\)/, 'the user is the signed-in one');
+  assert.doesNotMatch(routes, /req\.body\.(user|actor)/);
+});
+
+test('the Time tab and Estimate field: text only, no extra submit, epics excluded, tight tab bar (time tracking AC 22-28, 41-44)', () => {
+  const html = detailMarkup();
+  const time = html.slice(html.indexOf('<section id="time"'), html.indexOf('</section>', html.indexOf('<section id="time"')));
+  assert.doesNotMatch(time, /<form\b/i, 'no nested form');
+  for (const b of time.match(/<button\b[^>]*>/gi) || []) assert.match(b, /type="button"/, b);
+  assert.match(time, /<input type="number" id="time-hours" step="0\.25" min="0\.25" max="24"/);
+  assert.match(time, /<input type="date" id="time-date">/);
+  assert.match(time, /<input type="text" id="time-note" maxlength="500">/);
+  assert.match(time, /<p class="error" id="time-error" role="alert" hidden><\/p>/);
+  assert.match(time, />No time logged yet\.</);
+  assert.match(html, /<div id="activity-tabs" class="tabs tight" role="tablist"/);
+  assert.match(html, /<label for="estimate-input" id="estimate-label">Estimate<\/label>/);
+  assert.match(html, /<input type="number" id="estimate-input" name="estimate_hours" step="0\.25" min="0\.25" max="1000" placeholder="Hours">/);
+  assert.match(html, /<p class="error" id="estimate-error" role="alert" hidden><\/p>/);
+  // Estimate sits right after the Sprint field.
+  assert.ok(html.indexOf('id="estimate-field"') > html.indexOf('id="sprint-field"'));
+  assert.ok(html.indexOf('id="estimate-field"') < html.indexOf('id="resolution-field"'));
+  const js = boardJs();
+  assert.match(js, /els\.tabTime\.hidden = !\(item && !isEpicItem\(item\)\)/, 'no Time tab for an epic');
+  assert.match(js, /els\.estimateField\.hidden = epic;/, 'no Estimate field for an epic');
+  // Switching Type to an epic hides the Time tab at once, before Save (AC 26, 43).
+  const typeChange = js.slice(js.indexOf("els.form.elements.type.addEventListener('change'"), js.indexOf('els.statusSteps.addEventListener'));
+  assert.match(typeChange, /syncTimeTab\(\);/, 'the Type change syncs the Time tab');
+  const syncTime = js.slice(js.indexOf('function syncTimeTab('), js.indexOf('function syncTimeTab(') + 600);
+  assert.match(syncTime, /els\.tabTime\.hidden = Boolean\(type && type\.isEpic\);/);
+  assert.match(syncTime, /selectTab\(els\.tabTime\.hidden && selectedTab === 'time' \? 'discussion' : selectedTab\)/, 'leaves a hidden Time tab');
+  assert.match(js, /els\.timeForm\.hidden = readOnly\(\);/, 'no form when read-only');
+  assert.match(js, /scrollIntoView\(\{ inline: 'nearest', block: 'nearest' \}\)/);
+  assert.match(js, /confirm\('Delete this time entry\? This cannot be undone\.'\)/);
+  // Time entries never join the item's unsaved state: formValues has no time field.
+  const values = js.slice(js.indexOf('function formValues('), js.indexOf('els.form.elements.type.addEventListener'));
+  assert.doesNotMatch(values, /timeHours|timeNote|timeDate/);
+  assert.match(values, /values\.estimate_hours = estimateValue\(\)/);
+});
+
+test('one sprint figure formatter for the Board, Backlog and Sprints pages (time tracking AC 21, 53)', () => {
+  const js = boardJs();
+  assert.match(js, /timeFormat\.sprintFigureParts\(/);
+  assert.match(js, /sprintFigure\(active\),/, 'the Board bar, without the unestimated note');
+  assert.match(read(path.join(root, 'public/js/backlog.js')), /ctx\.sprintFigure\(sprint, \{ note: true, live: true \}\)/);
+  assert.match(read(path.join(root, 'public/js/sprintView.js')), /ctx\.sprintFigure\(sprint, \{ note: true \}\)/);
+  for (const file of ['public/js/backlog.js', 'public/js/sprintView.js']) {
+    assert.doesNotMatch(read(path.join(root, file)), /h logged/, `${file} builds no figure text itself`);
+  }
+  for (const file of PROJECT_PAGES) {
+    const html = read(path.join(root, file));
+    const order = ['src="js/time.js"', 'src="js/board.js"'].map((x) => html.indexOf(x));
+    assert.ok(order[0] !== -1 && order[0] < order[1], file);
+  }
+});
+
+test('the time-tracking styles of option A are in app.css; options B and C are not (design time-tracking)', () => {
+  const css = read(path.join(root, 'public/css/app.css'));
+  const design = read(path.join(root, 'docs/design/time-tracking/src/time.css'));
+  const rules = design.split('\n').map((l) => l.trim()).filter((l) => /^[.a-z].*\{.*\}$/i.test(l) && !/time-strip|time-sec|est-btn/.test(l));
+  assert.ok(rules.length > 50, String(rules.length));
+  for (const rule of rules) assert.ok(css.includes(rule), rule);
+  assert.ok(!css.includes('.time-strip'), 'option B is not built');
+  assert.ok(!css.includes('details.time-sec'), 'option C is not built');
+});
+
+// ---------- sprint scope change (docs/specs/sprint-scope-change.md AC 5, 12, 23, 26, 29, 30) ----------
+
+const SCOPE_SERVER_FILES = ['server/data/sprintScope.js', 'server/scopePolicy.js', 'server/routes/sprints.js', 'server/routes/meta.js'];
+const SCOPE_CLIENT_FILES = ['public/js/scope.js', 'public/js/sprintView.js'];
+// A scope file's text; for scope.js without its TILE_LABELS block.
+const scopeText = (file) => {
+  const text = read(path.join(root, file));
+  if (file !== 'public/js/scope.js') return text;
+  const start = text.indexOf('const TILE_LABELS');
+  return text.slice(0, start) + text.slice(text.indexOf('});', start) + 3);
+};
+const fnBody = (raw, fn) => {
+  const text = raw.replace(/\r\n/g, '\n');
+  return text.slice(text.indexOf(`function ${fn}(`), text.indexOf('\n}\n', text.indexOf(`function ${fn}(`)));
+};
+
+test('no scope event kind is hard-coded outside server/scopeEvents.js (scope AC 5, 30)', () => {
+  const { SCOPE_EVENT_KINDS } = require('../server/scopeEvents');
+  // Pre-existing, unrelated uses of the word: the image token state in
+  // richText.js and board.js (`[image removed]`), not a scope kind.
+  const unrelated = new Set(['public/js/richText.js: removed', 'public/js/board.js: removed']);
+  const files = sourceFiles.filter((f) => /^(server\/|public\/js\/)/.test(rel(f)) && rel(f) !== 'server/scopeEvents.js');
+  const offenders = [];
+  for (const file of files) {
+    const text = read(file);
+    for (const k of SCOPE_EVENT_KINDS) {
+      const hit = `${rel(file)}: ${k.key}`;
+      if (quoted(k.key).test(text) && !unrelated.has(hit)) offenders.push(hit);
+    }
+  }
+  assert.deepEqual(offenders, []);
+  // Labels: the scope code takes them from GET /api/scope-event-kinds (the
+  // panel's figure labels live in scope.js TILE_LABELS, outside this check).
+  for (const file of [...SCOPE_SERVER_FILES, ...SCOPE_CLIENT_FILES]) {
+    const text = scopeText(file);
+    for (const k of SCOPE_EVENT_KINDS) assert.ok(!quoted(k.label).test(text), `${file}: ${k.label}`);
+  }
+  assert.match(read(path.join(root, 'public/js/sprintView.js')), /api\.get\('\/api\/scope-event-kinds'\)/);
+});
+
+test('the scope code names no sprint state, status or type; epics come from the isEpic flag (scope AC 30)', () => {
+  const { SPRINT_STATES } = require('../server/sprintStates');
+  const { STATUSES } = require('../server/statuses');
+  const { TYPES } = require('../server/types');
+  const names = new Set([...SPRINT_STATES.map((s) => s.name), ...STATUSES, ...TYPES.flatMap((t) => [t.name, t.label])]);
+  const offenders = [];
+  for (const file of [...SCOPE_SERVER_FILES, ...SCOPE_CLIENT_FILES, 'server/scopeEvents.js']) {
+    const text = scopeText(file);
+    for (const name of names) if (quoted(name).test(text)) offenders.push(`${file}: ${name}`);
+  }
+  assert.ok(read(path.join(root, 'public/js/scope.js')).includes('const TILE_LABELS'), 'the labels block exists');
+  assert.deepEqual(offenders, []);
+  const data = read(path.join(root, 'server/data/sprintScope.js'));
+  assert.match(data, /isEpicType\(/);
+  assert.match(data, /epicTypeNames\(\)/);
+  assert.match(data, /activeSprintState\(\)/);
+});
+
+test('scope SQL lives in server/data/sprintScope.js and the schema; hooks in the item writes, not in moveToContainer (scope AC 12, Decision 11)', () => {
+  const allowed = new Set(['server/db.js', 'server/data/sprintScope.js', 'server/scopeEvents.js']);
+  for (const pattern of [/\bsprint_(scope_events|baseline_items)\b/, /\bSET\s+baseline_|\bbaseline_\w+\s+(INTEGER|TEXT)\b/i]) {
+    const offenders = sourceFiles.filter((f) => !allowed.has(rel(f)) && pattern.test(read(f))).map(rel);
+    assert.deepEqual(offenders, [], String(pattern));
+  }
+  const route = read(path.join(root, 'server/routes/sprints.js'));
+  assert.match(route, /require\('\.\.\/data\/sprintScope'\)/);
+  assert.match(route, /router\.get\('\/sprints\/:id\/scope'/);
+  assert.doesNotMatch(route, /router\.(post|patch|put|delete)\('\/sprints\/:id\/scope/, 'no write route (AC 29)');
+  const issues = read(path.join(root, 'server/data/issues.js'));
+  for (const fn of ['createIssue', 'updateIssue', 'deleteIssue']) assert.match(fnBody(issues, fn), /sprintScope\.recordScopeChange\(/, fn);
+  assert.doesNotMatch(fnBody(issues, 'moveToContainer'), /sprintScope/, 'Complete and Delete are not scope changes');
+  const sprints = read(path.join(root, 'server/data/sprints.js'));
+  assert.match(fnBody(sprints, 'startSprint'), /sprintScope\.captureBaseline\(db, sprint, now\)/, 'the same now as started_at');
+  for (const fn of ['completeSprint', 'deleteSprint']) assert.doesNotMatch(fnBody(sprints, fn), /sprintScope/, fn);
+  // The grace rule is written once.
+  assert.deepEqual(sourceFiles.filter((f) => /GRACE_PERIOD_MS\s*=/.test(read(f))).map(rel), ['server/scopePolicy.js']);
+  const db = read(path.join(root, 'server/db.js'));
+  assert.ok(db.indexOf('migrateScope(db)') > db.indexOf('migrateSprints(db)'), 'after migrateSprints');
+});
+
+test('the scope panel and badges render text only, have no write controls and follow design option A (scope AC 20-28)', () => {
+  for (const file of [...SCOPE_CLIENT_FILES, 'public/js/backlog.js', 'public/js/board.js']) {
+    assert.doesNotMatch(read(path.join(root, file)), /innerHTML|outerHTML|insertAdjacentHTML|document\.write/, file);
+  }
+  const view = read(path.join(root, 'public/js/sprintView.js'));
+  const panel = view.slice(view.indexOf('// ---------- scope change'), view.indexOf('// A different sprint'));
+  assert.doesNotMatch(panel, /api\.(post|patch|del)\(/, 'read-only');
+  for (const call of panel.match(/el\(\s*'button',\s*\{[^}]*\}/g) || []) assert.match(call, /type: 'button'/, call);
+  for (const text of ['Final scope change', 'Scope is tracked from the moment the sprint starts.', 'Scope change was not tracked for this sprint.', 'Loading scope change...', 'Could not load scope change.', 'No scope changes yet.', 'adjusted in first 24h', 'Hours are work item estimates. Read-only.']) {
+    assert.ok(panel.includes(`'${text}'`), text);
+  }
+  assert.match(panel, /class: 'tiles'/, 'option A tiles');
+  assert.match(view, /loadScope\(quiet\)/, 'refreshed with the table after a dialog save (AC 25)');
+  assert.match(view, /ctx\.addedBadge\(item\)/, 'the Sprints table badge');
+  assert.match(read(path.join(root, 'public/js/backlog.js')), /ctx\.addedBadge\(item\)/, 'the Backlog badge');
+  const board = boardJs();
+  assert.match(board, /addedBadge\(item, \{ short: true \}\)/, 'the Board card short badge');
+  assert.match(board, /class: 'badge added-late short', title: ADDED_LATE/);
+  assert.match(board, /el\('span', \{ class: 'visually-hidden' \}, ADDED_LATE\)/, 'full accessible name');
+  assert.match(board, /scopeFormat\.addedHint\(editing\.added_at\)/, 'the dialog hint with the date');
+  for (const file of PROJECT_PAGES) {
+    const html = read(path.join(root, file));
+    assert.match(html, /<p id="sprint-added" class="hint sprint-added" hidden><\/p>/, file);
+    const order = ['src="js/time.js"', 'src="js/scope.js"', 'src="js/board.js"'].map((x) => html.indexOf(x));
+    assert.ok(order[0] !== -1 && order[0] < order[1] && order[1] < order[2], file);
+  }
+  const html = read(path.join(root, 'public/sprints.html'));
+  const at = (id) => html.indexOf(`id="${id}"`);
+  assert.ok(at('sprint-goal') < at('sprint-scope') && at('sprint-scope') < at('sprint-body'), 'between the goal and the table');
+});
+
+test('the scope-change styles of option A are in app.css; options B and C are not (design sprint-scope-change)', () => {
+  const css = read(path.join(root, 'public/css/app.css'));
+  const design = read(path.join(root, 'docs/design/sprint-scope-change/src/scope.css'));
+  const added = design.slice(design.indexOf('NEW (append'), design.indexOf('/* Option B'));
+  const rules = added.split('\n').map((l) => l.trim()).filter((l) => /^[.a-z@].*\{.*\}$/i.test(l));
+  assert.ok(rules.length > 30, String(rules.length));
+  for (const rule of rules) assert.ok(css.includes(rule), rule);
+  assert.ok(!css.includes('table.scope-table'), 'option B is not built');
+  assert.ok(!css.includes('.scope-side'), 'option C is not built');
 });

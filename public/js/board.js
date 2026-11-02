@@ -11,6 +11,19 @@
 // names (session.can); the board never looks at a group name.
 // Search and filters (js/filters.js) narrow what is drawn; state.items stays
 // the full list, so lanes and drag ranks are computed from every item.
+// Sprints (docs/specs/sprints-and-backlog.md): the board draws only the
+// active sprint's non-epic items (boardItems), with the sprint bar and the
+// overdue banner above it; with no active sprint it shows an empty state.
+// Sprint states come from GET /api/sprint-states; none are named here.
+// The same script runs the work item dialog on the Backlog page
+// (backlog.html, body data-page="backlog"), where js/backlog.js draws the
+// page and this file hands it what it needs (backlogPage.init), and on the
+// Sprints page (sprints.html, data-page="sprints"; js/sprintView.js,
+// sprintsPage.init). The current project comes from js/projectScope.js.
+// Time tracking (docs/specs/time-tracking.md): the Estimate field in the
+// dialog's properties, the Time tab and the sprint figure on the sprint bar;
+// js/backlog.js and js/sprintView.js draw the same figure through
+// sprintFigure. The texts come from js/time.js (timeFormat).
 (() => {
   const GROUP_BY_STORAGE_KEY = 'pm.groupBy';
   const FILTERS_STORAGE_PREFIX = 'pm.filters.';
@@ -19,25 +32,13 @@
   const RELATIVE_REFRESH_MS = 60 * 1000;
   const RANK_STEP = 1000;
 
-  const projectId = new URLSearchParams(location.search).get('project');
+  let projectId = null; // set from projectScope.ready
+  const page = document.body.dataset.page || 'board'; // board, backlog or sprints
+  const onBoard = page === 'board';
 
   // localStorage may be missing or throw (private mode, blocked storage);
   // the board works without it.
-  function storageGet(key) {
-    try {
-      return localStorage.getItem(key);
-    } catch {
-      return null;
-    }
-  }
-  function storageSet(key, value) {
-    try {
-      if (value === null) localStorage.removeItem(key);
-      else localStorage.setItem(key, value);
-    } catch {
-      // not saved; nothing to tell the user
-    }
-  }
+  const { storageGet, storageSet } = projectScope;
 
   const state = {
     project: null,
@@ -53,6 +54,8 @@
     attachmentTypes: { types: [], max_bytes: 0, max_per_item: 0 }, // GET /api/attachment-types
     me: null, // the signed-in user { id, name, username, group, permissions }
     items: [],
+    sprints: [], // GET /api/projects/:id/sprints (with counts)
+    sprintStates: [], // GET /api/sprint-states: [{ name, initial, active, final }]
     groupBy: storageGet(GROUP_BY_STORAGE_KEY) || 'none',
     filters: boardFilters.emptyFilters(), // search text and dropdowns, per project
     collapsed: new Set(),
@@ -60,7 +63,6 @@
   };
 
   const els = {
-    crumb: document.getElementById('crumb'),
     title: document.getElementById('project-title'),
     status: document.getElementById('project-status'),
     archivedBadge: document.getElementById('archived-badge'),
@@ -100,14 +102,36 @@
     tabDiscussion: document.getElementById('tab-discussion'),
     tabHistory: document.getElementById('tab-history'),
     tabLinks: document.getElementById('tab-links'),
+    tabTime: document.getElementById('tab-time'),
     tabAttachments: document.getElementById('tab-attachments'),
     counts: {
       children: document.getElementById('count-children'),
       discussion: document.getElementById('count-discussion'),
       history: document.getElementById('count-history'),
       links: document.getElementById('count-links'),
+      time: document.getElementById('count-time'),
       attachments: document.getElementById('count-attachments'),
     },
+    estimateField: document.getElementById('estimate-field'),
+    estimateEdit: document.getElementById('estimate-edit'),
+    estimateInput: document.getElementById('estimate-input'),
+    estimateRo: document.getElementById('estimate-ro'),
+    estimateError: document.getElementById('estimate-error'),
+    time: document.getElementById('time'),
+    timeSum: document.getElementById('time-sum'),
+    timeForm: document.getElementById('time-form'),
+    timeHours: document.getElementById('time-hours'),
+    timeDate: document.getElementById('time-date'),
+    timeNote: document.getElementById('time-note'),
+    timeLog: document.getElementById('time-log'),
+    timeError: document.getElementById('time-error'),
+    timeListHint: document.getElementById('time-list-hint'),
+    timeLoading: document.getElementById('time-loading'),
+    timeLoadError: document.getElementById('time-load-error'),
+    timeLoadErrorText: document.getElementById('time-load-error-text'),
+    timeRetry: document.getElementById('time-retry'),
+    timeEmpty: document.getElementById('time-empty'),
+    timeList: document.getElementById('time-list'),
     history: document.getElementById('history'),
     historyField: document.getElementById('history-field'),
     historyNote: document.getElementById('history-note'),
@@ -170,6 +194,19 @@
     filterNotice: document.getElementById('filter-notice'),
     filterNoticeText: document.getElementById('filter-notice-text'),
     filterNoticeDismiss: document.getElementById('filter-notice-dismiss'),
+    sprintBar: document.getElementById('sprint-bar'),
+    overdueBanner: document.getElementById('overdue-banner'),
+    filterBar: document.getElementById('filter-bar'),
+    backlogNotice: document.getElementById('backlog-notice'),
+    backlogNoticeText: document.getElementById('backlog-notice-text'),
+    backlogNoticeLink: document.getElementById('backlog-notice-link'),
+    backlogNoticeDismiss: document.getElementById('backlog-notice-dismiss'),
+    sprintField: document.getElementById('sprint-field'),
+    sprintSelect: document.getElementById('sprint-select'),
+    sprintNa: document.getElementById('sprint-na'),
+    sprintNote: document.getElementById('sprint-note'),
+    sprintWhere: document.getElementById('sprint-where'),
+    sprintAdded: document.getElementById('sprint-added'),
   };
 
   // ---------- helpers ----------
@@ -189,9 +226,10 @@
 
   // Nothing on the board can be changed when the project is archived or the
   // user's group lacks `write` (a Viewer): no create, drag, edit, comment,
-  // link or attach controls. Reading everything still works.
-  const readOnly = () => Boolean(state.project && state.project.archived) || !session.can('write');
-  const canDeleteItems = () => session.can('delete-item');
+  // link or attach controls. Reading everything still works. The user's
+  // group in this project applies when they have one (project permissions).
+  const readOnly = () => Boolean(state.project && state.project.archived) || !session.can('write', projectId);
+  const canDeleteItems = () => session.can('delete-item', projectId);
   const typeOf = (name) => state.types.find((t) => t.name === name);
   const isEpicItem = (item) => Boolean(typeOf(item.type) && typeOf(item.type).isEpic);
   const epicType = () => state.types.find((t) => t.isEpic);
@@ -218,6 +256,57 @@
 
   function initials(name) {
     return name.split(/\s+/).filter(Boolean).map((p) => p[0].toUpperCase()).slice(0, 2).join('');
+  }
+
+  // ----- sprints -----
+  // State names come from the server's list, by flag.
+  const stateWith = (flag) => {
+    const s = state.sprintStates.find((x) => x[flag]);
+    return s ? s.name : null;
+  };
+  const isActiveSprint = (sprint) => Boolean(sprint) && sprint.state === stateWith('active');
+  const isFinalSprint = (sprint) => Boolean(sprint) && sprint.state === stateWith('final');
+  const activeSprint = () => state.sprints.find(isActiveSprint) || null;
+  const sprintById = (id) => state.sprints.find((s) => s.id === id) || null;
+  const backlogUrl = () => projectScope.pageUrl('backlog.html', projectId);
+
+  // The "Added after start" badge (docs/specs/sprint-scope-change.md AC 26;
+  // design badges.html) for an item the server flags (added_after_start),
+  // else null. `short`: the Board card form, "Added" with the full text as
+  // its tooltip and hidden accessible name.
+  const ADDED_LATE = 'Added after start';
+  const ADDED_LATE_SHORT = 'Added';
+  function addedBadge(item, { short = false } = {}) {
+    if (!item || !item.added_after_start) return null;
+    if (!short) return el('span', { class: 'badge added-late' }, ADDED_LATE);
+    return el(
+      'span',
+      { class: 'badge added-late short', title: ADDED_LATE },
+      el('span', { 'aria-hidden': 'true' }, ADDED_LATE_SHORT),
+      el('span', { class: 'visually-hidden' }, ADDED_LATE)
+    );
+  }
+
+  // The board's items: the active sprint's non-epic items (none without an
+  // active sprint). Epics are never cards (AC 24).
+  function boardItems() {
+    const active = activeSprint();
+    if (!active) return [];
+    return state.items.filter((i) => i.sprint_id === active.id && !isEpicItem(i));
+  }
+
+  // The sprint figure tag (time-tracking AC 16, 19, 20, 53): `12 h logged /
+  // 20 h est.` from the sprint's server totals. `note` adds `(n not
+  // estimated)` (Sprints and Backlog pages, not the Board bar); `live` makes
+  // it a polite status (the Backlog, where estimates change in place).
+  function sprintFigure(sprint, { note = false, live = false } = {}) {
+    const parts = timeFormat.sprintFigureParts(sprint.time_spent_hours, sprint.estimate_hours, note ? sprint.unestimated_count : 0);
+    return el(
+      'span',
+      { class: `sprint-fig${parts.over ? ' is-over' : ''}`, role: live ? 'status' : undefined },
+      parts.main,
+      parts.note ? el('span', { class: 'fig-note' }, parts.note) : null
+    );
   }
 
   let messageTimer = null;
@@ -248,11 +337,13 @@
     return field ? item[field] ?? null : null;
   }
 
-  // Lanes are computed client-side from the full work item list, so an epic
-  // that is filtered out still has its lane; each lane then holds only the
-  // `visible` items. While a search or filter is active, empty lanes are hidden.
+  // Lanes are computed client-side from every item on the board (the active
+  // sprint), so an item that is filtered out still keeps its lane; each lane
+  // then holds only the `visible` items. An epic gets a lane only when one of
+  // its children is on the board (AC 29); the epic itself comes from the full
+  // list. While a search or filter is active, empty lanes are hidden.
   function computeLanes(visible) {
-    const items = state.items;
+    const items = boardItems();
     const lanes = [];
     if (state.groupBy === 'assignee') {
       const used = new Set(items.map((i) => i.assignee_id).filter((v) => v !== null));
@@ -262,7 +353,7 @@
       lanes.push({ key: 'none', label: 'Unassigned', value: null });
     } else if (state.groupBy === 'epic') {
       const used = new Set(items.map((i) => i.epic_id).filter((v) => v !== null));
-      const epics = items.filter((i) => isEpicItem(i) && used.has(i.id)).sort((a, b) => a.number - b.number);
+      const epics = state.items.filter((i) => isEpicItem(i) && used.has(i.id)).sort((a, b) => a.number - b.number);
       for (const e of epics) {
         lanes.push({ key: `e${e.id}`, label: `${e.key} ${e.title}`, value: e.id });
       }
@@ -320,6 +411,7 @@
         { class: 'card-meta' },
         typeBadge,
         el('span', { class: 'card-key' }, item.key),
+        addedBadge(item, { short: true }),
         epic ? epicChip(epic) : null,
         el('span', { class: 'priority', title: `Priority: ${item.priority}` }, item.priority),
         resolutionLabel(item),
@@ -403,6 +495,19 @@
   }
 
   function render() {
+    if (!onBoard) {
+      if (page === 'backlog' && typeof backlogPage !== 'undefined') backlogPage.render();
+      if (page === 'sprints' && typeof sprintsPage !== 'undefined') sprintsPage.render();
+      return;
+    }
+    renderSprintBar();
+    const active = activeSprint();
+    els.filterBar.hidden = !active;
+    els.groupBy.closest('label').hidden = !active;
+    if (!active) {
+      els.board.replaceChildren(renderNoSprint());
+      return;
+    }
     const visible = visibleItems();
     renderFilterCount(visible.length);
     const lanes = computeLanes(visible);
@@ -431,7 +536,19 @@
           else state.collapsed.add(collapseKey);
           render();
         });
-        laneNode.append(headerBtn);
+        // An epic lane's title also opens the Epic View (AC 29), as the
+        // epic chip does; a separate button, since buttons cannot nest.
+        const laneEpic = state.groupBy === 'epic' && lane.value !== null ? itemById(lane.value) : null;
+        laneNode.append(
+          laneEpic
+            ? el(
+                'div',
+                { class: 'lane-head-row' },
+                headerBtn,
+                el('button', { type: 'button', class: 'link lane-epic-open', onclick: () => openLinked(laneEpic.id) }, `Open ${laneEpic.key}`)
+              )
+            : headerBtn
+        );
       }
       if (!collapsed) {
         const body = el('div', { class: 'lane-body', style: gridStyle() });
@@ -443,13 +560,62 @@
     els.board.replaceChildren(...nodes);
   }
 
+  // No active sprint (AC 25): the columns are not drawn.
+  function renderNoSprint() {
+    return el(
+      'div',
+      { class: 'empty' },
+      el('p', {}, el('strong', {}, 'No active sprint.')),
+      el('p', {}, 'The board shows the work in the active sprint. Start a sprint on the Backlog page.'),
+      readOnly() ? null : el('p', {}, 'Work items you create now go to the Backlog.'),
+      el('a', { href: backlogUrl() }, 'Go to the Backlog')
+    );
+  }
+
+  // The active sprint's bar and, when it is overdue, the warning banner
+  // (AC 26, Decision 19). Text only; the state word comes from the server.
+  function renderSprintBar() {
+    const active = activeSprint();
+    els.sprintBar.hidden = !active;
+    const overdue = sprintUtil.isOverdue(active, stateWith('active'));
+    els.overdueBanner.hidden = !overdue;
+    if (!active) {
+      els.sprintBar.replaceChildren();
+      els.overdueBanner.replaceChildren();
+      return;
+    }
+    const dates = sprintUtil.datesText(active);
+    const parts = [
+      el('h2', { class: 'sprint-name' }, active.name),
+      sprintFigure(active),
+      el('span', { class: 'badge state-active' }, active.state),
+      dates ? el('span', { class: 'sprint-meta' }, dates) : null,
+      overdue ? el('span', { class: 'badge overdue' }, '\u26A0 Overdue') : null,
+      el('a', { href: backlogUrl() }, 'Open Backlog'),
+      active.goal ? el('p', { class: 'sprint-goal' }, el('strong', {}, 'Goal:'), ` ${active.goal}`) : null,
+    ];
+    els.sprintBar.replaceChildren(...parts.filter(Boolean));
+    els.overdueBanner.replaceChildren(
+      ...(overdue
+        ? [
+            el('strong', {}, '\u26A0 Overdue'),
+            el('span', {}, `This sprint ended on ${active.end_date} (${sprintUtil.agoText(active.end_date)}).`),
+            el('a', { class: 'spacer', href: backlogUrl() }, 'Complete it on the Backlog page'),
+          ]
+        : [])
+    );
+  }
+
   function renderHeader() {
     const p = state.project;
-    document.title = `${p.key} board`;
-    els.crumb.textContent = `/ ${p.name}`;
-    els.title.textContent = `${p.name} (${p.key})`;
-    els.status.textContent = p.status;
+    document.title = `${p.key} ${page}`;
+    // The Sprints page keeps its own "Sprints" heading and has no status badge.
+    if (els.title && page !== 'sprints') els.title.textContent = `${p.name} (${p.key})`;
+    if (els.status) els.status.textContent = p.status;
     els.archivedBadge.hidden = !p.archived;
+    // The sub-navigation links carry the project (js/projectScope.js).
+    if (!onBoard) return;
+    els.backlogNoticeLink.href = backlogUrl();
     els.createBtn.hidden = readOnly();
     els.groupBy.replaceChildren(...groupOptions().map((o) => el('option', { value: o.value }, o.label)));
     if (!groupOptions().some((o) => o.value === state.groupBy)) state.groupBy = 'none';
@@ -521,14 +687,8 @@
     if (beforeId === item.id) return;
     const patch = { status, rank: computeRank(item, status, lane, beforeId) };
     const field = GROUP_FIELDS[state.groupBy];
-    if (field && laneValueOf(item) !== lane.value) {
-      if (state.groupBy === 'epic' && isEpicItem(item) && lane.value !== null) {
-        showMessage(`${item.key} (${epicLabel()}) cannot be placed in another ${epicLabel().toLowerCase()} lane.`);
-        render();
-        return;
-      }
-      patch[field] = lane.value;
-    }
+    // Epics are never cards (AC 24), so no epic can be dropped into a lane.
+    if (field && laneValueOf(item) !== lane.value) patch[field] = lane.value;
     // Optimistic update, rolled back if the save fails.
     const snapshot = { ...item };
     Object.assign(item, patch);
@@ -580,7 +740,7 @@
   function fillStatusTrack(value) {
     els.statusSteps.replaceChildren(
       ...state.statuses.map((s) =>
-        el('label', { class: 'step' }, el('input', { type: 'radio', name: 'status', value: s }), el('span', {}, s))
+        el('label', { class: 'step', title: s }, el('input', { type: 'radio', name: 'status', value: s }), el('span', {}, s))
       )
     );
     for (const radio of statusRadios()) radio.checked = radio.value === value;
@@ -616,7 +776,129 @@
   function syncEpicField() {
     const type = typeOf(els.form.elements.type.value);
     els.epicField.hidden = !epicType() || Boolean(type && type.isEpic);
+    syncSprintField();
+    syncEstimateField();
   }
+
+  // ----- sprint field (AC 37) -----
+  // Backlog plus every open sprint as "<name> (<state>)". An item in a
+  // completed sprint shows it, disabled, with a note. For an epic type the
+  // select gives way to fixed text, also as soon as Type is switched to one.
+  // A saved item's sprint saves at once (PATCH); a new item sends it on Create.
+
+  const openSprints = () => state.sprints.filter((s) => !isFinalSprint(s));
+  let sprintSaving = false;
+
+  function fillSprintField(item) {
+    const current = item && item.sprint_id ? sprintById(item.sprint_id) : null;
+    const option = (s) => ({ value: String(s.id), label: `${s.name} (${s.state})` });
+    if (isFinalSprint(current)) {
+      fillSelect(els.sprintSelect, [option(current)], String(current.id));
+    } else {
+      const active = activeSprint();
+      const value = item ? (item.sprint_id ? String(item.sprint_id) : '') : active ? String(active.id) : '';
+      fillSelect(els.sprintSelect, [{ value: '', label: 'Backlog' }, ...openSprints().map(option)], value);
+    }
+    els.sprintSelect.dataset.saved = els.sprintSelect.value;
+    syncSprintField();
+  }
+
+  function syncSprintField() {
+    const type = typeOf(els.form.elements.type.value);
+    const epic = Boolean(type && type.isEpic);
+    const current = editing && editing.sprint_id ? sprintById(editing.sprint_id) : null;
+    const completed = isFinalSprint(current);
+    els.sprintSelect.hidden = epic;
+    els.sprintNa.hidden = !epic;
+    els.sprintNote.hidden = epic || !completed;
+    els.sprintSelect.disabled = readOnly() || completed || sprintSaving;
+    // Where a new item goes (AC 27, Decision 17).
+    let where = '';
+    if (!editing) {
+      const chosen = sprintById(Number(els.sprintSelect.value));
+      if (epic) where = 'Epics are not part of a sprint.';
+      else if (chosen) where = `This work item will be created in ${chosen.name}.`;
+      else if (!activeSprint()) where = 'No sprint is active. This work item will be created in the Backlog.';
+      else where = 'This work item will be created in the Backlog.';
+    }
+    els.sprintWhere.textContent = where;
+    els.sprintWhere.hidden = !where;
+    // "Added after start" under the Sprint field (scope change AC 28), for
+    // the saved sprint of the open item only.
+    const flagged = Boolean(editing && !epic && editing.added_after_start && els.sprintSelect.value === String(editing.sprint_id || ''));
+    if (flagged) {
+      els.sprintAdded.replaceChildren(addedBadge(editing), ' ', el('span', { class: 'visually-hidden' }, '.'), scopeFormat.addedHint(editing.added_at));
+    } else {
+      els.sprintAdded.replaceChildren();
+    }
+    els.sprintAdded.hidden = !flagged;
+  }
+
+  els.sprintSelect.addEventListener('change', async () => {
+    syncSprintField();
+    if (!editing || readOnly()) return;
+    const item = editing;
+    const previous = els.sprintSelect.dataset.saved;
+    const sprintId = els.sprintSelect.value ? Number(els.sprintSelect.value) : null;
+    els.detailError.textContent = '';
+    sprintSaving = true;
+    syncSprintField();
+    try {
+      const saved = await api.patch(`/api/issues/${item.id}`, { sprint_id: sprintId });
+      Object.assign(item, saved);
+      if (editing === item) els.sprintSelect.dataset.saved = els.sprintSelect.value;
+      historySaved(item.id);
+      await refreshCards();
+    } catch (err) {
+      if (editing === item) {
+        els.sprintSelect.value = previous;
+        els.detailError.textContent = `Could not change the sprint: ${err.message}`;
+      }
+    } finally {
+      sprintSaving = false;
+      if (editing === item) syncSprintField();
+    }
+  });
+
+  // ----- estimate field (time-tracking AC 41-44, 48) -----
+  // An item field like the others: dirty-tracked and saved with Save (a new
+  // item sends it on Create). Read-only text ("8 h" or "Not estimated") for
+  // Viewers and archived projects; removed for an epic type, and emptied when
+  // Type is switched to one so switching back shows it empty.
+
+  const ESTIMATE_INVALID = 'Estimate must be a number greater than 0 and at most 1000, in steps of 0.25, or empty.';
+
+  function syncEstimateField() {
+    const type = typeOf(els.form.elements.type.value);
+    const epic = Boolean(type && type.isEpic);
+    const ro = readOnly();
+    els.estimateField.hidden = epic;
+    els.estimateEdit.hidden = ro;
+    els.estimateRo.hidden = !ro;
+    const value = editing ? editing.estimate_hours : null;
+    const none = value === null || value === undefined;
+    els.estimateRo.textContent = none ? 'Not estimated' : timeFormat.hours(value);
+    els.estimateRo.classList.toggle('none', none);
+  }
+
+  // The estimate as sent: hours, or null when the input is empty.
+  function estimateValue() {
+    const raw = els.estimateInput.value;
+    return raw === '' ? null : Number(raw);
+  }
+
+  function setEstimateError(text) {
+    els.estimateError.textContent = text;
+    els.estimateError.hidden = !text;
+    if (text) {
+      els.estimateInput.setAttribute('aria-invalid', 'true');
+      els.estimateInput.setAttribute('aria-describedby', 'estimate-error');
+    } else {
+      els.estimateInput.removeAttribute('aria-invalid');
+      els.estimateInput.removeAttribute('aria-describedby');
+    }
+  }
+  els.estimateInput.addEventListener('input', () => setEstimateError(''));
 
   // ----- band -----
 
@@ -701,7 +983,65 @@
     growTitle();
   });
 
-  function openDetail(item) {
+  // ----- unsaved edits (docs/specs/global-project-scope.md AC 14-14f) -----
+  // The dialog is dirty when a saved-item field differs from the values it
+  // was filled with, or a comment draft or message edit is not posted. X,
+  // Close, Escape and re-pointing ask "Discard changes?" first; the project
+  // dropdown asks "Switch project?". One confirm helper (projectScope).
+  // beforeunload is registered only while the dialog is dirty.
+  let detailBaseline = null; // formValues() when the dialog was filled, or null
+  function isDetailDirty() {
+    if (!els.dialog.open || detailBaseline === null) return false;
+    const editingComment = discussion.comments.find((c) => c.id === discussion.editingId);
+    return projectScope.detailDirty(detailBaseline, formValues(), {
+      comment: els.commentBody.value,
+      edit: editingComment ? discussion.editDraft : undefined,
+      editOriginal: editingComment ? editingComment.body : undefined,
+    });
+  }
+  function onBeforeUnload(e) {
+    if (!isDetailDirty()) return;
+    e.preventDefault();
+    e.returnValue = ''; // the browser shows its own wording
+  }
+  let unloadGuarded = false;
+  function syncUnloadGuard() {
+    const dirty = isDetailDirty();
+    if (dirty && !unloadGuarded) window.addEventListener('beforeunload', onBeforeUnload);
+    if (!dirty && unloadGuarded) window.removeEventListener('beforeunload', onBeforeUnload);
+    unloadGuarded = dirty;
+  }
+  function discardDetailEdits() {
+    detailBaseline = null;
+    syncUnloadGuard();
+  }
+  els.dialog.addEventListener('input', syncUnloadGuard);
+  els.dialog.addEventListener('change', syncUnloadGuard);
+  projectScope.guard.isDirty = isDetailDirty;
+  projectScope.guard.discard = discardDetailEdits;
+
+  // True when the dialog may lose its edits: not dirty, or the user chose
+  // "Discard changes". On Cancel focus goes back to `returnFocus`.
+  async function confirmDiscard(returnFocus) {
+    if (!isDetailDirty()) return true;
+    const ok = await projectScope.confirmDialog(projectScope.DISCARD_CONFIRM);
+    if (ok) {
+      discardDetailEdits();
+      return true;
+    }
+    if (returnFocus && returnFocus.isConnected) returnFocus.focus();
+    return false;
+  }
+
+  // Opens the dialog, or re-points the open one at another item (asking
+  // first when the open one is dirty). Resolves whether it did.
+  async function openDetail(item) {
+    if (isDetailDirty() && !(await confirmDiscard(document.activeElement))) return false;
+    fillDetail(item);
+    return true;
+  }
+
+  function fillDetail(item) {
     editing = item || null;
     epicView.returnTo = null; // set again by Create child
     const f = els.form.elements;
@@ -735,18 +1075,24 @@
       item && item.epic_id ? String(item.epic_id) : ''
     );
     els.statusField.hidden = !item;
+    els.estimateInput.value = item && item.estimate_hours !== null && item.estimate_hours !== undefined ? String(item.estimate_hours) : '';
+    setEstimateError('');
     els.resolutionField.hidden = true;
     syncResolutionField();
+    sprintSaving = false;
+    fillSprintField(item);
     syncEpicField();
     syncEpicOpen(item);
 
     for (const field of els.form.querySelectorAll('input, select, textarea')) field.disabled = ro;
+    syncSprintField(); // also disabled for an item in a completed sprint
     els.historyField.disabled = false; // History stays usable when read-only
     els.saveBtn.hidden = ro;
     els.saveBtn.textContent = item ? 'Save' : 'Create';
     els.deleteBtn.hidden = ro || !item || !canDeleteItems();
     els.activityTabs.hidden = !item;
     els.tabChildren.hidden = !(item && isEpicItem(item));
+    els.tabTime.hidden = !(item && !isEpicItem(item)); // no Time tab for an epic (time-tracking AC 26)
     // Attachments first: the description and the thread render image tokens
     // against this item's attachment list.
     openAttachments(item);
@@ -755,12 +1101,21 @@
     openLinks(item);
     openDiscussion(item);
     openHistory(item);
+    openTime(item);
+    ticketTests.open(item ? { project: state.project.id, issueId: item.id, readonly: ro } : null);
     // The default each time a dialog opens or is re-pointed; not remembered.
     selectTab(item && isEpicItem(item) ? 'children' : 'discussion');
     // A linked item re-points the dialog that is already open.
     if (!els.dialog.open) els.dialog.showModal();
+    resetDetailBaseline();
     growTitle();
     (els.titleInput.disabled ? els.closeX : els.titleInput).focus();
+  }
+
+  // The values the dialog now holds count as the loaded ones (not dirty).
+  function resetDetailBaseline() {
+    detailBaseline = formValues();
+    syncUnloadGuard();
   }
 
   function formValues() {
@@ -774,13 +1129,36 @@
       epic_id: type && type.isEpic ? null : f.epic_id.value ? Number(f.epic_id.value) : null,
       description: f.description.value,
     };
+    // A new item's sprint goes with Create; a saved item's saves on change.
+    if (!editing && !(type && type.isEpic)) values.sprint_id = f.sprint_id.value ? Number(f.sprint_id.value) : null;
+    // The estimate is not sent for an epic type (the server clears it on a change to one).
+    if (!(type && type.isEpic)) values.estimate_hours = estimateValue();
     if (editing) values.status = selectedStatus();
     // Left out for other statuses: the server clears it.
     if (editing && isTerminal(values.status)) values.resolution = f.resolution.value;
     return values;
   }
 
-  els.form.elements.type.addEventListener('change', syncEpicField);
+  els.form.elements.type.addEventListener('change', () => {
+    const type = typeOf(els.form.elements.type.value);
+    if (type && type.isEpic) {
+      els.estimateInput.value = '';
+      setEstimateError('');
+    }
+    syncEpicField();
+    syncTimeTab();
+  });
+
+  // The Time tab follows the Type select of a saved item, like the Estimate
+  // field: switching to an epic type hides it at once (so no time is logged
+  // to the still-saved task), switching back shows it (time-tracking AC 26, 43).
+  function syncTimeTab() {
+    if (!editing) return;
+    const type = typeOf(els.form.elements.type.value);
+    els.tabTime.hidden = Boolean(type && type.isEpic);
+    // Moves off a hidden selected Time tab, and re-applies panel visibility.
+    selectTab(els.tabTime.hidden && selectedTab === 'time' ? 'discussion' : selectedTab);
+  }
   els.statusSteps.addEventListener('change', () => {
     syncTrack();
     syncResolutionField();
@@ -791,10 +1169,17 @@
     if (readOnly() || pasteUploads.description > 0) return; // Save waits for a pasted image
     els.detailError.textContent = '';
     setTitleError('');
+    setEstimateError('');
     const values = formValues();
     if (!values.title) {
       setTitleError(TITLE_REQUIRED);
       els.titleInput.focus();
+      return;
+    }
+    // Text the number input cannot read would otherwise be sent as empty.
+    if (!els.estimateField.hidden && els.estimateInput.validity.badInput) {
+      setEstimateError(ESTIMATE_INVALID);
+      els.estimateInput.focus();
       return;
     }
     let created = null;
@@ -804,25 +1189,32 @@
         historySaved(editing.id);
       } else {
         created = await api.post(`/api/projects/${state.project.id}/issues`, values);
+        detailBaseline = null;
         // Created from an epic's Create child: go back to that epic.
         const epic = epicView.returnTo !== null && (await reloadThenFind(epicView.returnTo));
         if (epic) {
-          noticeIfHidden(created);
+          noticeIfHidden(created) || noticeIfOffBoard(created);
           openDetail(epic);
           return;
         }
       }
       els.dialog.close();
       await reloadItems();
-      if (created) noticeIfHidden(created);
+      if (created) noticeIfOffBoard(created) || noticeIfHidden(created);
     } catch (err) {
-      els.detailError.textContent = err.message;
+      // Estimate messages show under the field (time-tracking AC 41).
+      if (/estimate/i.test(err.message) && !els.estimateField.hidden) {
+        setEstimateError(err.message);
+        els.estimateInput.focus();
+      } else {
+        els.detailError.textContent = err.message;
+      }
     }
   });
 
   els.deleteBtn.addEventListener('click', async () => {
     if (!editing || readOnly() || !canDeleteItems()) return;
-    if (!confirm(`Delete ${editing.key}? This cannot be undone.`)) return;
+    if (!confirm(`Delete ${editing.key}? Its test case links and execution history will also be deleted. Library cases are kept. This cannot be undone.`)) return;
     try {
       await api.del(`/api/issues/${editing.id}`);
       els.dialog.close();
@@ -832,10 +1224,36 @@
     }
   });
 
-  els.closeBtn.addEventListener('click', () => els.dialog.close());
-  els.closeX.addEventListener('click', () => els.dialog.close());
+  // X, Close and Escape (AC 14c-14e): with unsaved edits the dialog stays
+  // open until "Discard changes"; Cancel keeps everything and puts focus back
+  // on the control used (the title for Escape). Save and Delete are not
+  // close actions.
+  async function closeDetail(returnFocus) {
+    if (!(await confirmDiscard(returnFocus))) return;
+    discardDetailEdits();
+    els.dialog.close();
+  }
+  els.closeBtn.addEventListener('click', () => closeDetail(els.closeBtn));
+  els.closeX.addEventListener('click', () => closeDetail(els.closeX));
+  els.dialog.addEventListener('cancel', (e) => {
+    if (!isDetailDirty()) return; // closes as usual
+    e.preventDefault();
+    closeDetail(els.titleInput.disabled ? els.closeX : els.titleInput);
+  });
+  // Chromium may not let `cancel` be prevented (no recent user activation),
+  // so a dirty dialog also stops Escape before it becomes a cancel.
+  els.dialog.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.isComposing || !isDetailDirty()) return;
+    e.preventDefault();
+    closeDetail(els.titleInput.disabled ? els.closeX : els.titleInput);
+  });
 
   // ----- tabs -----
+  const ticketTests = testCaseUI.ticketPanel({
+    root: document.getElementById('ticket-test-cases'),
+    count: document.getElementById('count-test-cases'),
+    onChange: () => { if (editing) historySaved(editing.id); },
+  });
   // One tab bar for a saved item; a new item has none. Only one panel shows
   // at a time; History loads the first time it is shown.
 
@@ -844,6 +1262,8 @@
     { name: 'discussion', tab: els.tabDiscussion, panel: els.discussion },
     { name: 'history', tab: els.tabHistory, panel: els.history },
     { name: 'links', tab: els.tabLinks, panel: els.links },
+    { name: 'time', tab: els.tabTime, panel: els.time },
+    { name: 'test-cases', tab: document.getElementById('tab-test-cases'), panel: document.getElementById('ticket-test-cases') },
     { name: 'attachments', tab: els.tabAttachments, panel: els.attachments },
   ];
   let selectedTab = 'discussion';
@@ -860,6 +1280,12 @@
     }
     historyView.selected = hasItem && name === 'history';
     if (historyView.selected && historyView.issueId !== null && !historyView.loaded && !historyView.loading) loadHistory(true);
+    // The tab bar scrolls sideways when it does not fit (design
+    // time-tracking): keep the selected tab in view.
+    const current = tabList().find((t) => t.name === name);
+    if (hasItem && els.dialog.open && current && !current.tab.hidden && current.tab.scrollIntoView) {
+      current.tab.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+    }
   }
 
   for (const t of tabList()) t.tab.addEventListener('click', () => selectTab(t.name));
@@ -1130,11 +1556,15 @@
   // opened in the meantime the dialog is open again and its state is kept.
   els.dialog.addEventListener('close', () => {
     if (els.dialog.open) return;
+    discardDetailEdits(); // nothing is open, so nothing is unsaved
     clearInterval(discussion.timer);
     discussion.timer = null;
     discussion.issueId = null;
+    ticketTests.close();
     discussion.editingId = null;
     historyView.issueId = null;
+    timeView.issueId = null;
+    timeView.editingId = null;
     linksView.issueId = null;
     attachmentsView.issueId = null;
     epicView.issueId = null;
@@ -1261,6 +1691,328 @@
   els.historyMore.addEventListener('click', () => {
     if (!historyView.loading) loadHistory(false);
   });
+
+  // ---------- time ----------
+  // The Time tab (docs/specs/time-tracking.md AC 22-29, 45-47; design
+  // time-tracking option A): the summary (Estimate, Logged, Balance and a
+  // progress bar), the Log time form and the entries, newest work date first.
+  // Entries are saved by their own buttons straight to the server, never
+  // through Save, so they never make the dialog unsaved. Only the signed-in
+  // user's own entries have Edit and Delete. Hidden for epic types.
+
+  const timeView = {
+    issueId: null, // work item whose time is shown, or null
+    estimate: null, // the saved estimate in hours, or null
+    total: 0, // hours logged
+    entries: [],
+    loaded: false,
+    loading: false,
+    error: '',
+    editingId: null, // entry in inline edit, or null
+    busy: false, // a log, edit or delete is in flight
+    loadSeq: 0,
+  };
+
+  const pad2 = (n) => String(n).padStart(2, '0');
+  // Today in the browser's time zone, as the date input wants it.
+  function todayText() {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }
+
+  // Badge: hours logged, none at 0 (never the estimate).
+  function syncTimeCount() {
+    setCount('time', timeView.total > 0 ? String(Math.round(timeView.total * 100) / 100) : null);
+  }
+
+  function renderTimeSummary() {
+    const est = timeView.estimate;
+    const logged = timeView.total;
+    const balance = timeFormat.itemBalance(est, logged);
+    const cell = (label, dd) => el('div', {}, el('dt', {}, label), dd);
+    const parts = [
+      el(
+        'dl',
+        {},
+        cell('Estimate', est === null ? el('dd', { class: 'none' }, 'No estimate') : el('dd', {}, timeFormat.hours(est))),
+        cell('Logged', el('dd', {}, balance ? timeFormat.hours(logged) : `${timeFormat.hours(logged)} logged`)),
+        balance
+          ? cell(
+              'Balance',
+              balance.over
+                ? el('dd', { class: 'bal-over' }, el('span', { 'aria-hidden': 'true' }, '▲ '), balance.text)
+                : el('dd', {}, balance.text)
+            )
+          : null
+      ),
+    ];
+    if (balance) {
+      const shown = Math.min(100, balance.percent);
+      parts.push(
+        el(
+          'div',
+          { class: `time-bar${balance.over ? ' is-over' : ''}` },
+          el(
+            'div',
+            { class: 'progress-bar', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(shown), 'aria-label': 'Logged against estimate' },
+            el('div', { class: 'progress-fill', style: `width: ${shown}%` })
+          ),
+          el('span', { class: 'time-bar-text' }, `${balance.percent}% of estimate logged${balance.over ? ' (over)' : ''}`)
+        )
+      );
+    }
+    els.timeSum.className = `time-sum${balance && balance.over ? ' is-over' : ''}`;
+    els.timeSum.replaceChildren(...parts);
+    syncTimeCount();
+  }
+
+  // The message of a failed log or edit, with aria-invalid on the field at fault.
+  function setTimeError(errorEl, fields, text) {
+    errorEl.textContent = text;
+    errorEl.hidden = !text;
+    const fault = /^Hours/.test(text) ? fields.hours : /^Date/.test(text) ? fields.date : /^Note/.test(text) ? fields.note : null;
+    for (const input of [fields.hours, fields.date, fields.note]) {
+      if (text && input === fault) {
+        input.setAttribute('aria-invalid', 'true');
+        input.setAttribute('aria-describedby', errorEl.id);
+      } else {
+        input.removeAttribute('aria-invalid');
+        input.removeAttribute('aria-describedby');
+      }
+    }
+  }
+  const logFields = { hours: els.timeHours, date: els.timeDate, note: els.timeNote };
+
+  // The body of a log or an edit: hours as a number (the server explains a
+  // bad one), the date (today when empty) and the note.
+  function timeBody(hoursInput, dateInput, noteInput) {
+    const raw = hoursInput.value;
+    const body = { hours: raw === '' || hoursInput.validity.badInput ? null : Number(raw), note: noteInput.value };
+    if (dateInput.value) body.date = dateInput.value;
+    return body;
+  }
+
+  function renderTimeEntry(entry) {
+    const own = !readOnly() && Boolean(state.me) && entry.user_id === state.me.id;
+    if (own && timeView.editingId === entry.id) return renderTimeEdit(entry);
+    const edited = entry.updated_at && entry.updated_at !== entry.created_at;
+    const li = el(
+      'li',
+      { class: 'time-item', 'data-id': entry.id },
+      el(
+        'div',
+        { class: 'time-main' },
+        el('span', { class: 'time-who' }, entry.user_name), // text, never parsed as HTML
+        el('span', { class: 'time-hours' }, timeFormat.hours(entry.hours)),
+        el('span', { class: 'time-date' }, entry.date),
+        el('span', { class: 'time-when' }, 'logged ', timeText(entry.created_at)),
+        edited ? el('span', { class: 'time-edited' }, 'edited ', timeText(entry.updated_at)) : null
+      )
+    );
+    if (own) {
+      const editBtn = el('button', { type: 'button', class: 'link' }, 'Edit');
+      const deleteBtn = el('button', { type: 'button', class: 'link danger' }, 'Delete');
+      editBtn.addEventListener('click', () => {
+        timeView.editingId = entry.id;
+        renderTimeList();
+        const first = els.timeList.querySelector('.is-editing input');
+        if (first) first.focus();
+      });
+      deleteBtn.addEventListener('click', () => deleteTimeEntry(entry));
+      li.append(el('div', { class: 'time-actions' }, editBtn, deleteBtn));
+    }
+    if (entry.note) li.append(el('p', { class: 'time-note' }, entry.note));
+    return li;
+  }
+
+  // The inline edit of an own entry: Hours, Date, Note, Save and Cancel.
+  function renderTimeEdit(entry) {
+    const id = `time-edit-${entry.id}`;
+    const hours = el('input', { type: 'number', id: `${id}-h`, step: '0.25', min: '0.25', max: '24', value: String(entry.hours) });
+    const date = el('input', { type: 'date', id: `${id}-d`, max: todayText(), value: entry.date });
+    const note = el('input', { type: 'text', id: `${id}-n`, maxlength: '500', value: entry.note || '' });
+    const error = el('p', { class: 'error', id: `${id}-e`, role: 'alert', hidden: true });
+    const saveBtn = el('button', { type: 'button', class: 'navy' }, 'Save');
+    const cancelBtn = el('button', { type: 'button' }, 'Cancel');
+    const fields = { hours, date, note };
+    const cancel = () => {
+      timeView.editingId = null;
+      renderTimeList();
+    };
+    saveBtn.addEventListener('click', () => saveTimeEdit(entry, fields, error, saveBtn));
+    cancelBtn.addEventListener('click', cancel);
+    const form = el(
+      'div',
+      { class: 'time-form', role: 'group', 'aria-label': 'Edit time entry' },
+      el('label', { for: hours.id }, 'Hours', hours),
+      el('label', { for: date.id }, 'Date', date),
+      el('label', { class: 'note-field', for: note.id }, 'Note', note),
+      el('div', { class: 'time-edit-actions' }, saveBtn, cancelBtn),
+      error
+    );
+    // Enter saves the entry (not the work item); Escape cancels the edit only.
+    form.addEventListener('keydown', (e) => {
+      if (e.isComposing || e.target.tagName !== 'INPUT') return;
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        saveBtn.click();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        cancel();
+      }
+    });
+    return el('li', { class: 'time-item is-editing', 'data-id': entry.id }, form);
+  }
+
+  function renderTimeList() {
+    const v = timeView;
+    const n = v.entries.length;
+    els.timeLoading.hidden = !(v.loading && !v.loaded);
+    els.timeLoadError.hidden = !v.error;
+    els.timeLoadErrorText.textContent = v.error;
+    els.timeEmpty.hidden = !(v.loaded && n === 0);
+    els.timeListHint.textContent = v.loaded && n ? `${n} entr${n === 1 ? 'y' : 'ies'}, ${timeFormat.hours(v.total)}` : '';
+    els.timeList.replaceChildren(...v.entries.map(renderTimeEntry));
+  }
+
+  // Shows the tab for a saved non-epic item: the summary at once from the
+  // item's own figures, then the entries.
+  function openTime(item) {
+    const show = Boolean(item) && !isEpicItem(item);
+    Object.assign(timeView, {
+      issueId: show ? item.id : null,
+      estimate: show && item.estimate_hours !== undefined ? item.estimate_hours : null,
+      total: show ? item.time_spent_hours || 0 : 0,
+      entries: [],
+      loaded: false,
+      loading: false,
+      error: '',
+      editingId: null,
+      busy: false,
+    });
+    timeView.loadSeq += 1;
+    if (!show) {
+      els.time.hidden = true;
+      setCount('time', null);
+      return;
+    }
+    const today = todayText();
+    els.timeForm.hidden = readOnly(); // Viewers and archived projects read only
+    els.timeHours.value = '';
+    els.timeNote.value = '';
+    els.timeDate.max = today;
+    els.timeDate.value = today;
+    els.timeLog.disabled = false;
+    setTimeError(els.timeError, logFields, '');
+    renderTimeSummary();
+    loadTime(item.id);
+  }
+
+  async function loadTime(issueId) {
+    const v = timeView;
+    const seq = ++v.loadSeq;
+    v.loading = true;
+    v.error = '';
+    renderTimeList();
+    try {
+      const data = await api.get(`/api/issues/${issueId}/time`);
+      if (seq !== v.loadSeq || v.issueId !== issueId) return; // a newer dialog is open
+      v.entries = data.entries;
+      v.total = data.total_hours;
+      v.loaded = true;
+      renderTimeSummary();
+    } catch (err) {
+      if (seq !== v.loadSeq || v.issueId !== issueId) return;
+      v.error = err.message;
+    } finally {
+      if (seq === v.loadSeq) {
+        v.loading = false;
+        renderTimeList();
+      }
+    }
+  }
+  els.timeRetry.addEventListener('click', () => {
+    if (timeView.issueId !== null) loadTime(timeView.issueId);
+  });
+
+  // After a log, edit or delete: the list and totals of this dialog, then the
+  // item's figures on the page (cards, Backlog, sprint figures; AC 17, 29)
+  // and its History tab, which records the change (AC 31).
+  async function timeChanged(issueId) {
+    historySaved(issueId);
+    await loadTime(issueId);
+    if (editing && editing.id === issueId) editing.time_spent_hours = timeView.total;
+    await refreshCards();
+  }
+
+  els.timeLog.addEventListener('click', async () => {
+    const issueId = timeView.issueId;
+    if (issueId === null || readOnly() || timeView.busy) return;
+    setTimeError(els.timeError, logFields, '');
+    timeView.busy = true;
+    els.timeLog.disabled = true;
+    try {
+      await api.post(`/api/issues/${issueId}/time`, timeBody(els.timeHours, els.timeDate, els.timeNote));
+      if (timeView.issueId === issueId) {
+        els.timeHours.value = '';
+        els.timeNote.value = '';
+      }
+      await timeChanged(issueId);
+    } catch (err) {
+      if (timeView.issueId === issueId) setTimeError(els.timeError, logFields, err.message);
+    } finally {
+      timeView.busy = false;
+      els.timeLog.disabled = false;
+    }
+  });
+  // Enter in the Log time fields logs time; it never submits the work item.
+  els.timeForm.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.isComposing || e.target.tagName !== 'INPUT') return;
+    e.preventDefault();
+    els.timeLog.click();
+  });
+  for (const input of [els.timeHours, els.timeDate, els.timeNote]) {
+    input.addEventListener('input', () => {
+      if (!els.timeError.hidden) setTimeError(els.timeError, logFields, '');
+    });
+  }
+
+  async function saveTimeEdit(entry, fields, error, saveBtn) {
+    if (readOnly() || timeView.busy) return;
+    const issueId = timeView.issueId;
+    setTimeError(error, fields, '');
+    timeView.busy = true;
+    saveBtn.disabled = true;
+    try {
+      const body = timeBody(fields.hours, fields.date, fields.note);
+      if (!body.date) body.date = entry.date;
+      await api.patch(`/api/time/${entry.id}`, body);
+      if (timeView.editingId === entry.id) timeView.editingId = null;
+      await timeChanged(issueId);
+    } catch (err) {
+      setTimeError(error, fields, err.message);
+      saveBtn.disabled = false;
+    } finally {
+      timeView.busy = false;
+    }
+  }
+
+  async function deleteTimeEntry(entry) {
+    if (readOnly() || timeView.busy) return;
+    if (!confirm('Delete this time entry? This cannot be undone.')) return;
+    const issueId = timeView.issueId;
+    timeView.busy = true;
+    setTimeError(els.timeError, logFields, '');
+    try {
+      await api.del(`/api/time/${entry.id}`);
+      await timeChanged(issueId);
+    } catch (err) {
+      if (timeView.issueId === issueId) setTimeError(els.timeError, logFields, `Could not delete: ${err.message}`);
+    } finally {
+      timeView.busy = false;
+    }
+  }
 
   // ---------- epic view ----------
   // For an epic-type work item: progress, a count per status and the
@@ -1443,13 +2195,14 @@
 
   // The create form, re-pointed in the same dialog, with this epic chosen and
   // the normal default type. After Create the dialog returns to the epic.
-  els.epicCreateChild.addEventListener('click', () => {
+  els.epicCreateChild.addEventListener('click', async () => {
     const epicId = epicView.issueId;
     if (readOnly() || epicId === null) return;
-    openDetail(null);
+    if (!(await openDetail(null))) return;
     els.form.elements.epic_id.value = String(epicId);
     syncEpicField();
     epicView.returnTo = epicId;
+    resetDetailBaseline(); // the preset epic is a default, not an edit
   });
 
   // ---------- links ----------
@@ -1995,7 +2748,7 @@
   // only: they work the same for every group and on archived projects.
 
   const filterStorageKey = () => `${FILTERS_STORAGE_PREFIX}${state.project.id}`;
-  const visibleItems = () => state.items.filter((i) => boardFilters.matches(i, state.filters));
+  const visibleItems = () => boardItems().filter((i) => boardFilters.matches(i, state.filters));
 
   // The current lists, for dropping stale saved values.
   function filterMeta() {
@@ -2042,8 +2795,9 @@
     els.filterClear.disabled = !boardFilters.isActive(state.filters);
   }
 
+  // Counts the board's items only: the active sprint, no epics (AC 24).
   function renderFilterCount(shown) {
-    els.filterCount.textContent = `Showing ${shown} of ${state.items.length}`;
+    els.filterCount.textContent = `Showing ${shown} of ${boardItems().length}`;
   }
 
   function filtersChanged() {
@@ -2059,65 +2813,129 @@
     els.filterNotice.hidden = true;
   }
 
-  // A newly created item that the active filters hide gets a notice; the
-  // filters stay as they are (AC 21).
+  // A newly created item on the board that the active filters hide gets a
+  // notice; the filters stay as they are (AC 21). Returns whether it did.
   function noticeIfHidden(created) {
     const item = itemById(created.id) || created;
-    if (boardFilters.matches(item, state.filters)) return;
+    if (!onBoard || !boardItems().includes(item) || boardFilters.matches(item, state.filters)) return false;
     els.filterNoticeText.textContent = `Created ${item.key}, hidden by the current filters.`;
     els.filterNotice.hidden = false;
     clearTimeout(noticeTimer);
     noticeTimer = setTimeout(hideFilterNotice, NOTICE_MS);
+    return true;
   }
 
-  els.filterText.addEventListener('input', () => {
-    state.filters.text = els.filterText.value;
-    filtersChanged();
-  });
-  // There is no form here, but keep Enter from doing anything (AC 14).
-  els.filterText.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
-  for (const [field, select] of Object.entries(els.filterSelects)) {
-    select.addEventListener('change', () => {
-      state.filters[field] = select.value;
+  if (onBoard) {
+    els.filterText.addEventListener('input', () => {
+      state.filters.text = els.filterText.value;
       filtersChanged();
     });
+    // There is no form here, but keep Enter from doing anything (AC 14).
+    els.filterText.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+    for (const [field, select] of Object.entries(els.filterSelects)) {
+      select.addEventListener('change', () => {
+        state.filters[field] = select.value;
+        filtersChanged();
+      });
+    }
+    els.filterClear.addEventListener('click', () => {
+      state.filters = boardFilters.emptyFilters();
+      syncFilterControls();
+      filtersChanged(); // also removes the saved entry
+    });
+    els.filterNoticeDismiss.addEventListener('click', hideFilterNotice);
   }
-  els.filterClear.addEventListener('click', () => {
-    state.filters = boardFilters.emptyFilters();
-    syncFilterControls();
-    filtersChanged(); // also removes the saved entry
-  });
-  els.filterNoticeDismiss.addEventListener('click', hideFilterNotice);
+
+  // ---------- sprint notices ----------
+  // A work item created from the board that is not on it (no active sprint,
+  // or created into another container) gets a notice with the Backlog link
+  // (AC 27). Returns whether it did.
+
+  function noticeIfOffBoard(created) {
+    if (!onBoard) return false;
+    const item = itemById(created.id) || created;
+    if (isEpicItem(item) || boardItems().includes(item)) return false;
+    const sprint = item.sprint_id ? sprintById(item.sprint_id) : null;
+    const where = sprint ? sprint.name : 'the Backlog';
+    const why = activeSprint() ? 'it is not in the active sprint' : 'no sprint is active';
+    els.backlogNoticeText.textContent = `${item.key} was created in ${where}. It is not on the board because ${why}.`;
+    els.backlogNotice.hidden = false;
+    return true;
+  }
+
+  if (onBoard) els.backlogNoticeDismiss.addEventListener('click', () => { els.backlogNotice.hidden = true; });
+
+  // ---------- backlog and sprints pages ----------
+  // What js/backlog.js and js/sprintView.js need from this file: the shared
+  // state, the dialog and the helpers. Everything they draw is text (el),
+  // never parsed HTML. reloadItems re-fetches and calls their render().
+
+  function backlogContext() {
+    return {
+      state,
+      el,
+      readOnly,
+      typeOf,
+      isEpicItem,
+      epicLabel,
+      isTerminal,
+      userById,
+      itemById,
+      initials,
+      epicChip,
+      stateWith,
+      isActiveSprint,
+      isFinalSprint,
+      activeSprint,
+      sprintById,
+      showMessage,
+      reloadItems,
+      openDetail,
+      historySaved,
+      sprintFigure,
+      addedBadge,
+    };
+  }
 
   // ---------- loading ----------
 
-  // render() applies the active search and filters to the fresh items.
+  // render() applies the active search and filters to the fresh items. The
+  // sprints come with them so the board, the Backlog page and the dialog's
+  // Sprint field agree.
   async function reloadItems() {
-    state.items = await api.get(`/api/projects/${state.project.id}/issues`);
+    const [items, sprints] = await Promise.all([
+      api.get(`/api/projects/${state.project.id}/issues`),
+      api.get(`/api/projects/${state.project.id}/sprints`),
+    ]);
+    state.items = items;
+    state.sprints = sprints;
     render();
   }
 
-  els.groupBy.addEventListener('change', () => {
-    state.groupBy = els.groupBy.value;
-    storageSet(GROUP_BY_STORAGE_KEY, state.groupBy);
-    render();
-  });
-
-  els.createBtn.addEventListener('click', () => openDetail(null));
+  if (onBoard) {
+    els.groupBy.addEventListener('change', () => {
+      state.groupBy = els.groupBy.value;
+      storageSet(GROUP_BY_STORAGE_KEY, state.groupBy);
+      render();
+    });
+    els.createBtn.addEventListener('click', () => openDetail(null));
+  }
 
   (async () => {
     try {
       state.me = await session.ready; // the header is filled before the board loads
+      // The project of this page view (URL, else remembered, else first live);
+      // null when projectScope has drawn "No active projects." or "Project
+      // not found." instead.
+      const scopedProject = await projectScope.ready;
+      if (!scopedProject) return;
+      projectId = String(scopedProject.id);
     } catch (err) {
       showMessage(err.message);
       return;
     }
-    if (!projectId) {
-      showMessage('No project selected.');
-      return;
-    }
     try {
-      const [project, statuses, terminal, resolutions, types, priorities, users, historyFields, linkOptions, attachmentTypes] = await Promise.all([
+      const [project, statuses, terminal, resolutions, types, priorities, users, historyFields, linkOptions, attachmentTypes, sprintStates] = await Promise.all([
         api.get(`/api/projects/${encodeURIComponent(projectId)}`),
         api.get('/api/statuses'),
         api.get('/api/terminal-status'),
@@ -2128,6 +2946,7 @@
         api.get('/api/history-fields'),
         api.get('/api/link-types'),
         api.get('/api/attachment-types'),
+        api.get('/api/sprint-states'),
       ]);
       Object.assign(state, {
         project,
@@ -2141,11 +2960,20 @@
         historyFields,
         linkOptions,
         attachmentTypes,
+        sprintStates,
       });
       renderHeader();
       fillHistoryFilter();
-      fillFilterControls();
+      if (onBoard) fillFilterControls();
+      else if (page === 'backlog') backlogPage.init(backlogContext());
+      else if (page === 'sprints') sprintsPage.init(backlogContext());
       await reloadItems();
+      const linkedIssue = new URLSearchParams(location.search).get('issue');
+      if (linkedIssue) {
+        const item = state.items.find((i) => i.id === Number(linkedIssue));
+        if (!item) showMessage('Work item not found in this project.');
+        else openDetail(item);
+      }
     } catch (err) {
       showMessage(err.message);
     }

@@ -1,12 +1,16 @@
-// Request validation for projects, work items and discussion messages. Allowed values come from the
+// Request validation for projects, work items, discussion messages and users. Allowed values come from the
 // single-source lists; nothing here names a specific status or type.
 const { isValidStatus, defaultStatus, isTerminalStatus, terminalStatus } = require('./statuses');
 const { isValidResolution } = require('./resolutions');
 const { isValidType, isEpicType } = require('./types');
 const { isValidPriority } = require('./priorities');
 const { isValidProjectStatus } = require('./projectStatuses');
+const { initialSprintState, finalSprintState } = require('./sprintStates');
+const { isValidGroup } = require('./groups');
+const { isValidUsername } = require('./usernames');
 const users = require('./data/users');
 const issues = require('./data/issues');
+const sprints = require('./data/sprints');
 
 class ValidationError extends Error {
   constructor(message, status = 400) {
@@ -46,6 +50,7 @@ function toIdOrNull(value, label) {
 }
 
 // Validates work item fields for create (existing = undefined) or update.
+// estimate_hours in the body becomes estimate_minutes in the result.
 // Returns the cleaned set of changes.
 function checkIssueFields(db, project, body, existing) {
   const out = {};
@@ -79,7 +84,13 @@ function checkIssueFields(db, project, body, existing) {
   }
   if (body.assignee_id !== undefined) {
     const id = toIdOrNull(body.assignee_id, 'assignee');
-    if (id !== null && !users.getUser(db, id)) throw new ValidationError('Unknown assignee.');
+    const assignee = id === null ? null : users.getUser(db, id);
+    if (id !== null && !assignee) throw new ValidationError('Unknown assignee.');
+    // A deactivated user cannot be newly assigned; an item they already
+    // have keeps them (docs/specs/user-admin.md AC 13).
+    if (assignee && !assignee.active && (!existing || existing.assignee_id !== id)) {
+      throw new ValidationError('That user is deactivated.');
+    }
     out.assignee_id = id;
   }
   if (body.epic_id !== undefined) {
@@ -120,6 +131,164 @@ function checkIssueFields(db, project, body, existing) {
   const finalEpic = out.epic_id !== undefined ? out.epic_id : existing?.epic_id ?? null;
   if (finalType && isEpicType(finalType) && finalEpic !== null) {
     throw new ValidationError('An epic cannot have an epic.');
+  }
+  // The original estimate (docs/specs/time-tracking.md AC 35, 36): whole
+  // minutes or null. An epic has none; clearing it on an epic is a no-op.
+  // Required here, not at the top: server/timeValidation.js requires this file.
+  if (body.estimate_hours !== undefined) {
+    const minutes = require('./timeValidation').checkEstimate(body.estimate_hours);
+    const epic = Boolean(finalType) && isEpicType(finalType);
+    if (epic && minutes !== null) throw new ValidationError('An epic cannot have an estimate.');
+    if (!epic) out.estimate_minutes = minutes;
+  }
+  Object.assign(out, checkSprintMembership(db, project, body, existing, finalType));
+  return out;
+}
+
+const EPIC_SPRINT = 'Epics cannot be added to a sprint.';
+const COMPLETED_SPRINT = 'Completed sprints are read-only; this work item cannot move in or out of one.';
+
+// sprint_id and sprint_rank of a work item (docs/specs/sprints-and-backlog.md
+// AC 18-22): the sprint must be of the same project (400) and not completed
+// (409); an item in a completed sprint cannot leave it (409); an epic is in
+// no sprint (400). Changing an item in a completed sprint to an epic type is
+// refused (409), since that would take it out of the sprint.
+function checkSprintMembership(db, project, body, existing, finalType) {
+  const out = {};
+  const epic = Boolean(finalType) && isEpicType(finalType);
+  const current = existing && existing.sprint_id ? sprints.getSprint(db, existing.sprint_id) : null;
+  const inCompleted = Boolean(current) && current.state === finalSprintState();
+  if (body.sprint_id !== undefined) {
+    const id = body.sprint_id === null ? null : toIdOrNull(body.sprint_id, 'sprint');
+    if (id !== null && epic) throw new ValidationError(EPIC_SPRINT);
+    if (id !== null) {
+      const sprint = sprints.getSprint(db, id);
+      if (!sprint || sprint.project_id !== project.id) throw new ValidationError('Sprint must be a sprint of the same project.');
+      if (sprint.state === finalSprintState() && (!existing || existing.sprint_id !== id)) {
+        throw new ValidationError(COMPLETED_SPRINT, 409);
+      }
+    }
+    if (inCompleted && id !== existing.sprint_id) throw new ValidationError(COMPLETED_SPRINT, 409);
+    if (!epic) out.sprint_id = id; // null on an epic is accepted as a no-op
+  }
+  if (body.sprint_rank !== undefined) {
+    if (epic) throw new ValidationError(EPIC_SPRINT);
+    if (!Number.isInteger(body.sprint_rank)) throw new ValidationError('Sprint rank must be an integer.');
+    if (!existing) throw new ValidationError('Sprint rank cannot be set on create; new work items go to the bottom.');
+    if (inCompleted) throw new ValidationError(COMPLETED_SPRINT, 409);
+    out.sprint_rank = body.sprint_rank;
+  }
+  if (existing && inCompleted && epic && !isEpicType(existing.type)) {
+    throw new ValidationError(COMPLETED_SPRINT, 409);
+  }
+  return out;
+}
+
+const SPRINT_NAME_MAX = 80;
+const SPRINT_GOAL_MAX = 500;
+const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function checkSprintName(name) {
+  if (typeof name !== 'string' || name.trim().length < 1 || name.trim().length > SPRINT_NAME_MAX) {
+    throw new ValidationError(`Name is required and must be 1-${SPRINT_NAME_MAX} characters.`);
+  }
+  return name.trim();
+}
+
+// A real calendar date as YYYY-MM-DD, or null for null, '' or omitted.
+function checkDate(value, label) {
+  if (value === null || value === '') return null;
+  const m = typeof value === 'string' ? DATE_PATTERN.exec(value) : null;
+  const d = m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : null;
+  if (!d || d.getUTCFullYear() !== Number(m[1]) || d.getUTCMonth() !== Number(m[2]) - 1 || d.getUTCDate() !== Number(m[3])) {
+    throw new ValidationError(`${label} must be a date as YYYY-MM-DD.`);
+  }
+  return value;
+}
+
+// Name, goal and dates of a sprint for create (existing = undefined) or edit.
+// The state is never set here (start and complete do that).
+function checkSprintFields(body, existing) {
+  const out = {};
+  if (body.state !== undefined) throw new ValidationError('The state cannot be changed here; start or complete the sprint instead.');
+  if (!existing || body.name !== undefined) out.name = checkSprintName(body.name);
+  if (body.goal !== undefined) {
+    if (body.goal !== null && typeof body.goal !== 'string') throw new ValidationError('Goal must be text.');
+    const goal = (body.goal || '').trim();
+    if (goal.length > SPRINT_GOAL_MAX) throw new ValidationError(`Goal must be at most ${SPRINT_GOAL_MAX} characters.`);
+    out.goal = goal;
+  }
+  if (body.start_date !== undefined) out.start_date = checkDate(body.start_date, 'Start date');
+  if (body.end_date !== undefined) out.end_date = checkDate(body.end_date, 'End date');
+  const start = out.start_date !== undefined ? out.start_date : existing?.start_date ?? null;
+  const end = out.end_date !== undefined ? out.end_date : existing?.end_date ?? null;
+  if (start && end && end < start) throw new ValidationError('End date must not be before the start date.');
+  return out;
+}
+
+const DISPOSITIONS = ['backlog', 'next-sprint', 'new-sprint'];
+
+// The body of POST /api/sprints/:id/complete for `sprint`.
+// Returns { disposition, nextSprint, newSprintName }.
+function checkCompletion(db, sprint, body) {
+  const disposition = body.disposition;
+  if (!DISPOSITIONS.includes(disposition)) {
+    throw new ValidationError(`disposition must be one of: ${DISPOSITIONS.join(', ')}.`);
+  }
+  const out = { disposition, nextSprint: null, newSprintName: null };
+  if (disposition === 'next-sprint') {
+    const id = toIdOrNull(body.next_sprint_id ?? '', 'next sprint');
+    const next = id === null ? null : sprints.getSprint(db, id);
+    if (!next || next.project_id !== sprint.project_id || next.state !== initialSprintState()) {
+      throw new ValidationError('next_sprint_id must be a planned sprint of the same project.');
+    }
+    out.nextSprint = next;
+  }
+  if (disposition === 'new-sprint' && body.new_sprint_name !== undefined && body.new_sprint_name !== null) {
+    if (typeof body.new_sprint_name !== 'string') throw new ValidationError('new_sprint_name must be text.');
+    if (body.new_sprint_name.trim() !== '') out.newSprintName = checkSprintName(body.new_sprint_name);
+  }
+  return out;
+}
+
+const USER_NAME_MAX = 100;
+const USERNAME_RULE =
+  'Username may only contain letters, digits, ".", "_" and "-" (1 to 30 characters).';
+
+// A user's display name (docs/specs/user-admin.md AC 2): trimmed, 1-100.
+function checkUserName(name) {
+  const text = typeof name === 'string' ? name.trim() : '';
+  if (!text) throw new ValidationError('Name is required.');
+  if ([...text].length > USER_NAME_MAX) throw new ValidationError(`Name must be ${USER_NAME_MAX} characters or fewer.`);
+  return text;
+}
+
+// A typed username (AC 3): trimmed, then the rule in server/usernames.js.
+// The case is kept; uniqueness is checked by the caller.
+function checkUsername(username) {
+  const text = typeof username === 'string' ? username.trim() : username;
+  if (!isValidUsername(text)) throw new ValidationError(USERNAME_RULE);
+  return text;
+}
+
+// The body of POST /api/users and PATCH /api/users/:id (AC 2-4, 6, 9). On
+// create, `name` is required and a blank or omitted username, or an omitted
+// group, is left out for the route to fill in. On update only present fields
+// are returned; a blank username is refused there (there is nothing to derive
+// it from but the name, which is not being changed).
+function checkUserFields(body, creating) {
+  const out = {};
+  if (creating || body.name !== undefined) out.name = checkUserName(body.name);
+  const omitted = (value) => value === undefined || (creating && value === null);
+  const blankUsername = typeof body.username === 'string' && !body.username.trim();
+  if (!omitted(body.username) && !(creating && blankUsername)) out.username = checkUsername(body.username);
+  if (!omitted(body.group)) {
+    if (!isValidGroup(body.group)) throw new ValidationError('Unknown group.');
+    out.group = body.group;
+  }
+  if (!creating && body.active !== undefined) {
+    if (typeof body.active !== 'boolean') throw new ValidationError('Active must be true or false.');
+    out.active = body.active;
   }
   return out;
 }
@@ -162,8 +331,11 @@ module.exports = {
   FILENAME_MAX_LENGTH,
   checkFilename,
   checkCommentBody,
+  checkUserFields,
   checkProjectName,
   checkProjectKey,
   checkProjectStatus,
   checkIssueFields,
+  checkSprintFields,
+  checkCompletion,
 };

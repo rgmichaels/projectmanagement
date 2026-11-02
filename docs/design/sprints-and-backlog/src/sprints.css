@@ -1,0 +1,102 @@
+/* Sprints and backlog: NEW rules to append to public/css/app.css.
+   Uses only existing tokens (STYLE.md part 3). Every colour pair was checked:
+   white on --teal 7.6:1; --teal on --teal-soft 6.4:1; --muted on white 5.9:1,
+   on --page 5.6:1, on --teal-soft 4.9:1; --danger on white 5.9:1; black on
+   white or --teal-soft > 15:1. Gold and --teal-mid are never text. */
+
+/* Project sub-navigation: Board | Backlog (first element in <main>). */
+.subnav { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 0 0 16px; }
+.subnav a { padding: 8px 14px; color: var(--muted); font-weight: 700; text-decoration: none; border-bottom: 3px solid transparent; margin-bottom: -1px; }
+.subnav a:hover { color: var(--teal); }
+.subnav a[aria-current="page"] { color: var(--teal); border-bottom-color: var(--teal); }
+
+/* A sprint or the Backlog: one white panel with a pale teal header. */
+.sprint { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+.sprint.is-active { border-top: 4px solid var(--teal); }
+.sprint.is-completed { background: var(--page); }
+.sprint-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 12px; background: var(--teal-soft); border-bottom: 1px solid var(--teal-mid); }
+.sprint-toggle { border: none; background: none; padding: 2px 6px; color: var(--teal); font-size: 14px; }
+.sprint-name { font-size: 16px; margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.sprint-meta { color: var(--muted); font-size: 12px; }
+.sprint-actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.sprint-actions .hint { max-width: 220px; }
+.sprint-goal { margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line2); overflow-wrap: anywhere; }
+.sprint-goal strong { color: var(--teal); }
+.badge.state-active { background: var(--teal); border-color: var(--teal); color: #fff; }
+.badge.state-completed { background: var(--surface); border-color: var(--line); color: var(--muted); }
+.badge.overdue { background: var(--surface); border: 1px solid var(--danger); color: var(--danger); }
+
+/* Collapsible extra sections (Epics, Completed sprints, Sprint history) use
+   <details class="sprint"><summary class="sprint-head">. */
+details.sprint > summary { list-style: none; cursor: pointer; }
+details.sprint > summary::-webkit-details-marker { display: none; }
+details.sprint > summary::before { content: "\25B8"; color: var(--teal); font-size: 14px; }
+details.sprint[open] > summary::before { content: "\25BE"; }
+details.sprint > summary .sprint-name { font-size: 14px; }
+
+/* Rows. */
+.brows { list-style: none; margin: 0; padding: 0; min-height: 44px; }
+.brows.drop-target { outline: 2px dashed var(--navy); outline-offset: -2px; background: var(--teal-soft); }
+.brow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 8px 12px; border-top: 1px solid var(--line2); cursor: pointer; }
+.brow:first-child { border-top: none; }
+.brow:hover { background: var(--page); }
+.brow.dragging { opacity: 0.4; }
+.brow-handle { flex: none; width: 16px; text-align: center; color: var(--muted); cursor: grab; user-select: none; }
+.brow-title { flex: 1 1 220px; min-width: 0; border: none; background: none; padding: 0; font-weight: 400; color: var(--ink); text-align: left; overflow-wrap: anywhere; }
+.brow .avatar { margin-left: 0; flex: none; }
+.brows > .drop-indicator { margin: 0 12px; }
+.status-pill { display: inline-block; padding: 0 8px; border-radius: 10px; background: var(--teal-soft); border: 1px solid var(--teal-mid); font-size: 11px; font-weight: 700; white-space: nowrap; }
+.status-pill.is-done::before { content: "\2713\00a0"; }
+.brows-empty { margin: 10px 12px; padding: 14px 12px; text-align: center; color: var(--muted); border: 1px dashed var(--teal-mid); border-radius: 4px; }
+
+/* Quick create row. */
+.quick { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 12px; border-top: 1px solid var(--line2); background: var(--page); }
+.quick input { flex: 1 1 220px; }
+.quick .error { flex-basis: 100%; margin: 0; }
+.quick .error:empty { display: none; }
+
+/* Warnings: visible text, never colour alone. */
+.banner-warn { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; background: var(--surface); border: 1px solid var(--danger); border-left-width: 6px; border-radius: 4px; padding: 8px 12px; margin-bottom: 12px; }
+.banner-warn strong { color: var(--danger); }
+.banner-warn .spacer { margin-left: auto; }
+
+/* Board header for the active sprint. */
+.sprint-bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--teal); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
+.sprint-bar .sprint-goal { flex-basis: 100%; padding: 0; border: none; }
+.sprint-bar a { margin-left: auto; }
+
+/* Dialog pieces. */
+input[aria-invalid="true"], textarea[aria-invalid="true"] { border: 2px solid var(--danger); }
+dialog.app-dialog textarea { width: 100%; }
+dialog.app-dialog .field-error { color: var(--danger); font-size: 12px; margin: -6px 0 10px; }
+dialog.app-dialog .field-error:empty { display: none; }
+.counter { color: var(--muted); font-size: 12px; font-weight: 400; }
+.choices { border: 0; margin: 0 0 12px; padding: 0; }
+.choices legend { font-size: 12px; font-weight: 700; padding: 0; margin-bottom: 6px; }
+.choice { display: flex; align-items: flex-start; gap: 8px; padding: 10px; margin-bottom: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; }
+.choice:has(input[type="radio"]:checked) { border: 2px solid var(--teal); background: var(--teal-soft); padding: 9px; }
+.choice > input[type="radio"] { width: auto; margin-top: 3px; }
+.choice-body { flex: 1; min-width: 0; }
+.choice-label { display: block; margin: 0; font-size: 14px; font-weight: 700; }
+.choice .hint { margin: 2px 0 0; }
+.choice select, .choice input[type="text"] { margin-top: 6px; width: 100%; }
+.choice.is-disabled { background: var(--page); color: var(--muted); }
+.summary { margin: 0 0 12px; font-size: 15px; }
+
+/* Sprint history list. */
+.hist-list { list-style: none; margin: 0; padding: 0; }
+.hist-item { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 8px 12px; border-top: 1px solid var(--line2); }
+.hist-item:first-child { border-top: none; }
+.hist-text { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
+.hist-time { color: var(--muted); font-size: 12px; white-space: nowrap; }
+.hist-changes { flex-basis: 100%; list-style: none; margin: 2px 0 0; padding: 0 0 0 12px; border-left: 2px solid var(--teal-mid); font-size: 13px; overflow-wrap: anywhere; }
+.hist-more { padding: 8px 12px; border-top: 1px solid var(--line2); }
+
+/* Option B only: two panes, backlog left and one sprint right. */
+.split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.split > .pane > .sprint { margin-bottom: 0; }
+.sprint-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.sprint-tabs [role="tab"] { border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); padding: 5px 10px; }
+.sprint-tabs [role="tab"][aria-selected="true"] { background: var(--teal); border-color: var(--teal); color: #fff; }
+@media (max-width: 900px) { .split { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) { .sprint-actions { margin-left: 0; } .subnav a { padding: 8px 10px; } }

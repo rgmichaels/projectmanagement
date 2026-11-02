@@ -4,16 +4,28 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Board</title>
-  <link rel="icon" href="data:,">
+  <link rel="icon" type="image/svg+xml" href="/css/favicon.svg">
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="/">Projects</a>
-    <span class="crumb" id="crumb"></span>
   </header>
 
   <main class="page board-page">
+    <!-- Project sub-navigation; hrefs carry the project id (projectScope.js). -->
+    <nav class="subnav" aria-label="Project pages">
+      <a id="nav-board" href="board.html" aria-current="page">Board</a>
+      <a id="nav-backlog" href="backlog.html">Backlog</a>
+      <a id="nav-sprints" href="sprints.html">Sprints</a>
+      <a id="nav-test-cases" href="test-cases.html">Test Cases</a>
+    </nav>
+
+    <!-- The active sprint (docs/specs/sprints-and-backlog.md AC 26): name,
+         state, dates, overdue badge, Backlog link and goal, all set as text. -->
+    <div id="sprint-bar" class="sprint-bar" hidden></div>
+    <div id="overdue-banner" class="banner-warn" role="status" hidden></div>
+
     <section class="toolbar">
       <h1 id="project-title">Board</h1>
       <span class="badge" id="project-status"></span>
@@ -34,6 +46,13 @@
       </div>
     </section>
 
+    <!-- A work item created while it is not on the board (no active sprint). -->
+    <div id="backlog-notice" class="notice" role="status" hidden>
+      <span id="backlog-notice-text"></span>
+      <a id="backlog-notice-link" href="backlog.html">Open Backlog</a>
+      <button type="button" id="backlog-notice-dismiss" class="link">Dismiss</button>
+    </div>
+
     <div id="filter-notice" class="notice" role="status" hidden>
       <span id="filter-notice-text"></span>
       <button type="button" id="filter-notice-dismiss" class="link">Dismiss</button>
@@ -47,8 +66,9 @@
   <!-- Work item dialog (docs/specs/task-dialog-redesign.md): a dark teal band
        (key chip, epic link, Close, title), the body (read-only banner, status
        track, properties, description), one tab bar with the Children (epic
-       types only), Discussion, History, Links and Attachments panels, and the
-       footer. Only Save submits; every other button is type="button". -->
+       types only), Discussion, History, Links, Time (not for epic types),
+       Test Cases and Attachments panels, and the footer. Only Save submits;
+       every other button is type="button". -->
   <dialog id="detail" aria-labelledby="detail-heading">
     <form id="detail-form" method="dialog" novalidate>
       <div class="band">
@@ -78,7 +98,27 @@
           <label>Priority <select name="priority"></select></label>
           <label>Type <select name="type"></select></label>
           <label id="epic-field" class="epic-field"><span id="epic-label"></span> <select name="epic_id"></select></label>
+          <!-- Sprint: Backlog plus the open sprints (names and states from the
+               server); fixed text for epic types; disabled for a completed sprint. -->
+          <div id="sprint-field" class="sprint-field">
+            <label for="sprint-select">Sprint</label>
+            <select id="sprint-select" name="sprint_id"></select>
+            <p id="sprint-na" class="sprint-na" hidden>Not applicable (epics are not part of a sprint)</p>
+            <p id="sprint-note" class="hint" hidden>Completed sprints are read-only.</p>
+            <!-- "Added after start" (docs/specs/sprint-scope-change.md AC 28): the badge and when it was added; board.js fills it. -->
+            <p id="sprint-added" class="hint sprint-added" hidden></p>
+          </div>
+          <!-- Estimate (docs/specs/time-tracking.md AC 41-44): an item field,
+               saved with Save. Read-only text for Viewers and archived
+               projects; removed for epic types. -->
+          <div id="estimate-field" class="est-field">
+            <label for="estimate-input" id="estimate-label">Estimate</label>
+            <div id="estimate-edit" class="est-input"><input type="number" id="estimate-input" name="estimate_hours" step="0.25" min="0.25" max="1000" placeholder="Hours"><span class="est-unit" aria-hidden="true">h</span></div>
+            <p id="estimate-ro" class="est-ro" aria-labelledby="estimate-label" hidden></p>
+            <p class="error" id="estimate-error" role="alert" hidden></p>
+          </div>
           <label id="resolution-field" hidden>Resolution <select name="resolution"></select></label>
+          <p id="sprint-where" class="sprint-where" role="status" hidden></p>
         </div>
         <p class="reporter" id="reporter" hidden></p>
 
@@ -103,11 +143,13 @@
         <!-- Tabs: not part of the work item's Save. Their buttons are
              type="button" so they never submit the method="dialog" form.
              Counts come from data the dialog already loads. -->
-        <div id="activity-tabs" class="tabs" role="tablist" aria-label="Activity" hidden>
+        <div id="activity-tabs" class="tabs tight" role="tablist" aria-label="Activity" hidden>
           <button type="button" role="tab" id="tab-children" class="tab" aria-controls="epic-view" aria-selected="false" hidden>Children <span class="n" id="count-children" hidden></span></button>
           <button type="button" role="tab" id="tab-discussion" class="tab" aria-controls="discussion" aria-selected="true">Discussion <span class="n" id="count-discussion" hidden></span></button>
           <button type="button" role="tab" id="tab-history" class="tab" aria-controls="history" aria-selected="false">History <span class="n" id="count-history" hidden></span></button>
           <button type="button" role="tab" id="tab-links" class="tab" aria-controls="links" aria-selected="false">Links <span class="n" id="count-links" hidden></span></button>
+          <button type="button" role="tab" id="tab-time" class="tab" aria-controls="time" aria-selected="false">Time <span class="n" id="count-time" hidden></span></button>
+          <button type="button" role="tab" id="tab-test-cases" class="tab" aria-controls="ticket-test-cases" aria-selected="false">Test Cases <span class="n" id="count-test-cases" hidden></span></button>
           <button type="button" role="tab" id="tab-attachments" class="tab" aria-controls="attachments" aria-selected="false">Attachments <span class="n" id="count-attachments" hidden></span></button>
         </div>
 
@@ -175,6 +217,34 @@
           <p class="error" id="link-error" role="alert"></p>
         </section>
 
+        <!-- Time (docs/specs/time-tracking.md AC 22-29): the estimate against
+             the logged hours, the Log time form and the entries. Entries save
+             on their own buttons, never through Save, and do not make the item
+             unsaved. The form is hidden when read-only. -->
+        <section id="time" class="time" role="tabpanel" aria-labelledby="tab-time" hidden>
+          <div id="time-sum" class="time-sum"></div>
+          <div id="time-form" class="time-form" role="group" aria-labelledby="time-form-heading">
+            <h3 class="time-h" id="time-form-heading">Log time</h3>
+            <label for="time-hours">Hours<input type="number" id="time-hours" step="0.25" min="0.25" max="24" placeholder="e.g. 1.5"></label>
+            <label for="time-date">Date<input type="date" id="time-date"></label>
+            <label class="note-field" for="time-note">Note (optional)<input type="text" id="time-note" maxlength="500"></label>
+            <button type="button" id="time-log" class="navy">Log time</button>
+            <p class="error" id="time-error" role="alert" hidden></p>
+            <p class="hint">Quarter hours from 0.25 to 24. The date cannot be in the future. Notes up to 500 characters.</p>
+          </div>
+          <div class="time-list-head"><h3 class="time-h">Entries</h3><span class="hint" id="time-list-hint"></span></div>
+          <p class="time-loading" id="time-loading" role="status" hidden>Loading time entries...</p>
+          <div class="time-load-error" id="time-load-error" role="alert" hidden>
+            <strong>Could not load time entries.</strong>
+            <span id="time-load-error-text"></span>
+            <button type="button" id="time-retry">Retry</button>
+          </div>
+          <p class="time-empty" id="time-empty" hidden>No time logged yet.</p>
+          <ul id="time-list" class="time-list" aria-label="Time entries, newest first"></ul>
+        </section>
+
+        <section id="ticket-test-cases" role="tabpanel" aria-labelledby="tab-test-cases" hidden></section>
+
         <!-- Attachments: allowed types and limits come from
              GET /api/attachment-types. Add and Delete are hidden when
              read-only; a new work item must be saved first (then this is a
@@ -206,10 +276,14 @@
   <script src="js/redirect.js"></script>
   <script src="js/api.js"></script>
   <script src="js/session.js"></script>
+  <script src="js/projectScope.js"></script>
   <script src="js/time.js"></script>
+  <script src="js/scope.js"></script>
   <script src="js/historyFormat.js"></script>
   <script src="js/richText.js"></script>
   <script src="js/filters.js"></script>
+  <script src="js/sprints.js"></script>
+  <script src="js/testCases.js"></script>
   <script src="js/board.js"></script>
 </body>
 </html>
