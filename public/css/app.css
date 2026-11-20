@@ -1099,3 +1099,24 @@ pre.plain { background:#fff; border:1px solid var(--line); border-radius:4px; pa
 @media print { .topbar, .subnav, .report-controls, .note-mock { display:none; } }
 /* The report's epic label is not a control (the Board's .epic-chip opens the epic). */
 .report .epic-chip, .report .epic-chip:hover { cursor:default; background:#eae6ff; text-decoration:none; font-size:11px; text-transform:uppercase; }
+
+/* Completed date (docs/design/completed-date, STYLE.md section 14). No new colour tokens. */
+
+/* Board card. The resolution label and the completed line share one row of
+   their own under the normal meta row. `order: 1` + full width keeps the
+   avatar, comments and priority on the first row without changing the DOM
+   order of the existing items. */
+.card-done { order: 1; flex: 1 1 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+.completed { font-size: 12px; color: var(--muted); white-space: nowrap; }   /* #62666a on #fff = 5.8:1 */
+
+/* Dialog: a read-only text input with the same look as a disabled field.
+   It is readonly (not disabled) so it is focusable and announced; it has no
+   name, so it is never submitted. */
+dialog#detail .props > .completed-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; }
+dialog#detail .props > .completed-field[hidden] { display: none; }
+dialog#detail input.ro { background: var(--teal-soft); color: var(--ink); cursor: default; }
+
+/* Backlog row: the date is a suffix inside the existing status pill. */
+.status-pill .pill-date { font-weight: 400; }
+/* The design mockup sets this label's margin inline; the global label rule adds 10px. */
+dialog#detail .completed-field label { margin: 0; }

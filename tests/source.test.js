@@ -226,6 +226,12 @@ const historySources = () => [
   ...HISTORY_FILES.map((f) => [f, read(path.join(root, f))]),
   ['public/js/board.js (history section)', boardHistorySection()],
 ];
+// The item dialog's read-only "Completed" field label (completed date,
+// docs/specs/completed-date-on-cards.md AC 19) is the word for a finished
+// item, not the sprint state that has the same name; the sprint-state
+// checks below skip exactly this label.
+const COMPLETED_LABEL = '<label for="completed-input">Completed</label>';
+const withoutCompletedLabel = (text) => text.split(COMPLETED_LABEL).join('');
 const quoted = (name) => new RegExp(`(['"\`]${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"\`])|(>\\s*${name}\\s*<)`);
 
 test('history code names no status, type, priority or resolution (AC 27)', () => {
@@ -791,7 +797,7 @@ test('no sprint state name outside server/sprintStates.js; no event kind in the 
   const files = sourceFiles.filter((f) => /^(server\/|public\/js\/|public\/(board|backlog)\.html$)/.test(rel(f)) && !allowed.has(rel(f)));
   const offenders = [];
   for (const file of files) {
-    const text = read(file);
+    const text = withoutCompletedLabel(read(file));
     for (const st of SPRINT_STATES) if (quoted(st.name).test(text)) offenders.push(`${rel(file)}: ${st.name}`);
   }
   assert.deepEqual(offenders, []);
@@ -799,7 +805,7 @@ test('no sprint state name outside server/sprintStates.js; no event kind in the 
   // history has its own `created` kind in history.js and historyFormat.js.)
   const kindFiles = [...SPRINT_SERVER_FILES.filter((f) => !/sprint(Events|States)\.js$/.test(f)), ...SPRINT_CLIENT_FILES];
   for (const file of kindFiles) {
-    const text = read(path.join(root, file));
+    const text = withoutCompletedLabel(read(path.join(root, file)));
     for (const k of SPRINT_EVENT_KINDS) for (const name of [k.key, k.label]) if (quoted(name).test(text)) offenders.push(`${file}: ${name}`);
   }
   assert.deepEqual(offenders, []);
@@ -1051,7 +1057,7 @@ test('the Sprints page names no sprint state, status, type or priority (Sprints 
   const names = new Set([...STATUSES, ...TYPES.flatMap((t) => [t.name, t.label]), ...PRIORITIES, ...SPRINT_STATES.map((s) => s.name)]);
   const offenders = [];
   for (const file of ['public/js/sprintView.js', 'public/sprints.html', 'public/js/projectScope.js']) {
-    const text = read(path.join(root, file));
+    const text = withoutCompletedLabel(read(path.join(root, file)));
     for (const name of names) if (quoted(name).test(text)) offenders.push(`${file}: ${name}`);
   }
   assert.deepEqual(offenders, []);

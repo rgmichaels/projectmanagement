@@ -191,3 +191,17 @@ Contract: `docs/design/daily-report/README.md`. CSS: the "NEW: Daily report" blo
 - Copied email styles are inline only and independent of app.css (see the README).
 
 **Do.** Write every empty section as a plain sentence; keep keys as links on screen and bold text in the email; insert all user text as text. **Don't.** Don't disable controls for Viewers or archived projects; don't add class names or a style block to the copied HTML; don't make the report title a heading.
+
+## 14. Completed date (completed-date, single recommended design)
+
+Contract: `docs/design/completed-date/README.md`. CSS: `docs/design/completed-date/src/completed.css` (append to `public/css/app.css`). No new tokens; text is `--muted`, fields reuse `--teal-soft` and the existing status pill.
+
+**New components.**
+- `.card-done` (Board card): a full-width last row of `.card-meta` (`order: 1`) holding the resolution label and `.completed`. Terminal-status cards only.
+- `.completed` (12px muted, `white-space: nowrap`): `✓ Completed Nov 20`; `title` has the full local date, time and completer.
+- `.completed-field` with `input.ro` (dialog): read-only text input styled like a disabled field, after Resolution, shown only for a saved terminal item.
+- `.pill-date` (Backlog): ` · Nov 20` suffix inside `.status-pill.is-done`, regular weight.
+
+**Date format.** `Nov 20`; `Nov 20, 2025` when not the current year; viewer's local time. Tooltip always has the year.
+
+**Do.** Set dates and names as text; omit the row when there is no date; keep the tooltip detail non-essential. **Don't.** Don't add colour to the date; don't append it to the first meta row; don't make it a click target.

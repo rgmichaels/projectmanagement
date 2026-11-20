@@ -85,6 +85,8 @@
     statusField: document.getElementById('status-field'),
     statusSteps: document.getElementById('status-steps'),
     resolutionField: document.getElementById('resolution-field'),
+    completedField: document.getElementById('completed-field'),
+    completedInput: document.getElementById('completed-input'),
     epicField: document.getElementById('epic-field'),
     epicLabel: document.getElementById('epic-label'),
     detailError: document.getElementById('detail-error'),
@@ -420,7 +422,7 @@
         addedBadge(item, { short: true }),
         epic ? epicChip(epic) : null,
         el('span', { class: 'priority', title: `Priority: ${item.priority}` }, item.priority),
-        resolutionLabel(item),
+        doneRow(item),
         commentChip(item.comment_count || 0),
         el(
           'span',
@@ -478,6 +480,24 @@
       { class: 'resolution-label', style: color ? `--resolution-color: ${color}` : undefined, title: `Resolution: ${item.resolution}` },
       item.resolution
     );
+  }
+
+  // Completed date (docs/specs/completed-date-on-cards.md AC 12-14): the
+  // server's completed_at as `✓ Completed Nov 20`, full time and completer in
+  // the title. Null outside the terminal status or without a date. No
+  // handlers, so drag and click go to the card.
+  function completedLabel(item) {
+    if (!isTerminal(item.status)) return null;
+    const text = completedDate.cardText(item.completed_at);
+    if (!text) return null;
+    return el('span', { class: 'completed', title: completedDate.tooltip(item.completed_at, item.completed_by) }, text);
+  }
+
+  // The card's last meta row (design: .card-done, terminal cards only): the
+  // resolution label and the completed line.
+  function doneRow(item) {
+    const parts = [resolutionLabel(item), completedLabel(item)].filter(Boolean);
+    return parts.length ? el('span', { class: 'card-done' }, ...parts) : null;
   }
 
   function commentChip(n) {
@@ -778,6 +798,19 @@
       fillSelect(f.resolution, names.map((n) => ({ value: n, label: n })), current || defaultResolution());
     }
     els.resolutionField.hidden = !show;
+  }
+
+  // The dialog's read-only Completed field (AC 19): from the saved item, not
+  // the unsaved status choice; hidden for a new item. Shown on the Board and
+  // Backlog only (AC 22): always hidden on Sprints and Timeline.
+  function syncCompletedField(item) {
+    if (!els.completedField) return;
+    const shown = completedDate.showInDialog(page) && item && isTerminal(item.status);
+    const text = shown ? completedDate.dateText(item.completed_at) : null;
+    els.completedField.hidden = !text;
+    els.completedInput.value = text || '';
+    if (text) els.completedInput.title = completedDate.tooltip(item.completed_at, item.completed_by);
+    else els.completedInput.removeAttribute('title');
   }
 
   function syncEpicField() {
@@ -1115,6 +1148,7 @@
     els.datesHint.hidden = ro;
     els.resolutionField.hidden = true;
     syncResolutionField();
+    syncCompletedField(item);
     sprintSaving = false;
     fillSprintField(item);
     syncEpicField();
@@ -1123,6 +1157,7 @@
     for (const field of els.form.querySelectorAll('input, select, textarea')) field.disabled = ro;
     syncSprintField(); // also disabled for an item in a completed sprint
     els.historyField.disabled = false; // History stays usable when read-only
+    if (els.completedInput) els.completedInput.disabled = false; // readonly, still focusable
     els.saveBtn.hidden = ro;
     els.saveBtn.textContent = item ? 'Save' : 'Create';
     els.deleteBtn.hidden = ro || !item || !canDeleteItems();

@@ -115,6 +115,13 @@
           <label for="start-date-input">Start date <input type="date" id="start-date-input" name="start_date"></label>
           <label for="due-date-input">Due date <input type="date" id="due-date-input" name="due_date"></label>
           <label id="resolution-field" hidden>Resolution <select name="resolution"></select></label>
+          <!-- Completed (docs/specs/completed-date-on-cards.md AC 19): read-only,
+               shown only while the saved item is in the terminal status; no
+               name, so never submitted. board.js fills it. -->
+          <div id="completed-field" class="completed-field" hidden>
+            <label for="completed-input">Completed</label>
+            <input type="text" id="completed-input" class="ro" readonly>
+          </div>
           <p id="sprint-where" class="sprint-where" role="status" hidden></p>
         </div>
         <p id="dates-hint" class="hint date-hint">Both dates are optional. Leave empty if not scheduled. Use one date for a one-day bar.</p>
@@ -278,6 +285,7 @@
   <script src="js/time.js"></script>
   <script src="js/scope.js"></script>
   <script src="js/historyFormat.js"></script>
+  <script src="js/completedDate.js"></script>
   <script src="js/richText.js"></script>
   <script src="js/filters.js"></script>
   <script src="js/sprints.js"></script>

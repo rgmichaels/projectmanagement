@@ -16,6 +16,7 @@ const { defaultGroup, initialAdminGroup } = require('./groups');
 const { activeSprintState, finalSprintState } = require('./sprintStates');
 const { epicTypeNames } = require('./types');
 const { deriveUsername } = require('./usernames');
+const { statusField } = require('./historyFields');
 const sprintScope = require('./data/sprintScope');
 
 const DEFAULT_DB_PATH = path.join(__dirname, '..', 'data', 'app.db');
@@ -74,6 +75,8 @@ CREATE TABLE IF NOT EXISTS issues (
   reporter_id INTEGER REFERENCES users(id),
   start_date TEXT,
   due_date TEXT,
+  completed_at TEXT,
+  completed_by TEXT,
   UNIQUE (project_id, number)
 );
 
@@ -485,6 +488,48 @@ function migrateDates(db) {
   if (!columns.includes('due_date')) db.exec('ALTER TABLE issues ADD COLUMN due_date TEXT');
 }
 
+// Databases created before the completed-date spec lack issues.completed_at
+// and issues.completed_by (docs/specs/completed-date-on-cards.md AC 1, 10-11).
+// Add them (only when missing, so the backfill runs once) and backfill every
+// item in the terminal status: from its most recent status change into the
+// terminal status in history (time and actor name of that event); without
+// one, created_at for an item created in it (a `created` event and no status
+// change at all) and updated_at otherwise, with completed_by null. Other
+// items stay null. No history is written and updated_at is unchanged.
+function migrateCompleted(db) {
+  const columns = db.prepare('PRAGMA table_info(issues)').all().map((c) => c.name);
+  if (columns.includes('completed_at') && columns.includes('completed_by')) return;
+  db.transaction(() => {
+    if (!columns.includes('completed_at')) db.exec('ALTER TABLE issues ADD COLUMN completed_at TEXT');
+    if (!columns.includes('completed_by')) db.exec('ALTER TABLE issues ADD COLUMN completed_by TEXT');
+    const terminal = terminalStatus();
+    const field = statusField().key;
+    const lastCompletion = db.prepare(
+      `SELECT e.created_at, e.actor_name FROM issue_history_changes c
+       JOIN issue_history_events e ON e.id = c.event_id
+       WHERE e.issue_id = ? AND c.field = ? AND c.new_value = ?
+       ORDER BY e.created_at DESC, e.id DESC LIMIT 1`
+    );
+    const statusChanges = db.prepare(
+      `SELECT COUNT(*) AS n FROM issue_history_changes c
+       JOIN issue_history_events e ON e.id = c.event_id
+       WHERE e.issue_id = ? AND c.field = ?`
+    );
+    const createdEvents = db.prepare("SELECT COUNT(*) AS n FROM issue_history_events WHERE issue_id = ? AND kind = 'created'");
+    const set = db.prepare('UPDATE issues SET completed_at = ?, completed_by = ? WHERE id = ?');
+    const rows = db.prepare('SELECT id, created_at, updated_at FROM issues WHERE status = ?').all(terminal);
+    for (const row of rows) {
+      const hit = lastCompletion.get(row.id, field, terminal);
+      if (hit) {
+        set.run(hit.created_at, hit.actor_name, row.id);
+        continue;
+      }
+      const createdInTerminal = statusChanges.get(row.id, field).n === 0 && createdEvents.get(row.id).n > 0;
+      set.run(createdInTerminal ? row.created_at : row.updated_at, null, row.id);
+    }
+  })();
+}
+
 // Sprint scope-change tracking (docs/specs/sprint-scope-change.md AC 2, 4).
 // Adds the nullable sprints.baseline_item_count, baseline_minutes and
 // baseline_at (null = not tracked) when missing. Then, once per Active
@@ -520,6 +565,7 @@ function openDb(dbPath = DEFAULT_DB_PATH) {
   migrateSprints(db); // after migrateStatuses, so it is the last legacy step
   migrateEstimate(db);
   migrateDates(db);
+  migrateCompleted(db); // after migrateStatuses: legacy items are in the terminal status by now
   migrateScope(db); // after migrateSprints and migrateEstimate: needs sprints and estimates
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
   if (n === 0) {

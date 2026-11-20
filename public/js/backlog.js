@@ -289,6 +289,15 @@ const backlogPage = (() => {
     }
   }
 
+  // ` · Nov 20` inside a terminal item's status pill, full time and completer
+  // in the title (docs/specs/completed-date-on-cards.md AC 20); null without
+  // a date.
+  function pillDate(item) {
+    const text = completedDate.dateText(item.completed_at);
+    if (!text) return null;
+    return ctx.el('span', { class: 'pill-date', title: completedDate.tooltip(item.completed_at, item.completed_by) }, ` · ${text}`);
+  }
+
   // One row (AC 32). `writable`: a handle and draggable (not in a completed
   // sprint, not for Viewers or archived projects). `selectable`: a checkbox
   // first (Backlog rows only, never read-only; bulk move AC 1, 19).
@@ -307,7 +316,7 @@ const backlogPage = (() => {
       ctx.addedBadge(item), // "Added after start" (scope change AC 26)
       epic ? ctx.epicChip(epic) : null,
       el('span', { class: 'priority', title: `Priority: ${item.priority}` }, item.priority),
-      el('span', { class: `status-pill${done ? ' is-done' : ''}`, title: `Status: ${item.status}` }, item.status)
+      el('span', { class: `status-pill${done ? ' is-done' : ''}`, title: `Status: ${item.status}` }, item.status, done ? pillDate(item) : null)
     );
     li.append(estimateCell(item, li), avatar(item));
     if (selectable) li.append(sprintPicker(item, li));
