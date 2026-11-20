@@ -1,6 +1,6 @@
 // The Report page's pure logic (docs/specs/daily-report.md; design
 // docs/design/daily-report, README.md is the UI contract): the date window
-// (previous working day, local day to UTC range), the date and duration
+// (the Yesterday window, local days to a UTC range), the date and duration
 // texts, the Yesterday summary line, the Today and Waiting selections, and
 // the report model with its two clipboard flavors (plain text and HTML with
 // inline styles only, every user text escaped). Loadable in the browser
@@ -38,19 +38,25 @@ const reportMath = (() => {
     return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   }
 
-  // The day before `day`, except that Saturday, Sunday and Monday look back
-  // to the preceding Friday (AC 5). Public holidays are not considered.
-  function previousWorkingDay(day) {
+  // The Yesterday window of report date `day` as its first and last local
+  // days, inclusive (AC 5, Amendment 1): a Monday looks back over Fri, Sat
+  // and Sun; Saturday and Sunday look back to Friday only; any other day to
+  // the day before. Public holidays are not considered.
+  function yesterdayWindow(day) {
     const wd = toUtc(day).getUTCDay();
-    const back = wd === 1 ? 3 : wd === 0 ? 2 : 1; // Mon -> Fri, Sun -> Fri, Sat (and the rest) -> the day before
-    return addDays(day, -back);
+    if (wd === 1) return { first: addDays(day, -3), last: addDays(day, -1) };
+    const prev = addDays(day, wd === 0 ? -2 : -1); // Sun -> Fri, Sat (and the rest) -> the day before
+    return { first: prev, last: prev };
   }
 
-  // The whole local calendar day `day` as a UTC range [from, to) of ISO
-  // instants (AC 7). A DST day is 23 or 25 hours long.
-  function localDayRange(day) {
-    const [y, m, d] = day.split('-').map(Number);
-    return { from: new Date(y, m - 1, d).toISOString(), to: new Date(y, m - 1, d + 1).toISOString() };
+  // The local days `first` through `last` (default: `first` alone) as a UTC
+  // range [from, to) of ISO instants, from the first day's local midnight to
+  // the local midnight after the last day (AC 7). DST is left to the
+  // platform, so a window can be an hour short or long.
+  function localDayRange(first, last = first) {
+    const [y1, m1, d1] = first.split('-').map(Number);
+    const [y2, m2, d2] = last.split('-').map(Number);
+    return { from: new Date(y1, m1 - 1, d1).toISOString(), to: new Date(y2, m2 - 1, d2 + 1).toISOString() };
   }
 
   // `Thu Nov 19`, `Fri Nov 20 2026` and `Nov 27`.
@@ -59,6 +65,8 @@ const reportMath = (() => {
     return `${WEEKDAYS[d.getUTCDay()]} ${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
   }
   const longDay = (day) => `${shortDay(day)} ${toUtc(day).getUTCFullYear()}`;
+  // `Thu Nov 19` for one day, `Fri Nov 13 – Sun Nov 15` (en dash) for a range (AC 5).
+  const windowText = (w) => (w.first === w.last ? shortDay(w.first) : `${shortDay(w.first)} – ${shortDay(w.last)}`);
   function monthDay(day) {
     const d = toUtc(day);
     return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
@@ -81,21 +89,27 @@ const reportMath = (() => {
   // The summary of one activity item (AC 8), joined with semicolons: the net
   // status change (first old to last new; omitted when it ends where it
   // started) with the resolution when it ends in the terminal status,
-  // `created`, `commented` (`commented x2`), `logged 1h 30m`.
+  // `created`, `commented` (`commented x2`), `logged 1h 30m`. A round trip
+  // with nothing else shows its path, `Ready -> In Progress -> Ready`
+  // (defect D1, Amendment 1).
   function activitySummary(item, terminalStatus) {
     const parts = [];
     const changes = item.status_changes || [];
+    let path = null;
     if (changes.length) {
       const from = changes[0].from;
       const to = changes[changes.length - 1].to;
       if (from !== to) {
         const resolution = to === terminalStatus && item.resolution ? ` (${item.resolution})` : '';
         parts.push(`${from} -> ${to}${resolution}`);
+      } else {
+        path = [from, ...changes.map((c) => c.to)].join(' -> ');
       }
     }
     if (item.created) parts.push('created');
     if (item.comments > 0) parts.push(item.comments > 1 ? `commented x${item.comments}` : 'commented');
     if (item.minutes > 0) parts.push(`logged ${duration(item.minutes)}`);
+    if (!parts.length && path) return path;
     return parts.join('; ');
   }
 
@@ -165,9 +179,11 @@ const reportMath = (() => {
     };
     const ranges = statusRanges(statuses, input.startedStatus, terminalStatus);
     const note = input.date === input.today ? '' : AS_OF_NOW;
-    const prev = previousWorkingDay(input.date);
+    const win = yesterdayWindow(input.date);
+    const winText = windowText(win);
+    const empty = win.first === win.last ? `No recorded activity on ${winText}.` : `No recorded activity ${winText}.`;
 
-    const yesterday = { id: 'yesterday', heading: 'Yesterday', note: `(${shortDay(prev)})`, rows: [], empty: `No recorded activity on ${shortDay(prev)}.`, total: null, error: null };
+    const yesterday = { id: 'yesterday', heading: 'Yesterday', note: `(${winText})`, rows: [], empty, total: null, error: null };
     if (input.activityError) {
       yesterday.error = input.activityError;
     } else if (input.activity) {
@@ -228,8 +244,12 @@ const reportMath = (() => {
 
   const headingText = (section) => (section.note ? `${section.heading} ${section.note}` : section.heading);
   const titleText = (row) => `${row.epic ? `[${row.epic}] ` : ''}${row.title}`;
-  // `KEY` and the rest of a row's line: `Title: summary` or `Title - Status, Priority, ...`.
-  const rowRest = (row) => (row.summary !== undefined ? `${titleText(row)}: ${row.summary}` : `${titleText(row)} - ${row.meta.map((m) => m.text).join(', ')}`);
+  // `KEY` and the rest of a row's line: `Title: summary` (just `Title` when
+  // the summary is empty, never a dangling colon) or `Title - Status, Priority, ...`.
+  function rowRest(row) {
+    if (row.summary !== undefined) return row.summary ? `${titleText(row)}: ${row.summary}` : titleText(row);
+    return `${titleText(row)} - ${row.meta.map((m) => m.text).join(', ')}`;
+  }
   const LOAD_ERROR = 'Could not load the report.';
 
   // The plain-text flavor (AC 19): headings as plain lines, `- ` bullets.
@@ -314,10 +334,11 @@ const reportMath = (() => {
     isDay,
     addDays,
     localToday,
-    previousWorkingDay,
+    yesterdayWindow,
     localDayRange,
     shortDay,
     longDay,
+    windowText,
     monthDay,
     duration,
     hoursToMinutes,

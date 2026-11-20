@@ -10,8 +10,11 @@ const users = require('../data/users');
 const { ValidationError } = require('../validation');
 const { loadProject } = require('./guards');
 
-// A DST-length day plus slack (AC 23).
-const MAX_SPAN_MS = 48 * 60 * 60 * 1000;
+// Three local days (a Monday's Fri-Sun window) plus an hour of DST change
+// and slack (AC 23, Amendment 1).
+const MAX_SPAN_MS = 76 * 60 * 60 * 1000;
+const MAX_DAYS = 3;
+const DAY_MS = 86400000;
 const INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/;
 const DAY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
@@ -33,13 +36,34 @@ function checkInstant(raw, name) {
 }
 
 // A real calendar date as YYYY-MM-DD.
-function checkDay(raw) {
+function checkDay(raw, name) {
   const m = typeof raw === 'string' ? DAY_PATTERN.exec(raw) : null;
   const d = m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : null;
   if (!d || d.getUTCFullYear() !== Number(m[1]) || d.getUTCMonth() !== Number(m[2]) - 1 || d.getUTCDate() !== Number(m[3])) {
-    throw new ValidationError('day must be a date as YYYY-MM-DD.');
+    throw new ValidationError(`${name} must be a date as YYYY-MM-DD.`);
   }
   return raw;
+}
+
+// The window's first and last local days (AC 22, 23): either `day` alone
+// (the original form, one day) or `from_day` and `to_day` together, in order
+// and covering at most MAX_DAYS calendar days.
+function checkDays(q) {
+  const hasDay = q.day !== undefined;
+  const hasFrom = q.from_day !== undefined;
+  const hasTo = q.to_day !== undefined;
+  if (hasDay) {
+    if (hasFrom || hasTo) throw new ValidationError('Send either day, or from_day and to_day, not both.');
+    const day = checkDay(q.day, 'day');
+    return { fromDay: day, toDay: day };
+  }
+  if (!hasFrom || !hasTo) throw new ValidationError('from_day and to_day are both required.');
+  const fromDay = checkDay(q.from_day, 'from_day');
+  const toDay = checkDay(q.to_day, 'to_day');
+  const days = (Date.parse(`${toDay}T00:00:00Z`) - Date.parse(`${fromDay}T00:00:00Z`)) / DAY_MS;
+  if (days < 0) throw new ValidationError('from_day must not be after to_day.');
+  if (days > MAX_DAYS - 1) throw new ValidationError(`from_day to to_day must cover at most ${MAX_DAYS} days.`);
+  return { fromDay, toDay };
 }
 
 function reportRoutes(db) {
@@ -52,9 +76,9 @@ function reportRoutes(db) {
     const from = checkInstant(q.from, 'from');
     const to = checkInstant(q.to, 'to');
     if (!(from < to)) throw new ValidationError('from must be before to.');
-    if (to - from > MAX_SPAN_MS) throw new ValidationError('The range from to to must be at most 48 hours.');
-    const day = checkDay(q.day);
-    res.json(report.activityFor(db, project.id, userId, new Date(from).toISOString(), new Date(to).toISOString(), day));
+    if (to - from > MAX_SPAN_MS) throw new ValidationError('The range from to to must be at most 76 hours.');
+    const { fromDay, toDay } = checkDays(q);
+    res.json(report.activityFor(db, project.id, userId, new Date(from).toISOString(), new Date(to).toISOString(), fromDay, toDay));
   });
 
   return router;

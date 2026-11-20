@@ -66,8 +66,9 @@
       el('a', { class: 'r-key', href: itemUrl(row.issueId) }, row.key),
       el('span', { class: 'r-title' }, row.epic ? el('span', { class: 'epic-chip' }, row.epic) : null, row.epic ? ' ' : null, row.title),
     ];
-    if (row.summary !== undefined) parts.push(el('span', { class: 'r-sum' }, row.summary));
-    else {
+    if (row.summary !== undefined) {
+      if (row.summary) parts.push(el('span', { class: 'r-sum' }, row.summary)); // no empty summary line (D1)
+    } else {
       const meta = row.meta.map((m) => el('span', { class: m.kind === 'status' ? 'status-pill' : m.kind === 'priority' ? 'priority' : undefined }, m.text));
       parts.push(el('span', { class: 'r-meta' }, ...meta));
     }
@@ -150,9 +151,9 @@
   // ---------- loading ----------
 
   function activityUrl() {
-    const prev = M.previousWorkingDay(els.date.value);
-    const range = M.localDayRange(prev);
-    const params = new URLSearchParams({ user: els.person.value, from: range.from, to: range.to, day: prev });
+    const win = M.yesterdayWindow(els.date.value);
+    const range = M.localDayRange(win.first, win.last);
+    const params = new URLSearchParams({ user: els.person.value, from: range.from, to: range.to, from_day: win.first, to_day: win.last });
     return `/api/projects/${encodeURIComponent(state.project.id)}/report?${params}`;
   }
 

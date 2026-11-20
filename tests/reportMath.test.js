@@ -1,5 +1,8 @@
 // The Report page's pure logic (public/js/reportMath.js;
-// docs/specs/daily-report.md AC 3-5, 7-10, 12-20, 26). No browser.
+// docs/specs/daily-report.md AC 3-5, 7-10, 12-20, 26, 29-32, 35). No
+// browser. The time zone is fixed so "local" and the DST Mondays are known;
+// Node re-reads TZ when it changes.
+process.env.TZ = 'America/New_York';
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -21,15 +24,47 @@ const ACTIVE = SPRINT_STATES.find((s) => s.active).name;
 const PLANNED = SPRINT_STATES.find((s) => s.initial).name;
 const [P1, P2] = PRIORITIES;
 
-test('previous working day: the day before; Saturday, Sunday and Monday look back to Friday (AC 5)', () => {
-  assert.equal(M.previousWorkingDay('2026-11-20'), '2026-11-19', 'Fri -> Thu');
-  assert.equal(M.previousWorkingDay('2026-11-17'), '2026-11-16', 'Tue -> Mon');
-  assert.equal(M.previousWorkingDay('2026-11-16'), '2026-11-13', 'Mon -> Fri');
-  assert.equal(M.previousWorkingDay('2026-11-15'), '2026-11-13', 'Sun -> Fri');
-  assert.equal(M.previousWorkingDay('2026-11-14'), '2026-11-13', 'Sat -> Fri');
-  assert.equal(M.previousWorkingDay('2026-03-02'), '2026-02-27', 'Mon across a month');
-  assert.equal(M.previousWorkingDay('2027-01-01'), '2026-12-31', 'across a year');
-  assert.equal(M.previousWorkingDay('2026-01-05'), '2026-01-02', 'Mon across a year');
+test('the Yesterday window: the day before; Monday covers Fri-Sun; Saturday and Sunday look back to Friday only (AC 5, 29, 30)', () => {
+  const w = (first, last = first) => ({ first, last });
+  assert.deepEqual(M.yesterdayWindow('2026-11-20'), w('2026-11-19'), 'Fri -> Thu');
+  assert.deepEqual(M.yesterdayWindow('2026-11-17'), w('2026-11-16'), 'Tue -> Mon');
+  assert.deepEqual(M.yesterdayWindow('2026-11-16'), w('2026-11-13', '2026-11-15'), 'Mon -> Fri..Sun');
+  assert.deepEqual(M.yesterdayWindow('2026-11-15'), w('2026-11-13'), 'Sun -> Fri only');
+  assert.deepEqual(M.yesterdayWindow('2026-11-14'), w('2026-11-13'), 'Sat -> Fri only');
+  assert.deepEqual(M.yesterdayWindow('2026-03-02'), w('2026-02-27', '2026-03-01'), 'Mon across a month');
+  assert.deepEqual(M.yesterdayWindow('2027-01-01'), w('2026-12-31'), 'across a year');
+  assert.deepEqual(M.yesterdayWindow('2026-01-05'), w('2026-01-02', '2026-01-04'), 'Mon across a year');
+});
+
+test('window texts: one day, or a range with an en dash, even across a month (AC 5)', () => {
+  assert.equal(M.windowText(M.yesterdayWindow('2026-11-20')), 'Thu Nov 19');
+  assert.equal(M.windowText(M.yesterdayWindow('2026-11-14')), 'Fri Nov 13');
+  assert.equal(M.windowText(M.yesterdayWindow('2026-11-16')), 'Fri Nov 13 – Sun Nov 15');
+  assert.equal(M.windowText(M.yesterdayWindow('2026-11-02')), 'Fri Oct 30 – Sun Nov 1');
+});
+
+test('a Monday window as a UTC range, including the DST Mondays (AC 7, 32)', () => {
+  const span = (r) => (Date.parse(r.to) - Date.parse(r.from)) / 3600000;
+  const mon = (day) => {
+    const w = M.yesterdayWindow(day);
+    return M.localDayRange(w.first, w.last);
+  };
+  const plain = mon('2026-11-16');
+  assert.equal(plain.from, new Date(2026, 10, 13).toISOString());
+  assert.equal(plain.to, new Date(2026, 10, 16).toISOString());
+  assert.equal(span(plain), 72);
+  // Fall back on Sun Nov 1 2026: 73 hours, Fri Oct 30 00:00 to Mon Nov 2 00:00 local.
+  const fall = mon('2026-11-02');
+  assert.equal(span(fall), 73);
+  assert.equal(fall.from, '2026-10-30T04:00:00.000Z');
+  assert.equal(fall.to, '2026-11-02T05:00:00.000Z');
+  // Spring forward on Sun Mar 14 2027: 71 hours.
+  const spring = mon('2027-03-15');
+  assert.equal(span(spring), 71);
+  assert.equal(spring.from, '2027-03-12T05:00:00.000Z');
+  assert.equal(spring.to, '2027-03-15T04:00:00.000Z');
+  // All fit the endpoint's 76-hour cap.
+  for (const r of [plain, fall, spring]) assert.ok(span(r) <= 76);
 });
 
 test('the local day as a UTC range; local today (AC 2, 7)', () => {
@@ -73,8 +108,18 @@ test('the activity summary: net status change with resolution, created, comments
     M.activitySummary({ ...base, status_changes: [{ from: STATUSES[0], to: STATUSES[1] }, { from: STATUSES[1], to: TERMINAL }], resolution: defaultResolution() }, TERMINAL),
     `${STATUSES[0]} -> ${TERMINAL} (${defaultResolution()})`
   );
-  // A round trip is omitted.
-  assert.equal(M.activitySummary({ ...base, status_changes: [{ from: STATUSES[0], to: STATUSES[1] }, { from: STATUSES[1], to: STATUSES[0] }], comments: 1 }, TERMINAL), 'commented');
+  // A round trip is omitted when something else is there.
+  const trip = [{ from: STATUSES[1], to: STARTED }, { from: STARTED, to: STATUSES[1] }];
+  assert.equal(M.activitySummary({ ...base, status_changes: trip, comments: 1 }, TERMINAL), 'commented');
+  assert.equal(M.activitySummary({ ...base, status_changes: trip, minutes: 60 }, TERMINAL), 'logged 1h');
+  assert.equal(M.activitySummary({ ...base, status_changes: trip, created: true }, TERMINAL), 'created');
+  // Alone, it shows the path taken (D1, AC 35).
+  assert.equal(M.activitySummary({ ...base, status_changes: trip }, TERMINAL), `${STATUSES[1]} -> ${STARTED} -> ${STATUSES[1]}`);
+  assert.equal(
+    M.activitySummary({ ...base, status_changes: [...trip, ...trip] }, TERMINAL),
+    `${STATUSES[1]} -> ${STARTED} -> ${STATUSES[1]} -> ${STARTED} -> ${STATUSES[1]}`
+  );
+  assert.equal(M.activitySummary(base, TERMINAL), '');
   // Order: status, created, commented xN, logged.
   assert.equal(
     M.activitySummary({ ...base, status_changes: [{ from: STATUSES[0], to: STARTED }], created: true, comments: 2, minutes: 90 }, TERMINAL),
@@ -163,11 +208,18 @@ test('Yesterday: lines, day note, epics labelled, total; empty text and 0h (AC 5
     ['EFS-6', EPIC.label, 'created'],
   ]);
   assert.equal(y.total, 'Total time logged: 1h');
-  const empty = M.buildReport({ ...sample(), date: '2026-11-16', activity: { items: [], total_minutes: 0 } }).sections[0];
+  const empty = M.buildReport({ ...sample(), date: '2026-11-14', activity: { items: [], total_minutes: 0 } }).sections[0];
   assert.equal(empty.note, '(Fri Nov 13)');
   assert.deepEqual(empty.rows, []);
   assert.equal(empty.empty, 'No recorded activity on Fri Nov 13.');
   assert.equal(empty.total, 'Total time logged: 0h');
+  // A Monday names the Fri-Sun range (AC 5, 9, 29, 31).
+  const monday = M.buildReport({ ...sample(), date: '2026-11-16', activity: { items: [], total_minutes: 0 } }).sections[0];
+  assert.equal(monday.note, '(Fri Nov 13 – Sun Nov 15)');
+  assert.equal(monday.empty, 'No recorded activity Fri Nov 13 – Sun Nov 15.');
+  // Tuesday, Saturday and Sunday name one day (AC 30).
+  assert.equal(M.buildReport({ ...sample(), date: '2026-11-17' }).sections[0].note, '(Mon Nov 16)');
+  assert.equal(M.buildReport({ ...sample(), date: '2026-11-15' }).sections[0].note, '(Fri Nov 13)');
 });
 
 test('Today: the person\'s active items in Board order, with remaining; empty text; note when not today (AC 12-15)', () => {
@@ -241,7 +293,7 @@ test('plain text: headings as lines, - bullets, -> arrows, totals (AC 19, 20)', 
       `- EFS-9 Item 9 - ${RANGES.waiting[0]}, ${P1}, Dana Lee`,
     ].join('\n')
   );
-  const empty = M.toPlainText(M.buildReport({ ...sample(), date: '2026-11-16', activity: { items: [], total_minutes: 0 }, items: [], sprints: [] }));
+  const empty = M.toPlainText(M.buildReport({ ...sample(), date: '2026-11-14', activity: { items: [], total_minutes: 0 }, items: [], sprints: [] }));
   assert.match(empty, /Yesterday \(Fri Nov 13\)\nNo recorded activity on Fri Nov 13\.\nTotal time logged: 0h/);
   assert.match(empty, /Today \(current status as of now\)\nNothing in progress\./);
   assert.match(empty, /In the active sprint\nNo active sprint\.\nBacklog and other sprints\nNone\./);
@@ -291,6 +343,40 @@ test('a failed Yesterday request shows the load error and no total; the rest sti
   assert.match(M.toPlainText(model), /Yesterday \(Thu Nov 19\)\nCould not load the report\.\n\nToday/);
 });
 
+test('an empty Monday window names the range in both copy flavors (AC 19, 31)', () => {
+  const model = M.buildReport({ ...sample(), date: '2026-11-16', activity: { items: [], total_minutes: 0 } });
+  const text = M.toPlainText(model);
+  assert.ok(text.includes('\nYesterday (Fri Nov 13 – Sun Nov 15)\nNo recorded activity Fri Nov 13 – Sun Nov 15.\nTotal time logged: 0h\n'), text);
+  const html = M.toHtml(model);
+  assert.match(html, /<h2 style="[^"]+">Yesterday \(Fri Nov 13 – Sun Nov 15\)<\/h2>\n<p style="[^"]+">No recorded activity Fri Nov 13 – Sun Nov 15\.<\/p>/);
+});
+
+test('a lone round trip shows its path; no line ever ends in a colon (D1, AC 8, 35)', () => {
+  const trip = { status_changes: [{ from: 'Ready', to: 'In Progress' }, { from: 'In Progress', to: 'Ready' }], resolution: null, created: false, comments: 0, minutes: 0 };
+  const input = sample();
+  input.activity = {
+    items: [
+      { issue_id: 3, key: 'EFS-3', title: 'Round trip', type: PLAIN.name, ...trip },
+      // An empty summary however it arises: key and title only.
+      { issue_id: 4, key: 'EFS-4', title: 'Nothing', type: PLAIN.name, ...trip, status_changes: [] },
+    ],
+    total_minutes: 0,
+  };
+  const model = M.buildReport(input);
+  assert.deepEqual(model.sections[0].rows.map((r) => r.summary), ['Ready -> In Progress -> Ready', '']);
+  const text = M.toPlainText(model);
+  assert.ok(text.includes('\n- EFS-3 Round trip: Ready -> In Progress -> Ready\n'), text);
+  assert.ok(text.includes('\n- EFS-4 Nothing\n'), text);
+  for (const line of text.split('\n')) assert.doesNotMatch(line, /:\s*$/, line);
+  const html = M.toHtml(model);
+  assert.match(html, /<li style="[^"]+"><b>EFS-3<\/b> Round trip: Ready -&gt; In Progress -&gt; Ready<\/li>/);
+  assert.match(html, /<li style="[^"]+"><b>EFS-4<\/b> Nothing<\/li>/);
+  assert.doesNotMatch(html, /:\s*<\/li>/);
+  // The on-screen render skips an empty summary (report.js).
+  const js = fs.readFileSync(path.join(__dirname, '..', 'public/js/report.js'), 'utf8');
+  assert.match(js, /if \(row\.summary\) parts\.push\(el\('span', \{ class: 'r-sum' \}/);
+});
+
 // ---------- the page (static) ----------
 
 test('the Report page: sub-nav after Timeline and before Test Cases on every project page; controls and report markup (AC 1, 2, 28)', () => {
@@ -316,6 +402,8 @@ test('the Report page: sub-nav after Timeline and before Test Cases on every pro
   const js = read('public/js/report.js');
   assert.doesNotMatch(js, /innerHTML|outerHTML|insertAdjacentHTML|document\.write/, 'text only');
   assert.doesNotMatch(js, /api\.(post|patch|del|upload)\(/, 'read-only page');
+  assert.match(js, /localDayRange\(win\.first, win\.last\)/, 'the whole window is requested (AC 7, 22)');
+  assert.match(js, /from_day: win\.first, to_day: win\.last/, 'with its first and last days (AC 22)');
   assert.match(js, /navigator\.clipboard\.write\(/);
   assert.match(js, /new ClipboardItem\(/);
   assert.match(js, /document\.execCommand\('copy'\)/);

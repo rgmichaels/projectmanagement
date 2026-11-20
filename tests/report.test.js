@@ -1,4 +1,5 @@
-// The daily report endpoint (docs/specs/daily-report.md AC 6-8, 11, 22-25):
+// The daily report endpoint (docs/specs/daily-report.md AC 6-8, 11, 22-25,
+// and Amendment 1 AC 33, 34):
 // GET /api/projects/:id/report. Runs against its own temporary database.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -30,8 +31,15 @@ function windowNow() {
   return { from: new Date(now - HOUR).toISOString(), to: new Date(now + HOUR).toISOString() };
 }
 
-const reportUrl = (projectId, { user = ids.alex, from, to, day = DAY } = {}) => {
-  const params = new URLSearchParams({ user: String(user), from, to, day });
+// `day` (the original one-day form) unless from_day/to_day are given.
+const reportUrl = (projectId, { user = ids.alex, from, to, day = DAY, from_day, to_day } = {}) => {
+  const params = new URLSearchParams({ user: String(user), from, to });
+  if (from_day !== undefined || to_day !== undefined) {
+    params.set('from_day', from_day);
+    params.set('to_day', to_day);
+  } else {
+    params.set('day', day);
+  }
   return `/api/projects/${projectId}/report?${params}`;
 };
 
@@ -153,6 +161,53 @@ test('window edges: from is included, to is excluded; time entries match the day
   assert.equal(body.total_minutes, 15);
 });
 
+test('a Monday window: from_day..to_day counts time on Fri, Sat and Sun only; edges at Fri 00:00 and Mon 00:00 (AC 7, 22, 29, 33)', async () => {
+  const p = await createProject(app);
+  const item = await createItem(app, p.id);
+  const other = await createItem(app, p.id);
+  // Time entries dated Thu Nov 12 to Mon Nov 16 2026: 1h to 5h.
+  const days = ['2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15', '2026-11-16'];
+  for (const [i, date] of days.entries()) {
+    const res = await app.post(`/api/issues/${item.id}/time`, { hours: i + 1, date });
+    assert.equal(res.status, 201, date);
+  }
+  await app.post(`/api/issues/${other.id}/time`, { hours: 0.5, date: '2026-11-14' });
+  // Fri Nov 13 00:00 to Mon Nov 16 00:00 in New York (EST, UTC-5): 72 hours.
+  const from = '2026-11-13T05:00:00.000Z';
+  const to = '2026-11-16T05:00:00.000Z';
+  const stamps = {
+    beforeFri: '2026-11-13T04:59:59.999Z', // Thu 23:59:59.999: out
+    atFri: from, // Fri 00:00: in
+    sunday: '2026-11-15T18:00:00.000Z', // Sun afternoon: in
+    beforeMon: '2026-11-16T04:59:59.999Z', // Sun 23:59:59.999: in
+    atMon: to, // Mon 00:00: out
+  };
+  for (const at of Object.values(stamps)) {
+    const c = (await app.post(`/api/issues/${item.id}/comments`, { body: at })).body;
+    app.db.prepare('UPDATE comments SET created_at = ? WHERE id = ?').run(at, c.id);
+  }
+  const res = await app.get(reportUrl(p.id, { from, to, from_day: '2026-11-13', to_day: '2026-11-15' }));
+  assert.equal(res.status, 200);
+  // The created events are outside this window (they happened now).
+  assert.deepEqual(res.body.items.map((i) => [i.issue_id, i.comments, i.minutes, i.created]), [
+    [item.id, 3, (2 + 3 + 4) * 60, false],
+    [other.id, 0, 30, false],
+  ]);
+  assert.equal(res.body.total_minutes, (2 + 3 + 4) * 60 + 30);
+
+  // A 73-hour window (the Monday after a fall-back) is accepted too (AC 32).
+  const fall = await app.get(reportUrl(p.id, { from: '2026-10-30T04:00:00.000Z', to: '2026-11-02T05:00:00.000Z', from_day: '2026-10-30', to_day: '2026-11-01' }));
+  assert.equal(fall.status, 200);
+
+  // The original one-day form still works and matches from_day = to_day = day.
+  const oneDay = { from: '2026-11-14T05:00:00.000Z', to: '2026-11-15T05:00:00.000Z' };
+  const old = await app.get(reportUrl(p.id, { ...oneDay, day: '2026-11-14' }));
+  const pair = await app.get(reportUrl(p.id, { ...oneDay, from_day: '2026-11-14', to_day: '2026-11-14' }));
+  assert.equal(old.status, 200);
+  assert.deepEqual(old.body, pair.body);
+  assert.equal(old.body.total_minutes, 3 * 60 + 30);
+});
+
 test('validation: 400 with { error } for bad user, instants, range and day; 404 for an unknown project (AC 23)', async () => {
   const p = await createProject(app);
   const w = windowNow();
@@ -176,18 +231,34 @@ test('validation: 400 with { error } for bad user, instants, range and day; 404 
     { to: '2025-13-40T00:00:00Z' },
     { from: w.to, to: w.from },
     { from: w.from, to: w.from },
-    { from: '2025-01-01T00:00:00.000Z', to: '2025-01-03T00:00:00.001Z' },
-    { day: undefined },
+    { from: '2025-01-01T00:00:00.000Z', to: '2025-01-04T04:00:00.001Z' }, // over 76 hours
+    { day: undefined }, // none of day, from_day, to_day
     { day: '2025-02-30' },
     { day: '15/01/2025' },
+    { day: '' },
+    // from_day / to_day (Amendment 1, AC 34)
+    { from_day: '2025-01-13' }, // day together with from_day
+    { to_day: '2025-01-15' }, // day together with to_day
+    { from_day: '2025-01-13', to_day: '2025-01-15' }, // day together with both
+    { day: undefined, from_day: '2025-01-13' }, // only one of the pair
+    { day: undefined, to_day: '2025-01-15' },
+    { day: undefined, from_day: '2025-01-15', to_day: '2025-01-14' }, // from_day after to_day
+    { day: undefined, from_day: '2025-01-13', to_day: '2025-01-16' }, // more than 2 days after
+    { day: undefined, from_day: '2026-02-28', to_day: '2026-02-30' }, // invalid date
+    { day: undefined, from_day: '2026-02-30', to_day: '2026-03-01' },
+    { day: undefined, from_day: '13/01/2025', to_day: '2025-01-15' },
   ];
   for (const overrides of bad) {
     const res = await app.get(url(overrides));
     assert.equal(res.status, 400, JSON.stringify(overrides));
     assert.equal(typeof res.body.error, 'string', JSON.stringify(overrides));
   }
-  // Exactly 48 hours is allowed (a DST-length day plus slack).
-  assert.equal((await app.get(url({ from: '2025-01-01T00:00:00.000Z', to: '2025-01-03T00:00:00.000Z' }))).status, 200);
+  // Exactly 76 hours is allowed (three days, plus an hour of DST and slack);
+  // so are one, two and three days given as from_day/to_day.
+  assert.equal((await app.get(url({ from: '2025-01-01T00:00:00.000Z', to: '2025-01-04T04:00:00.000Z' }))).status, 200);
+  for (const to_day of ['2025-01-13', '2025-01-14', '2025-01-15']) {
+    assert.equal((await app.get(url({ day: undefined, from_day: '2025-01-13', to_day }))).status, 200, to_day);
+  }
   const res404 = await app.get(`/api/projects/999999/report?user=${ids.alex}&from=${encodeURIComponent(w.from)}&to=${encodeURIComponent(w.to)}&day=${DAY}`);
   assert.equal(res404.status, 404);
   assert.deepEqual(res404.body, { error: 'Project not found.' });
@@ -207,6 +278,10 @@ test('read-only and open to every group, archived projects included; nothing is 
     const res = await casey.get(reportUrl(p.id, w));
     assert.equal(res.status, 200);
     assert.equal(res.body.items.length, 1);
+    // The from_day/to_day form too (Amendment 1, AC 34).
+    const pair = await casey.get(reportUrl(p.id, { ...w, from_day: '2025-01-13', to_day: '2025-01-15' }));
+    assert.equal(pair.status, 200);
+    assert.equal(pair.body.items.length, 1);
     assert.deepEqual(count(), before, 'no writes, no history');
 
     // Archive the project (through the data layer, whatever its status rules).

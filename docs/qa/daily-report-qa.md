@@ -87,3 +87,50 @@ Design and layout: screenshots at 1280 px and 360 px reviewed against the README
 - Stored seed title `EFS-1` contains the literal text `&amp;`. The report shows it literally, the same way the Board does. Not a report defect.
 
 VERDICT: GO
+
+## Amendment 1 re-check (2026-11-20)
+
+Scope: `docs/specs/daily-report.md` Amendment 1 (amended ACs 5 to 10, 19, 22, 23; new ACs 29 to 35; defaults for open questions 8 and 9). Changed code: `public/js/reportMath.js`, `public/js/report.js`, `server/routes/report.js`, `server/data/report.js`, `server/data/timeEntries.js`, and the tests.
+
+### Commands and results
+
+| # | Command or method | Result |
+|---|---|---|
+| A1 | `npm test` (fresh) | 586 tests, 586 pass, 0 fail. Matches the developer's count. |
+| A2 | QA server on port 3002: `PORT=3002 DB_PATH=<scratchpad>\qa2-db\app.db node server/index.js`, against a fresh copy of `data/app.db`. Port 3000 and `data/app.db` were not touched. | Up. Stopped at the end of the run. The dev server on 3000 is still running. |
+| A3 | Seed on the copy (`amend-setup.js`, `amend-dst.js`): robert time entries dated Thu 12, Fri 13, Sat 14, Sun 15 and Mon 16 Nov; a comment on EFS-11 backdated to Sun 15 Nov; a round-trip item EFS-19 (created and first move backdated to 10 Nov, Ready -> In Progress -> Ready today); four DST-boundary comments on EFS-7, with two inside Fri Oct 30 00:00 to Mon Nov 2 00:00 local and two outside. | Done. |
+| A4 | API checks (`amend-api.js`, plus a 72 h recheck) | 15 of 15 as expected, plus the recheck. |
+| A5 | Edge headless over CDP, `amend-browser.js` (log `amend-run1.log`) | **18 PASS, 0 FAIL.** No console errors. The request sent to the endpoint was checked from the browser's resource timing. |
+| A6 | Node checks of `reportMath.yesterdayWindow`, `localDayRange`, `windowText`, `buildReport` | Windows and text as expected, including the DST Mondays. |
+
+Artifacts in the scratchpad: `amend-browser.js`, `amend-run1.log`, `amend-monday.txt`, `amend-monday.html`, `amend-api.js`, `amend-setup.js`, `amend-dst.js`, and screenshots `report-amend-monday.png`, `report-amend-empty-monday.png`, `report-amend-d1.png`.
+
+### Amended and new acceptance criteria
+
+| AC | Verdict | Reason |
+|---|---|---|
+| 5 | PASS | Mon Nov 16 looks back over Fri 13 to Sun 15. Tue Nov 17 gives Mon 16 only. Sat Nov 14 and Sun Nov 15 give Fri 13 only. Heading uses the en dash: "Yesterday (Fri Nov 13 – Sun Nov 15)". Cross-month text checked in node: "Fri Oct 30 – Sun Nov 1". |
+| 6, 7 | PASS | Time on Fri, Sat and Sun counts on a Monday (EFS-13 Fri 1 h, EFS-11 Sat 1 h and Sun 2 h). Time dated Thu 12 and Mon 16 does not. Date basis is `from_day <= work_date <= to_day` as text. |
+| 8 (D1) | PASS | EFS-19 shows "Ready -> In Progress -> Ready" on screen, in plain text (`- EFS-19 Round trip item: Ready -> In Progress -> Ready`), and in HTML. See AC 35. |
+| 9 | PASS | Empty Monday Nov 30: "No recorded activity Fri Nov 27 – Sun Nov 29." on the page and in both copy flavors. |
+| 10 | PASS | Monday total is "Total time logged: 4h", the sum of Fri, Sat and Sun. Empty total is "0h". |
+| 19 | PASS | Copy wording follows the range, en dash included, in both flavors (AM5, AM6, AM11). |
+| 22 | PASS | Request carries `from_day=2026-11-13&to_day=2026-11-15` and no `day`. Old form `day=2026-11-14` with a 24 h range still returns 200, total 60 min, as before. Response shape is unchanged. |
+| 23 | PASS | Span of exactly 76 h accepted; 77 h rejected. `from_day` after `to_day` rejected. Span of 3 days over 72 h rejected with "must cover at most 3 days". Mixed `day` and `from_day` rejected. Partial or missing days rejected. 404 for unknown project. 401 anonymous. |
+| 29 | PASS | Mon Nov 16 heading "Yesterday (Fri Nov 13 – Sun Nov 15)". Sat time (1 h), Sun time (2 h), and a Sunday comment on EFS-11 all appear, shown as "commented; logged 3h". Total 4h. Monday's own time entry (EFS-12) is absent. |
+| 30 | PASS | Tue Nov 17 shows "Yesterday (Mon Nov 16)" only (EFS-12, 1 h). Sat Nov 14 and Sun Nov 15 each show "Yesterday (Fri Nov 13)" only (EFS-13, 1 h). Nothing from Sat or Sun appears in those. |
+| 31 | PASS | Empty Monday text in page, plain copy and HTML copy. Heading in both copy flavors reads "Yesterday (Fri Nov 27 – Sun Nov 29)". |
+| 32 | PASS | Mon Nov 2 2026 window is Fri Oct 30 to Sun Nov 1, 73 h, returns 200. Mon Mar 15 2027 window is Fri Mar 12 to Sun Mar 14, 71 h, returns 200 (node span and API). DST-boundary comments: two inside the window (Fri 00:30, Sun 23:59 local) counted, two outside (Thu 23:59, Mon 00:00) not. Browser not run on a DST Monday; the boundary behaviour was checked through the API. |
+| 33 | PASS | `from_day=2026-11-13&to_day=2026-11-15` with a 72 h range returns 200 and totals 240 min (13 to 15 only). Time on Nov 12 and Nov 16 excluded. Old `day` form also 200, unchanged. |
+| 34 | PASS | 400 with `{ error }` for: span over 76 h; `from_day` after `to_day`; to_day more than 2 days after from_day; `day` with `from_day`; only `from_day`; only `to_day`; none of the three; `2026-02-30`. Still no writes. Viewer and archived access not re-run: the route has no permission check and no change to it. |
+| 35 | PASS | Round-trip item shows "KEY Title: Ready -> In Progress -> Ready" on screen, in plain text and in HTML. No item line in either flavor ends with ":" or ": ". No Yesterday row on screen has an empty summary. |
+
+Notes:
+- Original defect D1 is fixed. Its "Not driven" items from the first run still stand.
+- `public/js/reportMath.js` no longer exports `previousWorkingDay`. Nothing else in the repo references it.
+
+### Amendment 1 verdict
+
+Every amended and new criterion (AC 5 to 10, 19, 22, 23, 29 to 35) passes. Test suite 586 of 586. No blocking defects.
+
+VERDICT: GO

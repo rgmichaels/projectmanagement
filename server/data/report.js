@@ -9,11 +9,12 @@ const comments = require('./comments');
 const timeEntries = require('./timeEntries');
 
 // What `userId` did in project `projectId` inside [fromIso, toIso), with time
-// entries matched on work date `day`: { items, total_minutes }, items ordered
+// entries matched on work dates `fromDay` through `toDay` inclusive (YYYY-MM-DD,
+// compared as text): { items, total_minutes }, items ordered
 // by work item number, each { issue_id, key, title, type, status_changes:
 // [{ from, to }] (oldest first), resolution (the item's current one),
 // created, comments, minutes }.
-function activityFor(db, projectId, userId, fromIso, toIso, day) {
+function activityFor(db, projectId, userId, fromIso, toIso, fromDay, toDay = fromDay) {
   const byIssue = new Map();
   const entry = (issueId) => {
     if (!byIssue.has(issueId)) byIssue.set(issueId, { status_changes: [], created: false, comments: 0, minutes: 0 });
@@ -26,7 +27,7 @@ function activityFor(db, projectId, userId, fromIso, toIso, day) {
   }
   for (const row of comments.countByAuthorInRange(db, projectId, userId, fromIso, toIso)) entry(row.issue_id).comments = row.n;
   let total = 0;
-  for (const row of timeEntries.minutesByUserOnDay(db, projectId, userId, day)) {
+  for (const row of timeEntries.minutesByUserOnDays(db, projectId, userId, fromDay, toDay)) {
     entry(row.issue_id).minutes = row.minutes;
     total += row.minutes;
   }
