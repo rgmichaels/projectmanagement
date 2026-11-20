@@ -178,3 +178,16 @@ Contract: `docs/design/gantt-chart/README.md`. CSS: the "NEW: Timeline" block of
 - Dialog date fields: two `input[type=date]` in the existing `.props` grid.
 
 **Do.** Pair every status colour with a word, check mark or pattern (Done = check, rollup = dashes, Today = label); set titles as text; show dates in the tooltip while dragging. **Don't.** Don't put white text on pale fills or type colours; don't make sprint bars or rollup bars draggable; don't add handles for read-only users.
+
+## 13. Daily report (daily-report, single recommended design)
+
+Contract: `docs/design/daily-report/README.md`. CSS: the "NEW: Daily report" block of `docs/design/daily-report/src/report.css` (append to `public/css/app.css`). No new tokens; reuses `.panel`, `.subnav`, `.badge.archived`, `.banner-warn`, `.n`, `.status-pill`, `.priority`, `.epic-chip`, `.hint`, `.empty`, `button.navy`.
+
+**New components.**
+- Controls panel (`form.panel.report-controls`): labels stacked above Person select and Date input, "Today" button beside Date, navy "Copy for email" right-aligned, `p.copy-status` line (`.ok` teal bold with a check mark, `role="status"`; `.fail` danger bold, `role="alert"`).
+- Report panel (`article.panel.report`, 860px max): `p.report-title` (18px bold teal, not a heading), `section` with a top rule and `h2`, `.h-note` muted 12px note in the heading, `h3` navy sub-headings with a `.n` count.
+- Rows (`ul.rows > li`): `.r-key` mono bold link, `.r-title` (wraps anywhere), `.r-meta` (pill, priority, remaining, assignee), `.r-sum` activity line on its own row.
+- `.total-line` (pale teal strip, bold), `.empty-line` (dashed teal-mid box, plain text), `.sprint-line` (white, 4px teal left edge, bold).
+- Copied email styles are inline only and independent of app.css (see the README).
+
+**Do.** Write every empty section as a plain sentence; keep keys as links on screen and bold text in the email; insert all user text as text. **Don't.** Don't disable controls for Viewers or archived projects; don't add class names or a style block to the copied HTML; don't make the report title a heading.

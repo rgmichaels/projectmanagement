@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Report</title>
+  <link rel="icon" type="image/svg+xml" href="/css/favicon.svg">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body data-page="report">
+  <header class="topbar">
+    <a class="brand" href="/">Projects</a>
+  </header>
+
+  <!-- The Report page (docs/specs/daily-report.md; design
+       docs/design/daily-report, README.md is the UI contract): Person, Date
+       and Copy for email above one report panel with Yesterday, Today and
+       Waiting. js/report.js fills it (with js/reportMath.js). Read-only:
+       nothing here writes, so no control is ever disabled. -->
+  <main class="page report-page">
+    <nav class="subnav" aria-label="Project pages">
+      <a id="nav-board" href="board.html">Board</a>
+      <a id="nav-backlog" href="backlog.html">Backlog</a>
+      <a id="nav-sprints" href="sprints.html">Sprints</a>
+      <a id="nav-timeline" href="timeline.html">Timeline</a>
+      <a id="nav-report" href="report.html" aria-current="page">Report</a>
+      <a id="nav-test-cases" href="test-cases.html">Test Cases</a>
+    </nav>
+
+    <div class="toolbar tl-page-head">
+      <h1>Report</h1>
+      <span class="badge archived" id="archived-badge" hidden>Archived (read-only)</span>
+    </div>
+
+    <form class="panel report-controls" id="rp-controls">
+      <label for="rp-person">Person<select id="rp-person"></select></label>
+      <div class="date-field">
+        <label for="rp-date">Date<input type="date" id="rp-date"></label>
+        <button type="button" id="rp-today">Today</button>
+      </div>
+      <button type="button" id="rp-copy" class="navy push">Copy for email</button>
+      <p class="copy-status" id="rp-copy-status" role="status"></p>
+    </form>
+
+    <article class="panel report" id="rp-report" aria-label="Report">
+      <p class="hint" role="status">Loading...</p>
+    </article>
+  </main>
+
+  <script src="js/redirect.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/session.js"></script>
+  <script src="js/projectScope.js"></script>
+  <script src="js/reportMath.js"></script>
+  <script src="js/report.js"></script>
+</body>
+</html>

@@ -22,4 +22,13 @@ function isTerminalStatus(name) {
   return name === terminalStatus();
 }
 
-module.exports = { STATUSES, isValidStatus, defaultStatus, terminalStatus, isTerminalStatus };
+// The first status of active work (docs/specs/daily-report.md AC 12, 16):
+// the statuses before it are "not started" and those from it up to the
+// terminal status are "in progress". To move the boundary, change it here.
+const STARTED_STATUS = 'In Progress';
+
+function startedStatus() {
+  return STARTED_STATUS;
+}
+
+module.exports = { STATUSES, isValidStatus, defaultStatus, terminalStatus, isTerminalStatus, startedStatus };

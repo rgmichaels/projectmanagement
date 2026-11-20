@@ -209,6 +209,8 @@ test('every protected route family returns 401 without a session and changes not
     ['GET', '/api/users'],
     ['GET', '/api/statuses'],
     ['GET', '/api/terminal-status'],
+    ['GET', '/api/started-status'],
+    ['GET', `/api/projects/${p.id}/report?user=1&from=2026-11-19T05:00:00.000Z&to=2026-11-20T05:00:00.000Z&day=2026-11-19`],
     ['GET', '/api/resolutions'],
     ['GET', '/api/types'],
     ['GET', '/api/priorities'],

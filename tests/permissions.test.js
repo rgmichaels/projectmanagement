@@ -270,6 +270,7 @@ test('every GET route answers 200 for a Viewer, downloads and history included (
     '/api/groups/permissions': '/api/groups/permissions',
     '/api/statuses': '/api/statuses',
     '/api/terminal-status': '/api/terminal-status',
+    '/api/started-status': '/api/started-status',
     '/api/resolutions': '/api/resolutions',
     '/api/types': '/api/types',
     '/api/priorities': '/api/priorities',
@@ -297,6 +298,7 @@ test('every GET route answers 200 for a Viewer, downloads and history included (
     '/api/scope-event-kinds': '/api/scope-event-kinds',
     '/api/sprints/:id/scope': `/api/sprints/${sprint.id}/scope`,
     '/api/issues/:id/time': `/api/issues/${item.id}/time`,
+    '/api/projects/:id/report': `/api/projects/${p.id}/report?user=${ids.alex}&from=2026-11-19T05:00:00.000Z&to=2026-11-20T05:00:00.000Z&day=2026-11-19`,
   };
   const gets = appRoutes().filter((r) => r.method === 'GET').map((r) => r.path);
   assert.deepEqual(gets.filter((path) => !urls[path]), [], 'every GET route has a URL here');

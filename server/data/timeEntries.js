@@ -119,6 +119,20 @@ function deleteEntry(db, id, actor) {
   })();
 }
 
+// The daily report (docs/specs/daily-report.md AC 6, 7, 24): the minutes
+// `userId` logged on each work item of `projectId` with work date `day`
+// (YYYY-MM-DD, compared as text). Entries of deleted users (null user_id)
+// never match. Rows are { issue_id, minutes }.
+function minutesByUserOnDay(db, projectId, userId, day) {
+  return db
+    .prepare(
+      `SELECT t.issue_id, SUM(t.minutes) AS minutes FROM time_entries t JOIN issues i ON i.id = t.issue_id
+       WHERE i.project_id = ? AND t.user_id = ? AND t.work_date = ?
+       GROUP BY t.issue_id`
+    )
+    .all(projectId, userId, day);
+}
+
 // Used inside deleteIssue's transaction.
 function deleteForIssue(db, issueId) {
   db.prepare('DELETE FROM time_entries WHERE issue_id = ?').run(issueId);
@@ -137,4 +151,5 @@ module.exports = {
   updateEntry,
   deleteEntry,
   deleteForIssue,
+  minutesByUserOnDay,
 };

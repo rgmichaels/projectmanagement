@@ -84,6 +84,8 @@ function publicFields() {
 }
 
 const testCaseField = () => HISTORY_FIELDS.find((f) => f.kind === 'test-case');
+// The field that records status changes (the daily report reads it).
+const statusField = () => getField('status');
 // The field that records time entries.
 const timeEntryField = () => HISTORY_FIELDS.find((f) => f.kind === 'time-entry');
-module.exports = { HISTORY_FIELDS, getField, isHistoryField, linkField, attachmentField, testCaseField, timeEntryField, publicFields };
+module.exports = { HISTORY_FIELDS, getField, isHistoryField, linkField, attachmentField, testCaseField, timeEntryField, statusField, publicFields };
