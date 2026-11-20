@@ -72,6 +72,8 @@ CREATE TABLE IF NOT EXISTS issues (
   updated_at TEXT NOT NULL,
   resolution TEXT,
   reporter_id INTEGER REFERENCES users(id),
+  start_date TEXT,
+  due_date TEXT,
   UNIQUE (project_id, number)
 );
 
@@ -474,6 +476,15 @@ function migrateEstimate(db) {
   db.exec('ALTER TABLE issues ADD COLUMN estimate_minutes INTEGER');
 }
 
+// Databases created before the gantt-chart spec lack issues.start_date and
+// issues.due_date (TEXT YYYY-MM-DD; null = not set). Existing work items stay
+// unscheduled; no backfill (docs/specs/gantt-chart.md AC 1).
+function migrateDates(db) {
+  const columns = db.prepare('PRAGMA table_info(issues)').all().map((c) => c.name);
+  if (!columns.includes('start_date')) db.exec('ALTER TABLE issues ADD COLUMN start_date TEXT');
+  if (!columns.includes('due_date')) db.exec('ALTER TABLE issues ADD COLUMN due_date TEXT');
+}
+
 // Sprint scope-change tracking (docs/specs/sprint-scope-change.md AC 2, 4).
 // Adds the nullable sprints.baseline_item_count, baseline_minutes and
 // baseline_at (null = not tracked) when missing. Then, once per Active
@@ -508,6 +519,7 @@ function openDb(dbPath = DEFAULT_DB_PATH) {
   migrateActive(db);
   migrateSprints(db); // after migrateStatuses, so it is the last legacy step
   migrateEstimate(db);
+  migrateDates(db);
   migrateScope(db); // after migrateSprints and migrateEstimate: needs sprints and estimates
   const { n } = db.prepare('SELECT COUNT(*) AS n FROM users').get();
   if (n === 0) {

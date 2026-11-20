@@ -473,7 +473,7 @@ test('GET /api/history-fields lists the fields in display order (AC 18)', async 
   const res = await app.get('/api/history-fields');
   assert.equal(res.status, 200);
   assert.deepEqual(res.body, publicFields());
-  assert.deepEqual(res.body.map((f) => f.key), ['type', 'title', 'description', 'status', 'priority', 'assignee', 'epic', 'sprint', 'estimate', 'time_entry', 'resolution', 'link', 'attachment', 'test_case']);
+  assert.deepEqual(res.body.map((f) => f.key), ['type', 'title', 'description', 'status', 'priority', 'assignee', 'epic', 'sprint', 'estimate', 'start_date', 'due_date', 'time_entry', 'resolution', 'link', 'attachment', 'test_case']);
   for (const f of res.body) assert.deepEqual(Object.keys(f).sort(), ['key', 'kind', 'label']);
   assert.ok(!res.body.some((f) => f.key === 'rank'));
 });

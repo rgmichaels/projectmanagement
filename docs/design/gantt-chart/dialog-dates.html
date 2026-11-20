@@ -1,0 +1,39 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Work item dialog - date fields</title><link rel="stylesheet" href="src/timeline.css"></head><body><main>
+<p class="note-mock">Excerpt of the Details grid (dialog#detail .props) in the existing work item dialog. Only Start date and Due date are new; they sit after the existing fields, in the same 2-column grid, native date inputs.</p>
+<h2 class="mock-h">Edit, dates set</h2><dialog class="app-dialog" open><div class="band"><span class="keychip">PM-12</span><h2>Payment form with card validation</h2></div><div class="dialog-body"><div class="props">
+<label>Status<select ><option>In Progress</option></select></label>
+<label>Sprint<select ><option>Sprint 3</option></select></label>
+<label>Estimate (h)<input type="number" value="16" ></label>
+<label>Assignee<select ><option>Sam Admin</option></select></label>
+<label for="sd-1">Start date<input id="sd-1" type="date" value="2026-10-26" ></label>
+<label for="dd-1">Due date<input id="dd-1" type="date" value="2026-11-13" ></label>
+</div><p class="hint" style="margin:8px 0 0">Both dates are optional. Leave empty if not scheduled. Use one date for a one-day bar.</p></div>
+<div class="dialog-foot"><p class="error" id="e-1" role="alert"></p><button type="button" class="primary">Save</button><button type="button">Cancel</button></div></dialog>
+<h2 class="mock-h">Create / edit, dates empty</h2><dialog class="app-dialog" open><div class="band"><span class="keychip">PM-12</span><h2>Payment form with card validation</h2></div><div class="dialog-body"><div class="props">
+<label>Status<select ><option>In Progress</option></select></label>
+<label>Sprint<select ><option>Sprint 3</option></select></label>
+<label>Estimate (h)<input type="number" value="16" ></label>
+<label>Assignee<select ><option>Sam Admin</option></select></label>
+<label for="sd-2">Start date<input id="sd-2" type="date" value="" ></label>
+<label for="dd-2">Due date<input id="dd-2" type="date" value="" ></label>
+</div><p class="hint" style="margin:8px 0 0">Both dates are optional. Leave empty if not scheduled. Use one date for a one-day bar.</p></div>
+<div class="dialog-foot"><p class="error" id="e-2" role="alert"></p><button type="button" class="primary">Save</button><button type="button">Cancel</button></div></dialog>
+<h2 class="mock-h">Server validation error (stays open, existing error area, both inputs get the red 2px border)</h2><dialog class="app-dialog" open><div class="band"><span class="keychip">PM-12</span><h2>Payment form with card validation</h2></div><div class="dialog-body"><div class="props">
+<label>Status<select ><option>In Progress</option></select></label>
+<label>Sprint<select ><option>Sprint 3</option></select></label>
+<label>Estimate (h)<input type="number" value="16" ></label>
+<label>Assignee<select ><option>Sam Admin</option></select></label>
+<label for="sd-3">Start date<input id="sd-3" type="date" value="2026-11-13"  aria-invalid="true" aria-describedby="e-3"></label>
+<label for="dd-3">Due date<input id="dd-3" type="date" value="2026-10-26"  aria-invalid="true" aria-describedby="e-3"></label>
+</div><p class="hint" style="margin:8px 0 0">Both dates are optional. Leave empty if not scheduled. Use one date for a one-day bar.</p></div>
+<div class="dialog-foot"><p class="error" id="e-3" role="alert">Due date must not be earlier than start date.</p><button type="button" class="primary">Save</button><button type="button">Cancel</button></div></dialog>
+<h2 class="mock-h">Read-only (Viewer or archived project)</h2><dialog class="app-dialog" open><div class="band"><span class="keychip">PM-12</span><h2>Payment form with card validation</h2></div><div class="dialog-body"><p class="banner" role="status">This project is archived. Fields are read-only.</p><div class="props">
+<label>Status<select disabled><option>In Progress</option></select></label>
+<label>Sprint<select disabled><option>Sprint 3</option></select></label>
+<label>Estimate (h)<input type="number" value="16" disabled></label>
+<label>Assignee<select disabled><option>Sam Admin</option></select></label>
+<label for="sd-4">Start date<input id="sd-4" type="date" value="2026-10-26" disabled></label>
+<label for="dd-4">Due date<input id="dd-4" type="date" value="2026-11-13" disabled></label>
+</div></div>
+<div class="dialog-foot"><p class="error" id="e-4" role="alert"></p><button type="button">Close</button></div></dialog>
+</main></body></html>

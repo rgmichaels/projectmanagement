@@ -23,6 +23,7 @@
       <a id="nav-board" href="board.html">Board</a>
       <a id="nav-backlog" href="backlog.html">Backlog</a>
       <a id="nav-sprints" href="sprints.html" aria-current="page">Sprints</a>
+      <a id="nav-timeline" href="timeline.html">Timeline</a>
       <a id="nav-test-cases" href="test-cases.html">Test Cases</a>
     </nav>
 
@@ -108,9 +109,14 @@
             <p id="estimate-ro" class="est-ro" aria-labelledby="estimate-label" hidden></p>
             <p class="error" id="estimate-error" role="alert" hidden></p>
           </div>
+          <!-- Start and due dates (docs/specs/gantt-chart.md AC 6): optional,
+               saved with Save; disabled for Viewers and archived projects. -->
+          <label for="start-date-input">Start date <input type="date" id="start-date-input" name="start_date"></label>
+          <label for="due-date-input">Due date <input type="date" id="due-date-input" name="due_date"></label>
           <label id="resolution-field" hidden>Resolution <select name="resolution"></select></label>
           <p id="sprint-where" class="sprint-where" role="status" hidden></p>
         </div>
+        <p id="dates-hint" class="hint date-hint">Both dates are optional. Leave empty if not scheduled. Use one date for a one-day bar.</p>
         <p class="reporter" id="reporter" hidden></p>
 
         <!-- Description: for a saved work item a read view (plain text with image

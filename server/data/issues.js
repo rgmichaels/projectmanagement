@@ -19,6 +19,8 @@
 // same transaction (./sprintScope); moveToContainer (sprint complete and
 // delete) deliberately does not (Decision 11). Every item the API returns
 // carries added_after_start and added_at (null unless flagged).
+// Timeline (docs/specs/gantt-chart.md AC 1-4): start_date and due_date are
+// optional TEXT YYYY-MM-DD (null = not set), on epics too.
 const { STATUSES, isTerminalStatus } = require('../statuses');
 const { isEpicType, epicTypeNames } = require('../types');
 const { activeSprintState } = require('../sprintStates');
@@ -38,7 +40,7 @@ const SELECT = `
   SELECT i.id, i.project_id, i.number, i.key, i.type, i.title, i.description, i.status, i.priority,
          i.assignee_id, i.epic_id, i.rank, i.resolution, i.reporter_id, r.name AS reporter_name,
          i.sprint_id, i.sprint_rank, i.estimate_minutes, ${timeEntries.ITEM_MINUTES_SQL} AS time_spent_minutes,
-         i.created_at, i.updated_at`;
+         i.start_date, i.due_date, i.created_at, i.updated_at`;
 const FROM = 'FROM issues i LEFT JOIN users r ON r.id = i.reporter_id';
 
 // `AND i.type NOT IN (<epic types>)` and its parameters.
@@ -259,8 +261,8 @@ function createIssue(db, project, fields, actor) {
     const info = db
       .prepare(
         `INSERT INTO issues (project_id, number, key, type, title, description, status, priority,
-           assignee_id, epic_id, rank, resolution, reporter_id, sprint_id, sprint_rank, estimate_minutes, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           assignee_id, epic_id, rank, resolution, reporter_id, sprint_id, sprint_rank, estimate_minutes, start_date, due_date, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         project.id,
@@ -279,6 +281,8 @@ function createIssue(db, project, fields, actor) {
         sprintId,
         sprintRank,
         epic ? null : fields.estimate_minutes ?? null,
+        fields.start_date ?? null,
+        fields.due_date ?? null,
         now,
         now
       );
@@ -289,7 +293,7 @@ function createIssue(db, project, fields, actor) {
   })();
 }
 
-const UPDATABLE = ['type', 'title', 'description', 'status', 'priority', 'assignee_id', 'epic_id', 'rank', 'resolution', 'sprint_id', 'sprint_rank', 'estimate_minutes'];
+const UPDATABLE = ['type', 'title', 'description', 'status', 'priority', 'assignee_id', 'epic_id', 'rank', 'resolution', 'sprint_id', 'sprint_rank', 'estimate_minutes', 'start_date', 'due_date'];
 
 // Clears the epic of every child of `epicId`, recording an epic change on each.
 function releaseChildren(db, epicId, actor, when) {

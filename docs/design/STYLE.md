@@ -165,3 +165,16 @@ Contract: `docs/design/export/README.md`. CSS: the NEW block of `docs/design/exp
 - `.export-msg` (`.on-board` variant): holds a `.notice` (role="status", headers-only) or `.banner-warn` (role="alert", "Export failed.") with a Dismiss link, under the Board filter bar or under a panel header.
 
 **Do.** Name the target in `aria-label` ("Export Sprint 4"); keep Export visible for Viewers and archived projects; set names and server text as text. **Don't.** Don't use `disabled` while busy (focus is lost); don't rely on a hover-only tooltip for meaning; don't show Export as a primary button.
+
+## 12. Timeline (gantt-chart, single recommended design)
+
+Contract: `docs/design/gantt-chart/README.md`. CSS: the "NEW: Timeline" block of `docs/design/gantt-chart/src/timeline.css` (append to `public/css/app.css`). No new tokens; reuses the epic chip purple (`#eae6ff` / `#403294`), `--danger` for the Today line, `.subnav`, `.badge`, `.banner`, `.banner-warn`, `.panel`, `.n` count pill.
+
+**New components.**
+- Zoom control (`.seg` of `button[aria-pressed]`): joined buttons, active = teal fill, white text.
+- Chart (`.tl` scroll container, `.tl-head` sticky axis with `.ax` cells, `.tl-row` rows with sticky `.tl-label` and `.tl-track`, `.tl-grid` lines and weekend shading, `.tl-today` line and `.tl-flag`).
+- Bars (`button.bar` with `.s-todo`, `.s-prog`, `.s-done` (muted, check mark), `.epic`, `.rollup` (striped, dashed), `.is-short` outside label; sprint bars `.sp-planned`, `.sp-active`, `.sp-completed`). Edit affordances: `.h.l`, `.h.r` handles, `.is-dragging`, `.bar-origin`, `.is-reverting`, `.tl-tip`, `.tl-dropcol`, `.tl.is-drop-target`, `.tl.is-readonly`.
+- Unscheduled panel (`.unsched`, `.un-row` with `.grip`, `.un-empty`, `.epic-tag`).
+- Dialog date fields: two `input[type=date]` in the existing `.props` grid.
+
+**Do.** Pair every status colour with a word, check mark or pattern (Done = check, rollup = dashes, Today = label); set titles as text; show dates in the tooltip while dragging. **Don't.** Don't put white text on pale fills or type colours; don't make sprint bars or rollup bars draggable; don't add handles for read-only users.

@@ -24,6 +24,9 @@
 // dialog's properties, the Time tab and the sprint figure on the sprint bar;
 // js/backlog.js and js/sprintView.js draw the same figure through
 // sprintFigure. The texts come from js/time.js (timeFormat).
+// Timeline (docs/specs/gantt-chart.md): the dialog's Start date and Due date
+// fields (AC 6), and the Timeline page (timeline.html, data-page="timeline";
+// js/timeline.js, timelinePage.init).
 (() => {
   const GROUP_BY_STORAGE_KEY = 'pm.groupBy';
   const FILTERS_STORAGE_PREFIX = 'pm.filters.';
@@ -33,7 +36,7 @@
   const RANK_STEP = 1000;
 
   let projectId = null; // set from projectScope.ready
-  const page = document.body.dataset.page || 'board'; // board, backlog or sprints
+  const page = document.body.dataset.page || 'board'; // board, backlog, sprints or timeline
   const onBoard = page === 'board';
 
   // localStorage may be missing or throw (private mode, blocked storage);
@@ -207,6 +210,9 @@
     sprintNote: document.getElementById('sprint-note'),
     sprintWhere: document.getElementById('sprint-where'),
     sprintAdded: document.getElementById('sprint-added'),
+    startDate: document.getElementById('start-date-input'),
+    dueDate: document.getElementById('due-date-input'),
+    datesHint: document.getElementById('dates-hint'),
   };
 
   // ---------- helpers ----------
@@ -498,6 +504,7 @@
     if (!onBoard) {
       if (page === 'backlog' && typeof backlogPage !== 'undefined') backlogPage.render();
       if (page === 'sprints' && typeof sprintsPage !== 'undefined') sprintsPage.render();
+      if (page === 'timeline' && typeof timelinePage !== 'undefined') timelinePage.render();
       return;
     }
     renderSprintBar();
@@ -900,6 +907,31 @@
   }
   els.estimateInput.addEventListener('input', () => setEstimateError(''));
 
+  // ----- start and due dates (gantt-chart AC 6) -----
+  // Item fields like the others: dirty-tracked, saved with Save, disabled
+  // when read-only. A server date error shows in the dialog's error area and
+  // marks the input(s) it is about.
+
+  function setDateInvalid(message) {
+    const both = /earlier than start date/i.test(message || '');
+    const marks = [
+      [els.startDate, both || /^start date/i.test(message || '')],
+      [els.dueDate, both || /^due date/i.test(message || '')],
+    ];
+    for (const [input, bad] of marks) {
+      if (bad) {
+        input.setAttribute('aria-invalid', 'true');
+        input.setAttribute('aria-describedby', 'detail-error');
+      } else {
+        input.removeAttribute('aria-invalid');
+        input.removeAttribute('aria-describedby');
+      }
+    }
+    return marks.some(([, bad]) => bad);
+  }
+  els.startDate.addEventListener('input', () => setDateInvalid(''));
+  els.dueDate.addEventListener('input', () => setDateInvalid(''));
+
   // ----- band -----
 
   // The key chip (type name and key, with a dot in the type's colour) or, for
@@ -1077,6 +1109,10 @@
     els.statusField.hidden = !item;
     els.estimateInput.value = item && item.estimate_hours !== null && item.estimate_hours !== undefined ? String(item.estimate_hours) : '';
     setEstimateError('');
+    els.startDate.value = item && item.start_date ? item.start_date : '';
+    els.dueDate.value = item && item.due_date ? item.due_date : '';
+    setDateInvalid('');
+    els.datesHint.hidden = ro;
     els.resolutionField.hidden = true;
     syncResolutionField();
     sprintSaving = false;
@@ -1128,6 +1164,8 @@
       assignee_id: f.assignee_id.value ? Number(f.assignee_id.value) : null,
       epic_id: type && type.isEpic ? null : f.epic_id.value ? Number(f.epic_id.value) : null,
       description: f.description.value,
+      start_date: f.start_date.value || null,
+      due_date: f.due_date.value || null,
     };
     // A new item's sprint goes with Create; a saved item's saves on change.
     if (!editing && !(type && type.isEpic)) values.sprint_id = f.sprint_id.value ? Number(f.sprint_id.value) : null;
@@ -1170,6 +1208,7 @@
     els.detailError.textContent = '';
     setTitleError('');
     setEstimateError('');
+    setDateInvalid('');
     const values = formValues();
     if (!values.title) {
       setTitleError(TITLE_REQUIRED);
@@ -1208,6 +1247,7 @@
         els.estimateInput.focus();
       } else {
         els.detailError.textContent = err.message;
+        setDateInvalid(err.message);
       }
     }
   });
@@ -2967,6 +3007,7 @@
       if (onBoard) fillFilterControls();
       else if (page === 'backlog') backlogPage.init(backlogContext());
       else if (page === 'sprints') sprintsPage.init(backlogContext());
+      else if (page === 'timeline') timelinePage.init(backlogContext());
       await reloadItems();
       const linkedIssue = new URLSearchParams(location.search).get('issue');
       if (linkedIssue) {
@@ -2975,7 +3016,8 @@
         else openDetail(item);
       }
     } catch (err) {
-      showMessage(err.message);
+      if (page === 'timeline' && typeof timelinePage !== 'undefined') timelinePage.loadFailed(err);
+      else showMessage(err.message);
     }
   })();
 })();
