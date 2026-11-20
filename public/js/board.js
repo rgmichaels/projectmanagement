@@ -24,6 +24,9 @@
 // dialog's properties, the Time tab and the sprint figure on the sprint bar;
 // js/backlog.js and js/sprintView.js draw the same figure through
 // sprintFigure. The texts come from js/time.js (timeFormat).
+// Timeline (docs/specs/gantt-chart.md): the dialog's Start date and Due date
+// fields (AC 6), and the Timeline page (timeline.html, data-page="timeline";
+// js/timeline.js, timelinePage.init).
 (() => {
   const GROUP_BY_STORAGE_KEY = 'pm.groupBy';
   const FILTERS_STORAGE_PREFIX = 'pm.filters.';
@@ -33,7 +36,7 @@
   const RANK_STEP = 1000;
 
   let projectId = null; // set from projectScope.ready
-  const page = document.body.dataset.page || 'board'; // board, backlog or sprints
+  const page = document.body.dataset.page || 'board'; // board, backlog, sprints or timeline
   const onBoard = page === 'board';
 
   // localStorage may be missing or throw (private mode, blocked storage);
@@ -82,6 +85,8 @@
     statusField: document.getElementById('status-field'),
     statusSteps: document.getElementById('status-steps'),
     resolutionField: document.getElementById('resolution-field'),
+    completedField: document.getElementById('completed-field'),
+    completedInput: document.getElementById('completed-input'),
     epicField: document.getElementById('epic-field'),
     epicLabel: document.getElementById('epic-label'),
     detailError: document.getElementById('detail-error'),
@@ -207,6 +212,9 @@
     sprintNote: document.getElementById('sprint-note'),
     sprintWhere: document.getElementById('sprint-where'),
     sprintAdded: document.getElementById('sprint-added'),
+    startDate: document.getElementById('start-date-input'),
+    dueDate: document.getElementById('due-date-input'),
+    datesHint: document.getElementById('dates-hint'),
   };
 
   // ---------- helpers ----------
@@ -414,7 +422,7 @@
         addedBadge(item, { short: true }),
         epic ? epicChip(epic) : null,
         el('span', { class: 'priority', title: `Priority: ${item.priority}` }, item.priority),
-        resolutionLabel(item),
+        doneRow(item),
         commentChip(item.comment_count || 0),
         el(
           'span',
@@ -474,6 +482,24 @@
     );
   }
 
+  // Completed date (docs/specs/completed-date-on-cards.md AC 12-14): the
+  // server's completed_at as `✓ Completed Nov 20`, full time and completer in
+  // the title. Null outside the terminal status or without a date. No
+  // handlers, so drag and click go to the card.
+  function completedLabel(item) {
+    if (!isTerminal(item.status)) return null;
+    const text = completedDate.cardText(item.completed_at);
+    if (!text) return null;
+    return el('span', { class: 'completed', title: completedDate.tooltip(item.completed_at, item.completed_by) }, text);
+  }
+
+  // The card's last meta row (design: .card-done, terminal cards only): the
+  // resolution label and the completed line.
+  function doneRow(item) {
+    const parts = [resolutionLabel(item), completedLabel(item)].filter(Boolean);
+    return parts.length ? el('span', { class: 'card-done' }, ...parts) : null;
+  }
+
   function commentChip(n) {
     return el(
       'span',
@@ -498,6 +524,7 @@
     if (!onBoard) {
       if (page === 'backlog' && typeof backlogPage !== 'undefined') backlogPage.render();
       if (page === 'sprints' && typeof sprintsPage !== 'undefined') sprintsPage.render();
+      if (page === 'timeline' && typeof timelinePage !== 'undefined') timelinePage.render();
       return;
     }
     renderSprintBar();
@@ -773,6 +800,19 @@
     els.resolutionField.hidden = !show;
   }
 
+  // The dialog's read-only Completed field (AC 19): from the saved item, not
+  // the unsaved status choice; hidden for a new item. Shown on the Board and
+  // Backlog only (AC 22): always hidden on Sprints and Timeline.
+  function syncCompletedField(item) {
+    if (!els.completedField) return;
+    const shown = completedDate.showInDialog(page) && item && isTerminal(item.status);
+    const text = shown ? completedDate.dateText(item.completed_at) : null;
+    els.completedField.hidden = !text;
+    els.completedInput.value = text || '';
+    if (text) els.completedInput.title = completedDate.tooltip(item.completed_at, item.completed_by);
+    else els.completedInput.removeAttribute('title');
+  }
+
   function syncEpicField() {
     const type = typeOf(els.form.elements.type.value);
     els.epicField.hidden = !epicType() || Boolean(type && type.isEpic);
@@ -899,6 +939,31 @@
     }
   }
   els.estimateInput.addEventListener('input', () => setEstimateError(''));
+
+  // ----- start and due dates (gantt-chart AC 6) -----
+  // Item fields like the others: dirty-tracked, saved with Save, disabled
+  // when read-only. A server date error shows in the dialog's error area and
+  // marks the input(s) it is about.
+
+  function setDateInvalid(message) {
+    const both = /earlier than start date/i.test(message || '');
+    const marks = [
+      [els.startDate, both || /^start date/i.test(message || '')],
+      [els.dueDate, both || /^due date/i.test(message || '')],
+    ];
+    for (const [input, bad] of marks) {
+      if (bad) {
+        input.setAttribute('aria-invalid', 'true');
+        input.setAttribute('aria-describedby', 'detail-error');
+      } else {
+        input.removeAttribute('aria-invalid');
+        input.removeAttribute('aria-describedby');
+      }
+    }
+    return marks.some(([, bad]) => bad);
+  }
+  els.startDate.addEventListener('input', () => setDateInvalid(''));
+  els.dueDate.addEventListener('input', () => setDateInvalid(''));
 
   // ----- band -----
 
@@ -1077,8 +1142,13 @@
     els.statusField.hidden = !item;
     els.estimateInput.value = item && item.estimate_hours !== null && item.estimate_hours !== undefined ? String(item.estimate_hours) : '';
     setEstimateError('');
+    els.startDate.value = item && item.start_date ? item.start_date : '';
+    els.dueDate.value = item && item.due_date ? item.due_date : '';
+    setDateInvalid('');
+    els.datesHint.hidden = ro;
     els.resolutionField.hidden = true;
     syncResolutionField();
+    syncCompletedField(item);
     sprintSaving = false;
     fillSprintField(item);
     syncEpicField();
@@ -1087,6 +1157,7 @@
     for (const field of els.form.querySelectorAll('input, select, textarea')) field.disabled = ro;
     syncSprintField(); // also disabled for an item in a completed sprint
     els.historyField.disabled = false; // History stays usable when read-only
+    if (els.completedInput) els.completedInput.disabled = false; // readonly, still focusable
     els.saveBtn.hidden = ro;
     els.saveBtn.textContent = item ? 'Save' : 'Create';
     els.deleteBtn.hidden = ro || !item || !canDeleteItems();
@@ -1128,6 +1199,8 @@
       assignee_id: f.assignee_id.value ? Number(f.assignee_id.value) : null,
       epic_id: type && type.isEpic ? null : f.epic_id.value ? Number(f.epic_id.value) : null,
       description: f.description.value,
+      start_date: f.start_date.value || null,
+      due_date: f.due_date.value || null,
     };
     // A new item's sprint goes with Create; a saved item's saves on change.
     if (!editing && !(type && type.isEpic)) values.sprint_id = f.sprint_id.value ? Number(f.sprint_id.value) : null;
@@ -1170,6 +1243,7 @@
     els.detailError.textContent = '';
     setTitleError('');
     setEstimateError('');
+    setDateInvalid('');
     const values = formValues();
     if (!values.title) {
       setTitleError(TITLE_REQUIRED);
@@ -1208,6 +1282,7 @@
         els.estimateInput.focus();
       } else {
         els.detailError.textContent = err.message;
+        setDateInvalid(err.message);
       }
     }
   });
@@ -2967,6 +3042,7 @@
       if (onBoard) fillFilterControls();
       else if (page === 'backlog') backlogPage.init(backlogContext());
       else if (page === 'sprints') sprintsPage.init(backlogContext());
+      else if (page === 'timeline') timelinePage.init(backlogContext());
       await reloadItems();
       const linkedIssue = new URLSearchParams(location.search).get('issue');
       if (linkedIssue) {
@@ -2975,7 +3051,8 @@
         else openDetail(item);
       }
     } catch (err) {
-      showMessage(err.message);
+      if (page === 'timeline' && typeof timelinePage !== 'undefined') timelinePage.loadFailed(err);
+      else showMessage(err.message);
     }
   })();
 })();

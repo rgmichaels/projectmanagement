@@ -37,4 +37,17 @@ function deleteComment(db, id) {
   db.prepare('DELETE FROM comments WHERE id = ?').run(id);
 }
 
-module.exports = { listComments, getComment, createComment, updateComment, deleteComment };
+// The daily report (docs/specs/daily-report.md AC 6, 24): how many messages
+// `authorId` posted on each work item of `projectId` in [fromIso, toIso).
+// Rows are { issue_id, n }.
+function countByAuthorInRange(db, projectId, authorId, fromIso, toIso) {
+  return db
+    .prepare(
+      `SELECT c.issue_id, COUNT(*) AS n FROM comments c JOIN issues i ON i.id = c.issue_id
+       WHERE i.project_id = ? AND c.author_id = ? AND c.created_at >= ? AND c.created_at < ?
+       GROUP BY c.issue_id`
+    )
+    .all(projectId, authorId, fromIso, toIso);
+}
+
+module.exports = { listComments, getComment, createComment, updateComment, deleteComment, countByAuthorInRange };

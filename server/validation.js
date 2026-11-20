@@ -141,7 +141,22 @@ function checkIssueFields(db, project, body, existing) {
     if (epic && minutes !== null) throw new ValidationError('An epic cannot have an estimate.');
     if (!epic) out.estimate_minutes = minutes;
   }
+  Object.assign(out, checkIssueDates(body, existing));
   Object.assign(out, checkSprintMembership(db, project, body, existing, finalType));
+  return out;
+}
+
+// start_date and due_date of a work item (docs/specs/gantt-chart.md AC 2, 3):
+// each a real date YYYY-MM-DD, or null/'' (stored as null). When both are set
+// (merged with the stored values when only one is sent) the due date must
+// not be earlier than the start date; equal dates are a one-day bar.
+function checkIssueDates(body, existing) {
+  const out = {};
+  if (body.start_date !== undefined) out.start_date = checkDate(body.start_date, 'Start date');
+  if (body.due_date !== undefined) out.due_date = checkDate(body.due_date, 'Due date');
+  const start = out.start_date !== undefined ? out.start_date : existing?.start_date ?? null;
+  const due = out.due_date !== undefined ? out.due_date : existing?.due_date ?? null;
+  if (start && due && due < start) throw new ValidationError('Due date must not be earlier than start date.');
   return out;
 }
 

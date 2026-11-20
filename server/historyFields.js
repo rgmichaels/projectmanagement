@@ -47,6 +47,9 @@ const HISTORY_FIELDS = [
   { key: 'sprint', column: 'sprint_id', label: 'Sprint', kind: 'sprint-name', emptyText: 'Backlog' },
   // docs/specs/time-tracking.md AC 49, 50: `8` to `12`, null when empty.
   { key: 'estimate', column: 'estimate_minutes', label: 'Estimate', kind: 'text', format: (minutes) => String(minutes / 60) },
+  // docs/specs/gantt-chart.md AC 5: YYYY-MM-DD text, null when cleared.
+  { key: 'start_date', label: 'Start date', kind: 'text' },
+  { key: 'due_date', label: 'Due date', kind: 'text' },
   // docs/specs/time-tracking.md AC 31: a time entry logged (new = its text),
   // edited (old and new) or deleted (old), as `1.5 h on 2026-10-28: note`.
   // No column; server/data/timeEntries.js records it.
@@ -81,6 +84,8 @@ function publicFields() {
 }
 
 const testCaseField = () => HISTORY_FIELDS.find((f) => f.kind === 'test-case');
+// The field that records status changes (the daily report reads it).
+const statusField = () => getField('status');
 // The field that records time entries.
 const timeEntryField = () => HISTORY_FIELDS.find((f) => f.kind === 'time-entry');
-module.exports = { HISTORY_FIELDS, getField, isHistoryField, linkField, attachmentField, testCaseField, timeEntryField, publicFields };
+module.exports = { HISTORY_FIELDS, getField, isHistoryField, linkField, attachmentField, testCaseField, timeEntryField, statusField, publicFields };

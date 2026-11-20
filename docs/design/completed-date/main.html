@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Completed date - recommended design</title>
+<link rel="stylesheet" href="../../../public/css/app.css">
+<link rel="stylesheet" href="src/completed.css">
+<style>
+  /* Mockup scaffolding only; not for app.css. */
+  .m-wrap { max-width: 1100px; margin: 0 auto; padding: 20px; }
+  .m-wrap h2.m { margin: 28px 0 4px; }
+  .m-note { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+  .m-cols { display: grid; grid-template-columns: repeat(3, 240px); gap: 8px; }
+  .m-cols.wide { grid-template-columns: repeat(3, 240px); }
+  .m-pair { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+  .m-dlg { width: 560px; max-width: 100%; background: var(--page); border-radius: 8px; box-shadow: 0 12px 36px rgba(9,30,40,.35); overflow: hidden; }
+  .m-dlg .band { background: var(--teal); color: #fff; padding: 14px 24px; }
+  .m-dlg .band .t { font-size: 22px; font-weight: 700; margin-top: 8px; overflow-wrap: anywhere; }
+  .m-dlg .keychip { display: inline-flex; align-items: center; font: 600 12px var(--mono); color: #000; background: #fff; border-radius: 4px; padding: 2px 8px; }
+  .m-dlg .body { padding: 14px 24px 18px; }
+  .m-dlg .props { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; }
+  .m-dlg .props > label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; margin: 0; }
+  .m-dlg select, .m-dlg input { width: 100%; border: 1px solid var(--navy); border-radius: 4px; padding: 6px 8px; background: #fff; }
+  .m-dlg select[disabled], .m-dlg input[disabled] { background: var(--teal-soft); color: var(--ink); opacity: 1; -webkit-text-fill-color: var(--ink); }
+  .m-dlg input.ro { background: var(--teal-soft); }
+  .m-list { background: #fff; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .m-list.narrow { width: 640px; max-width: 100%; }
+  .m-list .brow .avatar { margin-left: 0; }
+</style>
+</head>
+<body>
+<header class="topbar"><span class="brand">Project Management</span><span class="crumb">EFS Automation</span></header>
+<div class="m-wrap">
+<h1>Completed date: recommended design</h1>
+<p class="m-note">Project 3 "EFS Automation". Today in this mockup is Nov 20, 2026. Hover the dates to see the tooltips (title text shown in the caption under each card).</p>
+
+<!-- 1. BOARD -->
+<h2 class="m">1. Board: cards in the terminal status (Complete)</h2>
+<p class="m-note">Row 1 is unchanged (type, key, priority, comments, avatar). Row 2 appears only on Complete cards: resolution label, then the completed line. Cards in In Progress and Planning are unchanged.</p>
+<div class="m-cols">
+  <div>
+    <div class="col-header"><span>In Progress</span><span class="count">1</span></div>
+    <div class="column">
+      <div class="card" style="--type-color:#4bade8" tabindex="0" draggable="true">
+        <div class="card-title">EFS-7 Reopened: nightly file transfer fails (was completed Nov 18, then reopened: no completed line)</div>
+        <div class="card-meta">
+          <span class="type-badge">Task</span><span class="card-key">EFS-7</span>
+          <span class="priority">High</span>
+          <span class="avatar" title="Robert Michaels">RM</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="grid-column: span 2">
+    <div class="col-header"><span>Complete</span><span class="count">6</span></div>
+    <div class="m-cols" style="grid-template-columns: repeat(2, 240px); margin-top:8px">
+      <div class="column">
+        <!-- A: normal, current year -->
+        <div class="card" style="--type-color:#4bade8" tabindex="0" draggable="true">
+          <div class="card-title">EFS-1 Set up CI job for the EFS export</div>
+          <div class="card-meta">
+            <span class="type-badge">Task</span><span class="card-key">EFS-1</span>
+            <span class="priority">Medium</span>
+            <span class="avatar" title="Robert Michaels">RM</span>
+            <span class="card-done">
+              <span class="resolution-label" style="--resolution-color:#2f6b3f" title="Resolution: Fixed">Fixed</span>
+              <span class="completed" title="Completed Nov 20, 2026 at 3:42 PM by Robert Michaels">&#10003; Completed Nov 20</span>
+            </span>
+          </div>
+        </div>
+        <p class="m-note">title: "Completed Nov 20, 2026 at 3:42 PM by Robert Michaels"</p>
+
+        <!-- B: other year -->
+        <div class="card" style="--type-color:#e5493a" tabindex="0" draggable="true">
+          <div class="card-title">EFS-6 Wrong checksum on large files</div>
+          <div class="card-meta">
+            <span class="type-badge">Defect</span><span class="card-key">EFS-6</span>
+            <span class="priority">High</span>
+            <span class="comment-count" title="3 messages"><span aria-hidden="true">&#128172;</span>3</span>
+            <span class="avatar" title="Robert Michaels">RM</span>
+            <span class="card-done">
+              <span class="resolution-label" style="--resolution-color:#2f6b3f" title="Resolution: Fixed">Fixed</span>
+              <span class="completed" title="Completed Nov 20, 2025 at 9:05 AM by Robert Michaels">&#10003; Completed Nov 20, 2025</span>
+            </span>
+          </div>
+        </div>
+        <p class="m-note">Year shown only because 2025 is not the current year.</p>
+
+        <!-- C: no completed_by (backfilled) -->
+        <div class="card" style="--type-color:#4bade8" tabindex="0" draggable="true">
+          <div class="card-title">EFS-2 Document the retry policy</div>
+          <div class="card-meta">
+            <span class="type-badge">Task</span><span class="card-key">EFS-2</span>
+            <span class="priority">Low</span>
+            <span class="avatar unassigned" title="Unassigned">?</span>
+            <span class="card-done">
+              <span class="resolution-label" style="--resolution-color:#62666a" title="Resolution: Won't Do">Won't Do</span>
+              <span class="completed" title="Completed Nov 20, 2026 at 11:10 AM">&#10003; Completed Nov 20</span>
+            </span>
+          </div>
+        </div>
+        <p class="m-note">title: "Completed Nov 20, 2026 at 11:10 AM" (no "by", backfilled item).</p>
+      </div>
+
+      <div class="column">
+        <!-- D: long title, epic chip, narrow card -->
+        <div class="card" style="--type-color:#e5493a" tabindex="0" draggable="true">
+          <div class="card-title">EFS-3 Investigate intermittent timeout when the downstream archive service responds slower than thirty seconds during the month-end batch window</div>
+          <div class="card-meta">
+            <span class="type-badge">Defect</span><span class="card-key">EFS-3</span>
+            <span class="epic-chip" role="button" tabindex="0">EFS-5</span>
+            <span class="priority">Critical</span>
+            <span class="comment-count" title="12 messages"><span aria-hidden="true">&#128172;</span>12</span>
+            <span class="avatar" title="Robert Michaels">RM</span>
+            <span class="card-done">
+              <span class="resolution-label" style="--resolution-color:#8a4b08" title="Resolution: Cannot Reproduce">Cannot Reproduce</span>
+              <span class="completed" title="Completed Nov 20, 2026 at 3:42 PM by Robert Michaels">&#10003; Completed Nov 20</span>
+            </span>
+          </div>
+        </div>
+        <p class="m-note">Worst case: long title, epic chip, long resolution. The meta row may wrap as it already does; the done row never forces more than its own row, and the date never breaks mid-text (the resolution label and date wrap as units).</p>
+
+        <!-- E: hostile text -->
+        <div class="card" style="--type-color:#4bade8" tabindex="0" draggable="true">
+          <div class="card-title">EFS-4 &lt;img src=x onerror=alert(1)&gt; &amp;amp; &lt;b&gt;bold&lt;/b&gt;</div>
+          <div class="card-meta">
+            <span class="type-badge">Task</span><span class="card-key">EFS-4</span>
+            <span class="priority">Medium</span>
+            <span class="avatar" title="Robert Michaels">RM</span>
+            <span class="card-done">
+              <span class="resolution-label" style="--resolution-color:#5243aa" title="Resolution: Duplicate">Duplicate</span>
+              <span class="completed" title="Completed Nov 20, 2026 at 3:42 PM by &quot;&gt;&lt;b&gt;Dana&lt;/b&gt;&lt;script&gt;x()&lt;/script&gt;">&#10003; Completed Nov 20</span>
+            </span>
+          </div>
+        </div>
+        <p class="m-note">Hostile title and a hostile completer name: both set as text; the tooltip reads <code>by "&gt;&lt;b&gt;Dana&lt;/b&gt;&lt;script&gt;x()&lt;/script&gt;</code> literally.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 style="margin:22px 0 4px">Read-only (archived project or Viewer)</h3>
+<p class="m-note">Identical to the writable card; only <code>draggable="false"</code> and no grab cursor. Nothing is disabled or greyed.</p>
+<div class="m-cols" style="grid-template-columns: 240px">
+  <div class="column">
+    <div class="card" style="--type-color:#4bade8; cursor:pointer" tabindex="0" draggable="false">
+      <div class="card-title">EFS-1 Set up CI job for the EFS export</div>
+      <div class="card-meta">
+        <span class="type-badge">Task</span><span class="card-key">EFS-1</span>
+        <span class="priority">Medium</span>
+        <span class="avatar" title="Robert Michaels">RM</span>
+        <span class="card-done">
+          <span class="resolution-label" style="--resolution-color:#2f6b3f" title="Resolution: Fixed">Fixed</span>
+          <span class="completed" title="Completed Nov 20, 2026 at 3:42 PM by Robert Michaels">&#10003; Completed Nov 20</span>
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3 style="margin:22px 0 4px">Before and after a drop (for comparison)</h3>
+<p class="m-note">Same card without a completed date, in Complete: no second row at all if <code>completed_at</code> is null (cannot happen after the backfill, but the code must not print "Invalid Date" or an empty row). The resolution label alone still renders in the done row.</p>
+<div class="m-cols" style="grid-template-columns: 240px">
+  <div class="column">
+    <div class="card" style="--type-color:#4bade8" tabindex="0" draggable="true">
+      <div class="card-title">EFS-1 Set up CI job for the EFS export</div>
+      <div class="card-meta">
+        <span class="type-badge">Task</span><span class="card-key">EFS-1</span>
+        <span class="priority">Medium</span>
+        <span class="avatar" title="Robert Michaels">RM</span>
+        <span class="card-done"><span class="resolution-label" style="--resolution-color:#2f6b3f" title="Resolution: Fixed">Fixed</span></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 2. DIALOG -->
+<h2 class="m">2. Item dialog: read-only Completed field</h2>
+<p class="m-note">Third cell of the property grid, directly after Resolution (Resolution is the 1st cell of its row when the grid is full). Visible only while the item is saved in the terminal status. Not shown for a new item, not shown when the user picks Complete on the status track but has not saved, and gone after save moves the item out.</p>
+<div class="m-pair">
+  <div class="m-dlg">
+    <div class="band"><span class="keychip">EFS-1</span><div class="t">Set up CI job for the EFS export</div></div>
+    <div class="body">
+      <div class="props">
+        <label>Assignee <select disabled><option>Robert Michaels</option></select></label>
+        <label>Priority <select disabled><option>Medium</option></select></label>
+        <label id="resolution-field">Resolution <select><option>Fixed</option></select></label>
+        <div class="completed-field">
+          <label for="completed-input" style="margin:0">Completed</label>
+          <input type="text" id="completed-input" class="ro" readonly value="Nov 20" title="Completed Nov 20, 2026 at 3:42 PM by Robert Michaels">
+        </div>
+      </div>
+      <p class="m-note" style="margin-top:8px">Hover or focus tooltip: "Completed Nov 20, 2026 at 3:42 PM by Robert Michaels". Archived or Viewer: identical (it is always read-only).</p>
+    </div>
+  </div>
+  <div class="m-dlg">
+    <div class="band"><span class="keychip">EFS-6</span><div class="t">Wrong checksum on large files</div></div>
+    <div class="body">
+      <div class="props">
+        <label>Assignee <select disabled><option>Robert Michaels</option></select></label>
+        <label>Priority <select disabled><option>High</option></select></label>
+        <label>Resolution <select disabled><option>Fixed</option></select></label>
+        <div class="completed-field">
+          <label for="completed-input-2" style="margin:0">Completed</label>
+          <input type="text" id="completed-input-2" class="ro" readonly value="Nov 20, 2025" title="Completed Nov 20, 2025 at 9:05 AM by Robert Michaels">
+        </div>
+      </div>
+      <p class="m-note" style="margin-top:8px">Read-only project: same field; Resolution is disabled as it is today.</p>
+    </div>
+  </div>
+</div>
+
+<!-- 3. BACKLOG -->
+<h2 class="m">3. Backlog: date as a suffix inside the status pill (kept, not dropped)</h2>
+<p class="m-note">Decision: keep. The pill already exists and already carries the check mark for done items, so no new column, header or alignment is needed. It adds about 55px to a row that already wraps by design (the title is the flexible part). Rows in other statuses are unchanged. If QA sees a row wrap at 1024px or wider because of it, drop the suffix and flag it to the owner (spec AC 20).</p>
+<div class="m-list">
+  <ul class="brows" style="margin:0">
+    <li class="brow"><span class="brow-handle" aria-hidden="true">&#8942;&#8942;</span><span class="type-badge">Task</span><span class="card-key">EFS-1</span><button type="button" class="brow-title">Set up CI job for the EFS export</button><span class="priority">Medium</span><span class="status-pill is-done" title="Status: Complete">Complete<span class="pill-date" title="Completed Nov 20, 2026 at 3:42 PM by Robert Michaels"> &middot; Nov 20</span></span><span class="brow-est"><span class="est-ro">8h</span></span><span class="avatar">RM</span></li>
+    <li class="brow"><span class="brow-handle" aria-hidden="true">&#8942;&#8942;</span><span class="type-badge">Defect</span><span class="card-key">EFS-6</span><button type="button" class="brow-title">Wrong checksum on large files</button><span class="priority">High</span><span class="status-pill is-done" title="Status: Complete">Complete<span class="pill-date" title="Completed Nov 20, 2025 at 9:05 AM by Robert Michaels"> &middot; Nov 20, 2025</span></span><span class="brow-est"><span class="est-ro">4h</span></span><span class="avatar">RM</span></li>
+    <li class="brow"><span class="brow-handle" aria-hidden="true">&#8942;&#8942;</span><span class="type-badge">Task</span><span class="card-key">EFS-2</span><button type="button" class="brow-title">Document the retry policy</button><span class="priority">Low</span><span class="status-pill is-done" title="Status: Complete">Complete<span class="pill-date" title="Completed Nov 20, 2026 at 11:10 AM"> &middot; Nov 20</span></span><span class="brow-est"><span class="est-ro none">None</span></span><span class="avatar unassigned">?</span></li>
+    <li class="brow"><span class="brow-handle" aria-hidden="true">&#8942;&#8942;</span><span class="type-badge">Task</span><span class="card-key">EFS-7</span><button type="button" class="brow-title">Reopened: nightly file transfer fails</button><span class="priority">High</span><span class="status-pill" title="Status: In Progress">In Progress</span><span class="brow-est"><span class="est-ro">6h</span></span><span class="avatar">RM</span></li>
+  </ul>
+</div>
+<p class="m-note" style="margin-top:6px">The inner date span has its own title; the pill keeps "Status: Complete". Date text is weight 400 so the status word stays the emphasis.</p>
+
+<h3 style="margin:22px 0 4px">Narrow (640px): rows wrap as they already do</h3>
+<div class="m-list narrow">
+  <ul class="brows" style="margin:0">
+    <li class="brow"><span class="brow-handle" aria-hidden="true">&#8942;&#8942;</span><span class="type-badge">Defect</span><span class="card-key">EFS-3</span><button type="button" class="brow-title">Investigate intermittent timeout when the downstream archive service responds slower than thirty seconds</button><span class="priority">Critical</span><span class="status-pill is-done" title="Status: Complete">Complete<span class="pill-date" title="Completed Nov 20, 2026 at 3:42 PM by Robert Michaels"> &middot; Nov 20</span></span><span class="brow-est"><span class="est-ro">12h</span></span><span class="avatar">RM</span></li>
+    <li class="brow"><span class="brow-handle" aria-hidden="true">&#8942;&#8942;</span><span class="type-badge">Task</span><span class="card-key">EFS-4</span><button type="button" class="brow-title">&lt;img src=x onerror=alert(1)&gt; &amp;amp; &lt;b&gt;bold&lt;/b&gt;</button><span class="priority">Medium</span><span class="status-pill is-done" title="Status: Complete">Complete<span class="pill-date" title="Completed Nov 20, 2026 at 3:42 PM by &quot;&gt;&lt;b&gt;Dana&lt;/b&gt;&lt;script&gt;x()&lt;/script&gt;"> &middot; Nov 20</span></span><span class="brow-est"><span class="est-ro">2h</span></span><span class="avatar">RM</span></li>
+  </ul>
+</div>
+</div>
+</body>
+</html>

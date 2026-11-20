@@ -14,6 +14,7 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const testCaseRoutes = require('./routes/testCases');
 const timeRoutes = require('./routes/time');
+const reportRoutes = require('./routes/report');
 const auth = require('./auth');
 const { scopePermissions } = require('./projectPermissions');
 
@@ -35,7 +36,7 @@ function createApp(db) {
   // Allow their UTF-8/JSON encoding as well as the plain text limits.
   app.use('/api', auth.requireUser, scopePermissions(db), attachmentRoutes(db), express.json({ limit: '8mb' }));
   app.use('/api', testCaseRoutes(db));
-  app.use('/api', metaRoutes(db), userRoutes(db), projectRoutes(db), issueRoutes(db), commentRoutes(db), historyRoutes(db), linkRoutes(db), sprintRoutes(db), timeRoutes(db));
+  app.use('/api', metaRoutes(db), userRoutes(db), projectRoutes(db), issueRoutes(db), commentRoutes(db), historyRoutes(db), linkRoutes(db), sprintRoutes(db), timeRoutes(db), reportRoutes(db));
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
   // Express 5 forwards thrown errors (sync and async) here.

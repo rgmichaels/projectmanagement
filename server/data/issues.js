@@ -19,6 +19,13 @@
 // same transaction (./sprintScope); moveToContainer (sprint complete and
 // delete) deliberately does not (Decision 11). Every item the API returns
 // carries added_after_start and added_at (null unless flagged).
+// Timeline (docs/specs/gantt-chart.md AC 1-4): start_date and due_date are
+// optional TEXT YYYY-MM-DD (null = not set), on epics too.
+// Completed date (docs/specs/completed-date-on-cards.md AC 1-9): completed_at
+// (ISO time) and completed_by (actor name snapshot) are set on entering the
+// terminal status, cleared on leaving it and kept otherwise, in the same
+// write as the status and resolution (completionFor). Never client-writable;
+// not history fields (the status change is the record).
 const { STATUSES, isTerminalStatus } = require('../statuses');
 const { isEpicType, epicTypeNames } = require('../types');
 const { activeSprintState } = require('../sprintStates');
@@ -38,7 +45,7 @@ const SELECT = `
   SELECT i.id, i.project_id, i.number, i.key, i.type, i.title, i.description, i.status, i.priority,
          i.assignee_id, i.epic_id, i.rank, i.resolution, i.reporter_id, r.name AS reporter_name,
          i.sprint_id, i.sprint_rank, i.estimate_minutes, ${timeEntries.ITEM_MINUTES_SQL} AS time_spent_minutes,
-         i.created_at, i.updated_at`;
+         i.start_date, i.due_date, i.completed_at, i.completed_by, i.created_at, i.updated_at`;
 const FROM = 'FROM issues i LEFT JOIN users r ON r.id = i.reporter_id';
 
 // `AND i.type NOT IN (<epic types>)` and its parameters.
@@ -242,6 +249,14 @@ function resolutionFor(status, supplied, current, entering) {
   return current;
 }
 
+// completed_at / completed_by after a write: set to this write on entering
+// the terminal status, null outside it, otherwise unchanged.
+function completionFor(status, current, entering, now, actor) {
+  if (!isTerminalStatus(status)) return { completed_at: null, completed_by: null };
+  if (entering) return { completed_at: now, completed_by: (actor && actor.name) || null };
+  return { completed_at: current.completed_at, completed_by: current.completed_by };
+}
+
 // Creates a work item, allocating the next per-project number. Numbers are
 // never reused because next_issue_number only ever increases. fields.reporter_id
 // is the signed-in user, supplied by the route. Writes the `created` event.
@@ -256,11 +271,12 @@ function createIssue(db, project, fields, actor) {
     const epic = isEpicType(fields.type);
     const sprintId = epic ? null : fields.sprint_id ?? null;
     const sprintRank = epic ? null : bottomSprintRank(db, project.id, sprintId);
+    const completion = completionFor(fields.status, null, true, now, actor);
     const info = db
       .prepare(
         `INSERT INTO issues (project_id, number, key, type, title, description, status, priority,
-           assignee_id, epic_id, rank, resolution, reporter_id, sprint_id, sprint_rank, estimate_minutes, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           assignee_id, epic_id, rank, resolution, reporter_id, sprint_id, sprint_rank, estimate_minutes, start_date, due_date, completed_at, completed_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         project.id,
@@ -279,6 +295,10 @@ function createIssue(db, project, fields, actor) {
         sprintId,
         sprintRank,
         epic ? null : fields.estimate_minutes ?? null,
+        fields.start_date ?? null,
+        fields.due_date ?? null,
+        completion.completed_at,
+        completion.completed_by,
         now,
         now
       );
@@ -289,7 +309,7 @@ function createIssue(db, project, fields, actor) {
   })();
 }
 
-const UPDATABLE = ['type', 'title', 'description', 'status', 'priority', 'assignee_id', 'epic_id', 'rank', 'resolution', 'sprint_id', 'sprint_rank', 'estimate_minutes'];
+const UPDATABLE = ['type', 'title', 'description', 'status', 'priority', 'assignee_id', 'epic_id', 'rank', 'resolution', 'sprint_id', 'sprint_rank', 'estimate_minutes', 'start_date', 'due_date'];
 
 // Clears the epic of every child of `epicId`, recording an epic change on each.
 function releaseChildren(db, epicId, actor, when) {
@@ -314,6 +334,8 @@ function updateIssue(db, id, changes, actor, options = {}) {
       next.rank = bottomRank(db, current.project_id, next.status);
     }
     next.resolution = resolutionFor(next.status ?? current.status, next.resolution, current.resolution, statusChanged);
+    // Not in UPDATABLE (never from the client): written explicitly below.
+    const completion = completionFor(next.status ?? current.status, current, statusChanged, now, actor);
     // Sprint membership: an epic is in no container; a non-epic item that
     // changes container, or has no position yet (it was an epic), goes to the
     // bottom of its container unless a position is given. An item that
@@ -335,6 +357,8 @@ function updateIssue(db, id, changes, actor, options = {}) {
         params.push(next[field]);
       }
     }
+    sets.push('completed_at = ?', 'completed_by = ?');
+    params.push(completion.completed_at, completion.completed_by);
     sets.push('updated_at = ?');
     params.push(now);
     db.prepare(`UPDATE issues SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);

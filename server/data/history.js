@@ -5,7 +5,7 @@
 // Callers pass the same `db` from inside their own transaction, so an event
 // commits or rolls back with the write it describes. History is append-only:
 // rows go away only with their work item (deleteHistory).
-const { HISTORY_FIELDS, getField, linkField, attachmentField, testCaseField, timeEntryField } = require('../historyFields');
+const { HISTORY_FIELDS, getField, linkField, attachmentField, testCaseField, timeEntryField, statusField } = require('../historyFields');
 const users = require('./users');
 
 // The actor when no signed-in user is known (entries written before login).
@@ -154,6 +154,25 @@ function listHistory(db, issueId, { limit = 50, before = null, field = null } = 
   return { events, has_more: hasMore };
 }
 
+// The daily report (docs/specs/daily-report.md AC 6, 24, 25): what `userId`
+// did to the work items of `projectId` in [fromIso, toIso): every `created`
+// event and every status change, oldest first, with one date-bounded query.
+// Rows are { issue_id, kind, old_value, new_value } (old/new only for status
+// changes). Deleted items are gone with their history.
+function reportActivity(db, projectId, userId, fromIso, toIso) {
+  return db
+    .prepare(
+      `SELECT e.issue_id, e.kind, c.old_value, c.new_value
+       FROM issue_history_events e
+       JOIN issues i ON i.id = e.issue_id
+       LEFT JOIN issue_history_changes c ON c.event_id = e.id AND c.field = ?
+       WHERE i.project_id = ? AND e.actor_id = ? AND e.created_at >= ? AND e.created_at < ?
+         AND (e.kind = 'created' OR c.id IS NOT NULL)
+       ORDER BY e.created_at, e.id, c.id`
+    )
+    .all(statusField().key, projectId, userId, fromIso, toIso);
+}
+
 // Removes every event and change of a work item (used when it is deleted).
 function deleteHistory(db, issueId) {
   db.prepare(
@@ -163,6 +182,7 @@ function deleteHistory(db, issueId) {
 }
 
 module.exports = {
+  reportActivity,
   recordTestCaseChange: (db, issueId, actor, change, when) => recordSingleChange(db, issueId, actor, testCaseField(), change, when),
   UNKNOWN_ACTOR,
   recordCreated,

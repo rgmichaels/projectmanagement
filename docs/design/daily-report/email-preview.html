@@ -1,0 +1,93 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Report - Email preview</title><link rel="stylesheet" href="src/report.css"></head><body>
+<header class="topbar"><a class="brand" href="#">Project management</a><div class="project-scope"><label for="ps">Project</label><select id="ps" class="project-select"><option>EFS Automation</option></select></div><div class="session"><span>Robert Michaels</span><button type="button">Sign out</button></div></header>
+<main class="report-page"><nav class="subnav" aria-label="Project pages"><a href="#">Board</a><a href="#">Backlog</a><a href="#">Sprints</a><a href="#">Timeline</a><a href="#" aria-current="page">Report</a><a href="#">Test Cases</a></nav>
+<div class="tl-page-head"><h1>Report</h1></div><p class="note-mock">Mockup: what Copy for email puts on the clipboard, for the loaded report in main.html. Part 1 is the text/html flavor (inline styles only). Part 2 is its source. Part 3 is the text/plain fallback. Item keys are bold text, not links (a localhost link is useless in the manager's inbox). No controls, no nav, no page chrome, no images.</p><div class="email-wrap"><h2 class="mock-h">1. text/html flavor (rendered)</h2><div class="email-frame"><div class="email-head">To: manager &middot; Subject: Daily report: EFS Automation, Fri Nov 20 2026 (subject is typed by the user, not copied)</div><div style="font-family:Calibri,Arial,sans-serif;font-size:14px;color:#000000;">
+<h1 style="font-family:Calibri,Arial,sans-serif;font-size:18px;font-weight:bold;color:#000000;margin:0 0 4px 0;">Daily report: EFS Automation, Robert Michaels, Fri Nov 20 2026</h1>
+<h2 style="font-family:Calibri,Arial,sans-serif;font-size:16px;font-weight:bold;color:#0b5d66;margin:18px 0 6px 0;">Yesterday (Thu Nov 19)</h2>
+<ul style="margin:0 0 8px 0;padding-left:22px;">
+<li style="margin:0 0 4px 0;"><b>EFS-3</b> File a Disclosure Report - Validate required fields: Internal Testing -&gt; Complete (Done); logged 2h</li>
+<li style="margin:0 0 4px 0;"><b>EFS-4</b> File a Disclosure Report - Attach supporting documents: Ready -&gt; In Progress; commented x2; logged 1h</li>
+<li style="margin:0 0 4px 0;"><b>EFS-5</b> File a Disclosure Report - Add filing confirmation page: commented</li>
+<li style="margin:0 0 4px 0;"><b>EFS-12</b> File a Disclosure Report - Write user guide: created</li>
+</ul>
+<p style="margin:0 0 8px 0;"><b>Total time logged: 3h</b></p>
+<h2 style="font-family:Calibri,Arial,sans-serif;font-size:16px;font-weight:bold;color:#0b5d66;margin:18px 0 6px 0;">Today</h2>
+<ul style="margin:0 0 8px 0;padding-left:22px;">
+<li style="margin:0 0 4px 0;"><b>EFS-4</b> File a Disclosure Report - Attach supporting documents - In Progress, High, remaining 4h</li>
+<li style="margin:0 0 4px 0;"><b>EFS-5</b> File a Disclosure Report - Add filing confirmation page - Internal Testing, Medium, remaining 1h 30m</li>
+<li style="margin:0 0 4px 0;"><b>EFS-6</b> File a Disclosure Report - Send receipt email - UAT, Medium</li>
+</ul>
+<h2 style="font-family:Calibri,Arial,sans-serif;font-size:16px;font-weight:bold;color:#0b5d66;margin:18px 0 6px 0;">Waiting</h2>
+<p style="margin:0 0 4px 0;">EFS - File a disclosure report: 3 of 10 complete, ends Nov 27</p>
+<p style="font-family:Calibri,Arial,sans-serif;font-size:14px;font-weight:bold;color:#154973;margin:10px 0 4px 0;">In the active sprint</p>
+<ul style="margin:0 0 8px 0;padding-left:22px;">
+<li style="margin:0 0 4px 0;"><b>EFS-7</b> File a Disclosure Report - Review filing audit trail - Ready, High, Robert Michaels</li>
+<li style="margin:0 0 4px 0;"><b>EFS-8</b> File a Disclosure Report - Test amended filings - Ready, Medium, Unassigned</li>
+<li style="margin:0 0 4px 0;"><b>EFS-9</b> File a Disclosure Report - Prepare UAT script - Planning, Medium, Dana Lee</li>
+<li style="margin:0 0 4px 0;"><b>EFS-10</b> File a Disclosure Report - Configure filing deadlines - Planning, Low, Unassigned</li>
+</ul>
+<p style="font-family:Calibri,Arial,sans-serif;font-size:14px;font-weight:bold;color:#154973;margin:10px 0 4px 0;">Backlog and other sprints</p>
+<ul style="margin:0 0 8px 0;padding-left:22px;">
+<li style="margin:0 0 4px 0;"><b>EFS-11</b> File a Disclosure Report - Accessibility review - Planning, Low, Unassigned</li>
+<li style="margin:0 0 4px 0;"><b>EFS-12</b> File a Disclosure Report - Write user guide - Planning, Low, Robert Michaels</li>
+<li style="margin:0 0 4px 0;"><b>EFS-13</b> File a Disclosure Report - Go-live checklist - Planning, Medium, Unassigned</li>
+</ul>
+</div></div>
+<h2 class="mock-h">2. The HTML source behind it (inline styles, no class, no style block)</h2><pre class="plain">&lt;div style="font-family:Calibri,Arial,sans-serif;font-size:14px;color:#000000;">
+&lt;h1 style="font-family:Calibri,Arial,sans-serif;font-size:18px;font-weight:bold;color:#000000;margin:0 0 4px 0;">Daily report: EFS Automation, Robert Michaels, Fri Nov 20 2026&lt;/h1>
+&lt;h2 style="font-family:Calibri,Arial,sans-serif;font-size:16px;font-weight:bold;color:#0b5d66;margin:18px 0 6px 0;">Yesterday (Thu Nov 19)&lt;/h2>
+&lt;ul style="margin:0 0 8px 0;padding-left:22px;">
+&lt;li style="margin:0 0 4px 0;">&lt;b>EFS-3&lt;/b> File a Disclosure Report - Validate required fields: Internal Testing -&amp;gt; Complete (Done); logged 2h&lt;/li>
+&lt;li style="margin:0 0 4px 0;">&lt;b>EFS-4&lt;/b> File a Disclosure Report - Attach supporting documents: Ready -&amp;gt; In Progress; commented x2; logged 1h&lt;/li>
+&lt;li style="margin:0 0 4px 0;">&lt;b>EFS-5&lt;/b> File a Disclosure Report - Add filing confirmation page: commented&lt;/li>
+&lt;li style="margin:0 0 4px 0;">&lt;b>EFS-12&lt;/b> File a Disclosure Report - Write user guide: created&lt;/li>
+&lt;/ul>
+&lt;p style="margin:0 0 8px 0;">&lt;b>Total time logged: 3h&lt;/b>&lt;/p>
+&lt;h2 style="font-family:Calibri,Arial,sans-serif;font-size:16px;font-weight:bold;color:#0b5d66;margin:18px 0 6px 0;">Today&lt;/h2>
+&lt;ul style="margin:0 0 8px 0;padding-left:22px;">
+&lt;li style="margin:0 0 4px 0;">&lt;b>EFS-4&lt;/b> File a Disclosure Report - Attach supporting documents - In Progress, High, remaining 4h&lt;/li>
+&lt;li style="margin:0 0 4px 0;">&lt;b>EFS-5&lt;/b> File a Disclosure Report - Add filing confirmation page - Internal Testing, Medium, remaining 1h 30m&lt;/li>
+&lt;li style="margin:0 0 4px 0;">&lt;b>EFS-6&lt;/b> File a Disclosure Report - Send receipt email - UAT, Medium&lt;/li>
+&lt;/ul>
+&lt;h2 style="font-family:Calibri,Arial,sans-serif;font-size:16px;font-weight:bold;color:#0b5d66;margin:18px 0 6px 0;">Waiting&lt;/h2>
+&lt;p style="margin:0 0 4px 0;">EFS - File a disclosure report: 3 of 10 complete, ends Nov 27&lt;/p>
+&lt;p style="font-family:Calibri,Arial,sans-serif;font-size:14px;font-weight:bold;color:#154973;margin:10px 0 4px 0;">In the active sprint&lt;/p>
+&lt;ul style="margin:0 0 8px 0;padding-left:22px;">
+&lt;li style="margin:0 0 4px 0;">&lt;b>EFS-7&lt;/b> File a Disclosure Report - Review filing audit trail - Ready, High, Robert Michaels&lt;/li>
+&lt;li style="margin:0 0 4px 0;">&lt;b>EFS-8&lt;/b> File a Disclosure Report - Test amended filings - Ready, Medium, Unassigned&lt;/li>
+&lt;li style="margin:0 0 4px 0;">&lt;b>EFS-9&lt;/b> File a Disclosure Report - Prepare UAT script - Planning, Medium, Dana Lee&lt;/li>
+&lt;li style="margin:0 0 4px 0;">&lt;b>EFS-10&lt;/b> File a Disclosure Report - Configure filing deadlines - Planning, Low, Unassigned&lt;/li>
+&lt;/ul>
+&lt;p style="font-family:Calibri,Arial,sans-serif;font-size:14px;font-weight:bold;color:#154973;margin:10px 0 4px 0;">Backlog and other sprints&lt;/p>
+&lt;ul style="margin:0 0 8px 0;padding-left:22px;">
+&lt;li style="margin:0 0 4px 0;">&lt;b>EFS-11&lt;/b> File a Disclosure Report - Accessibility review - Planning, Low, Unassigned&lt;/li>
+&lt;li style="margin:0 0 4px 0;">&lt;b>EFS-12&lt;/b> File a Disclosure Report - Write user guide - Planning, Low, Robert Michaels&lt;/li>
+&lt;li style="margin:0 0 4px 0;">&lt;b>EFS-13&lt;/b> File a Disclosure Report - Go-live checklist - Planning, Medium, Unassigned&lt;/li>
+&lt;/ul>
+&lt;/div></pre>
+<h2 class="mock-h">3. text/plain flavor</h2><pre class="plain">Daily report: EFS Automation, Robert Michaels, Fri Nov 20 2026
+
+Yesterday (Thu Nov 19)
+- EFS-3 File a Disclosure Report - Validate required fields: Internal Testing -> Complete (Done); logged 2h
+- EFS-4 File a Disclosure Report - Attach supporting documents: Ready -> In Progress; commented x2; logged 1h
+- EFS-5 File a Disclosure Report - Add filing confirmation page: commented
+- EFS-12 File a Disclosure Report - Write user guide: created
+Total time logged: 3h
+
+Today
+- EFS-4 File a Disclosure Report - Attach supporting documents - In Progress, High, remaining 4h
+- EFS-5 File a Disclosure Report - Add filing confirmation page - Internal Testing, Medium, remaining 1h 30m
+- EFS-6 File a Disclosure Report - Send receipt email - UAT, Medium
+
+Waiting
+EFS - File a disclosure report: 3 of 10 complete, ends Nov 27
+In the active sprint
+- EFS-7 File a Disclosure Report - Review filing audit trail - Ready, High, Robert Michaels
+- EFS-8 File a Disclosure Report - Test amended filings - Ready, Medium, Unassigned
+- EFS-9 File a Disclosure Report - Prepare UAT script - Planning, Medium, Dana Lee
+- EFS-10 File a Disclosure Report - Configure filing deadlines - Planning, Low, Unassigned
+Backlog and other sprints
+- EFS-11 File a Disclosure Report - Accessibility review - Planning, Low, Unassigned
+- EFS-12 File a Disclosure Report - Write user guide - Planning, Low, Robert Michaels
+- EFS-13 File a Disclosure Report - Go-live checklist - Planning, Medium, Unassigned</pre></div>
+</main></body></html>

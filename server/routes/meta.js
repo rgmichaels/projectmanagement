@@ -4,7 +4,7 @@
 // link relationships, the allowed attachment types and limits, the sprint
 // states, the sprint event kinds and the scope-change event kinds.
 const express = require('express');
-const { STATUSES, terminalStatus } = require('../statuses');
+const { STATUSES, terminalStatus, startedStatus } = require('../statuses');
 const { RESOLUTIONS } = require('../resolutions');
 const { TYPES } = require('../types');
 const { PRIORITIES, DEFAULT_PRIORITY } = require('../priorities');
@@ -21,6 +21,8 @@ function metaRoutes(db) {
   router.get('/statuses', (req, res) => res.json(STATUSES));
   // The client uses this instead of deciding the terminal column itself.
   router.get('/terminal-status', (req, res) => res.json({ status: terminalStatus() }));
+  // The first status of active work (the daily report's Today and Waiting).
+  router.get('/started-status', (req, res) => res.json({ status: startedStatus() }));
   router.get('/resolutions', (req, res) => res.json(RESOLUTIONS));
   router.get('/types', (req, res) => res.json(TYPES));
   router.get('/priorities', (req, res) => res.json({ priorities: PRIORITIES, default: DEFAULT_PRIORITY }));

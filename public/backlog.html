@@ -24,6 +24,8 @@
       <a id="nav-board" href="board.html">Board</a>
       <a id="nav-backlog" href="backlog.html" aria-current="page">Backlog</a>
       <a id="nav-sprints" href="sprints.html">Sprints</a>
+      <a id="nav-timeline" href="timeline.html">Timeline</a>
+      <a id="nav-report" href="report.html">Report</a>
       <a id="nav-test-cases" href="test-cases.html">Test Cases</a>
     </nav>
 
@@ -191,9 +193,21 @@
             <p id="estimate-ro" class="est-ro" aria-labelledby="estimate-label" hidden></p>
             <p class="error" id="estimate-error" role="alert" hidden></p>
           </div>
+          <!-- Start and due dates (docs/specs/gantt-chart.md AC 6): optional,
+               saved with Save; disabled for Viewers and archived projects. -->
+          <label for="start-date-input">Start date <input type="date" id="start-date-input" name="start_date"></label>
+          <label for="due-date-input">Due date <input type="date" id="due-date-input" name="due_date"></label>
           <label id="resolution-field" hidden>Resolution <select name="resolution"></select></label>
+          <!-- Completed (docs/specs/completed-date-on-cards.md AC 19): read-only,
+               shown only while the saved item is in the terminal status; no
+               name, so never submitted. board.js fills it. -->
+          <div id="completed-field" class="completed-field" hidden>
+            <label for="completed-input">Completed</label>
+            <input type="text" id="completed-input" class="ro" readonly>
+          </div>
           <p id="sprint-where" class="sprint-where" role="status" hidden></p>
         </div>
+        <p id="dates-hint" class="hint date-hint">Both dates are optional. Leave empty if not scheduled. Use one date for a one-day bar.</p>
         <p class="reporter" id="reporter" hidden></p>
 
         <!-- Description: for a saved work item a read view (plain text with image
@@ -354,6 +368,7 @@
   <script src="js/time.js"></script>
   <script src="js/scope.js"></script>
   <script src="js/historyFormat.js"></script>
+  <script src="js/completedDate.js"></script>
   <script src="js/richText.js"></script>
   <script src="js/filters.js"></script>
   <script src="js/sprints.js"></script>

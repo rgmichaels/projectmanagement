@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Timeline</title>
+  <link rel="icon" type="image/svg+xml" href="/css/favicon.svg">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body data-page="timeline">
+  <header class="topbar">
+    <a class="brand" href="/">Projects</a>
+  </header>
+
+  <!-- The Timeline page (docs/specs/gantt-chart.md; design
+       docs/design/gantt-chart): the zoom control, the message area, the
+       legend, the chart and the Unscheduled panel. js/timeline.js draws the
+       chart, legend and panel (with js/timelineMath.js); js/board.js runs the
+       work item dialog below, which is the same markup as on board.html. -->
+  <main class="page timeline-page">
+    <nav class="subnav" aria-label="Project pages">
+      <a id="nav-board" href="board.html">Board</a>
+      <a id="nav-backlog" href="backlog.html">Backlog</a>
+      <a id="nav-sprints" href="sprints.html">Sprints</a>
+      <a id="nav-timeline" href="timeline.html" aria-current="page">Timeline</a>
+      <a id="nav-report" href="report.html">Report</a>
+      <a id="nav-test-cases" href="test-cases.html">Test Cases</a>
+    </nav>
+
+    <section class="toolbar tl-page-head">
+      <h1>Timeline</h1>
+      <span class="badge archived" id="archived-badge" hidden>Archived (read-only)</span>
+      <div class="seg spacer" id="tl-zoom" role="group" aria-label="Zoom">
+        <button type="button" data-zoom="day" aria-pressed="false">Day</button>
+        <button type="button" data-zoom="week" aria-pressed="true">Week</button>
+        <button type="button" data-zoom="month" aria-pressed="false">Month</button>
+      </div>
+    </section>
+
+    <p id="tl-readonly" class="banner" role="status" hidden></p>
+    <div id="message" class="message" role="alert" hidden></div>
+    <div id="timeline-message" role="alert"></div>
+    <ul class="tl-legend" id="tl-legend" aria-label="Legend"></ul>
+
+    <div class="tl-layout">
+      <div id="tl-chart-box"><p class="hint" role="status">Loading...</p></div>
+      <aside class="panel unsched" id="tl-unsched" aria-labelledby="un-h"></aside>
+    </div>
+  </main>
+
+  <!-- Work item dialog (docs/specs/task-dialog-redesign.md): a dark teal band
+       (key chip, epic link, Close, title), the body (read-only banner, status
+       track, properties, description), one tab bar with the Children (epic
+       types only), Discussion, History, Links and Attachments panels, and the
+       footer. Only Save submits; every other button is type="button". -->
+  <dialog id="detail" aria-labelledby="detail-heading">
+    <form id="detail-form" method="dialog" novalidate>
+      <div class="band">
+        <h2 id="detail-heading" class="visually-hidden">Work item</h2>
+        <div class="band-top">
+          <span id="detail-keychip" class="keychip" hidden></span>
+          <span id="detail-new-label" class="band-new" hidden>Create work item</span>
+          <!-- The open item's epic; opens it in this dialog. -->
+          <button type="button" id="epic-open" class="epicchip" hidden></button>
+          <button type="button" id="detail-x" class="x" aria-label="Close">&times;</button>
+        </div>
+        <textarea name="title" id="title-input" class="title-in" rows="1" maxlength="200" required aria-label="Title" placeholder="What needs to be done?"></textarea>
+        <p class="error" id="title-error" role="alert" hidden></p>
+      </div>
+
+      <div class="detail-body">
+        <p id="detail-banner" class="banner" role="status" hidden></p>
+
+        <!-- One radio per server status, built in board.js. -->
+        <fieldset id="status-field" class="track">
+          <legend>Status</legend>
+          <div id="status-steps" class="steps"></div>
+        </fieldset>
+
+        <div class="props">
+          <label>Assignee <select name="assignee_id"></select></label>
+          <label>Priority <select name="priority"></select></label>
+          <label>Type <select name="type"></select></label>
+          <label id="epic-field" class="epic-field"><span id="epic-label"></span> <select name="epic_id"></select></label>
+          <!-- Sprint: Backlog plus the open sprints (names and states from the
+               server); fixed text for epic types; disabled for a completed sprint. -->
+          <div id="sprint-field" class="sprint-field">
+            <label for="sprint-select">Sprint</label>
+            <select id="sprint-select" name="sprint_id"></select>
+            <p id="sprint-na" class="sprint-na" hidden>Not applicable (epics are not part of a sprint)</p>
+            <p id="sprint-note" class="hint" hidden>Completed sprints are read-only.</p>
+            <!-- "Added after start" (docs/specs/sprint-scope-change.md AC 28): the badge and when it was added; board.js fills it. -->
+            <p id="sprint-added" class="hint sprint-added" hidden></p>
+          </div>
+          <!-- Estimate (docs/specs/time-tracking.md AC 41-44): an item field,
+               saved with Save. Read-only text for Viewers and archived
+               projects; removed for epic types. -->
+          <div id="estimate-field" class="est-field">
+            <label for="estimate-input" id="estimate-label">Estimate</label>
+            <div id="estimate-edit" class="est-input"><input type="number" id="estimate-input" name="estimate_hours" step="0.25" min="0.25" max="1000" placeholder="Hours"><span class="est-unit" aria-hidden="true">h</span></div>
+            <p id="estimate-ro" class="est-ro" aria-labelledby="estimate-label" hidden></p>
+            <p class="error" id="estimate-error" role="alert" hidden></p>
+          </div>
+          <!-- Start and due dates (docs/specs/gantt-chart.md AC 6): optional,
+               saved with Save; disabled for Viewers and archived projects. -->
+          <label for="start-date-input">Start date <input type="date" id="start-date-input" name="start_date"></label>
+          <label for="due-date-input">Due date <input type="date" id="due-date-input" name="due_date"></label>
+          <label id="resolution-field" hidden>Resolution <select name="resolution"></select></label>
+          <!-- Completed (docs/specs/completed-date-on-cards.md AC 19): read-only,
+               shown only while the saved item is in the terminal status; no
+               name, so never submitted. board.js fills it. -->
+          <div id="completed-field" class="completed-field" hidden>
+            <label for="completed-input">Completed</label>
+            <input type="text" id="completed-input" class="ro" readonly>
+          </div>
+          <p id="sprint-where" class="sprint-where" role="status" hidden></p>
+        </div>
+        <p id="dates-hint" class="hint date-hint">Both dates are optional. Leave empty if not scheduled. Use one date for a one-day bar.</p>
+        <p class="reporter" id="reporter" hidden></p>
+
+        <!-- Description: for a saved work item a read view (plain text with image
+             tokens shown as images, js/richText.js) and Edit; the edit view is a
+             plain textarea showing the raw text. Pasting an image uploads it as
+             an attachment and inserts its token. -->
+        <div class="description-field">
+          <div class="field-head">
+            <label for="description-input">Description</label>
+            <button type="button" id="description-edit" class="link" hidden>Edit</button>
+          </div>
+          <div id="description-view" class="description-view" hidden></div>
+          <textarea id="description-input" name="description" rows="5"></textarea>
+          <p class="paste-note" id="description-note" role="status" hidden></p>
+          <div id="description-images" class="image-strip" hidden>
+            <span class="image-strip-label">Images in this description</span>
+            <div id="description-thumbs" class="image-strip-thumbs"></div>
+          </div>
+        </div>
+
+        <!-- Tabs: not part of the work item's Save. Their buttons are
+             type="button" so they never submit the method="dialog" form.
+             Counts come from data the dialog already loads. -->
+        <div id="activity-tabs" class="tabs tight" role="tablist" aria-label="Activity" hidden>
+          <button type="button" role="tab" id="tab-children" class="tab" aria-controls="epic-view" aria-selected="false" hidden>Children <span class="n" id="count-children" hidden></span></button>
+          <button type="button" role="tab" id="tab-discussion" class="tab" aria-controls="discussion" aria-selected="true">Discussion <span class="n" id="count-discussion" hidden></span></button>
+          <button type="button" role="tab" id="tab-history" class="tab" aria-controls="history" aria-selected="false">History <span class="n" id="count-history" hidden></span></button>
+          <button type="button" role="tab" id="tab-links" class="tab" aria-controls="links" aria-selected="false">Links <span class="n" id="count-links" hidden></span></button>
+          <button type="button" role="tab" id="tab-time" class="tab" aria-controls="time" aria-selected="false">Time <span class="n" id="count-time" hidden></span></button>
+          <button type="button" role="tab" id="tab-test-cases" class="tab" aria-controls="ticket-test-cases" aria-selected="false">Test Cases <span class="n" id="count-test-cases" hidden></span></button>
+          <button type="button" role="tab" id="tab-attachments" class="tab" aria-controls="attachments" aria-selected="false">Attachments <span class="n" id="count-attachments" hidden></span></button>
+        </div>
+
+        <!-- Children (epic view): shown only when the open work item is an epic
+             type. Add and remove use the child's PATCH. Status names come from
+             the server. Add, Remove and Create child are hidden when read-only. -->
+        <section id="epic-view" class="epic-view" role="tabpanel" aria-labelledby="tab-children" hidden>
+          <h3 id="epic-view-heading" class="visually-hidden"></h3>
+          <p class="error" id="epic-view-error" role="alert"></p>
+          <div id="epic-summary" class="darkpanel" hidden>
+            <p class="big" id="epic-progress-text"></p>
+            <div class="epic-progress">
+              <div class="progress-bar" id="epic-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-label="Progress">
+                <div class="progress-fill" id="epic-progress-fill"></div>
+              </div>
+            </div>
+            <ul id="epic-counts" class="epic-counts"></ul>
+          </div>
+          <p class="epic-empty" id="epic-empty" hidden></p>
+          <ul id="epic-children" class="epic-children"></ul>
+          <div id="epic-actions" class="epic-actions">
+            <select id="epic-add-target" aria-label="Existing work item to add"></select>
+            <button type="button" id="epic-add" class="navy">Add</button>
+            <button type="button" id="epic-create-child">Create child</button>
+          </div>
+          <p class="error" id="epic-add-error" role="alert"></p>
+        </section>
+
+        <section id="discussion" class="discussion" role="tabpanel" aria-labelledby="tab-discussion" hidden>
+          <div id="comment-form" class="comment-form">
+            <p class="posting-as" id="posting-as"></p>
+            <textarea id="comment-body" rows="3" placeholder="Write a message" aria-label="Message"></textarea>
+            <p class="paste-note" id="comment-note" role="status" hidden></p>
+            <p class="error" id="comment-error" role="alert"></p>
+            <div class="actions"><button type="button" id="comment-post" class="navy">Post</button></div>
+          </div>
+          <p class="thread-empty" id="thread-empty" hidden>No messages yet. Be the first to post.</p>
+          <ul id="thread" class="thread"></ul>
+        </section>
+
+        <!-- History: read-only, newest first; also readable on archived projects. -->
+        <section id="history" class="history" role="tabpanel" aria-labelledby="tab-history" hidden>
+          <div class="history-toolbar">
+            <label class="history-filter">Show <select id="history-field" aria-label="Filter history by field"><option value="">All fields</option></select></label>
+          </div>
+          <p class="history-note" id="history-note" hidden></p>
+          <div class="history-error" id="history-error" hidden>
+            <p class="error" id="history-error-text" role="alert"></p>
+            <button type="button" id="history-retry">Retry</button>
+          </div>
+          <ul id="history-list" class="history-list"></ul>
+          <div class="actions"><button type="button" id="history-more" hidden>Show more</button></div>
+        </section>
+
+        <!-- Links: relationships come from GET /api/link-types. Add and Remove
+             are hidden when read-only. -->
+        <section id="links" class="links" role="tabpanel" aria-labelledby="tab-links" hidden>
+          <p class="links-empty" id="links-empty" hidden>No links.</p>
+          <div id="links-list" class="links-list"></div>
+          <div id="link-form" class="link-form">
+            <select id="link-relation" aria-label="Relationship"></select>
+            <select id="link-target" aria-label="Work item to link"></select>
+            <button type="button" id="link-add" class="navy">Add link</button>
+          </div>
+          <p class="error" id="link-error" role="alert"></p>
+        </section>
+
+        <!-- Time (docs/specs/time-tracking.md AC 22-29): the estimate against
+             the logged hours, the Log time form and the entries. Entries save
+             on their own buttons, never through Save, and do not make the item
+             unsaved. The form is hidden when read-only. -->
+        <section id="time" class="time" role="tabpanel" aria-labelledby="tab-time" hidden>
+          <div id="time-sum" class="time-sum"></div>
+          <div id="time-form" class="time-form" role="group" aria-labelledby="time-form-heading">
+            <h3 class="time-h" id="time-form-heading">Log time</h3>
+            <label for="time-hours">Hours<input type="number" id="time-hours" step="0.25" min="0.25" max="24" placeholder="e.g. 1.5"></label>
+            <label for="time-date">Date<input type="date" id="time-date"></label>
+            <label class="note-field" for="time-note">Note (optional)<input type="text" id="time-note" maxlength="500"></label>
+            <button type="button" id="time-log" class="navy">Log time</button>
+            <p class="error" id="time-error" role="alert" hidden></p>
+            <p class="hint">Quarter hours from 0.25 to 24. The date cannot be in the future. Notes up to 500 characters.</p>
+          </div>
+          <div class="time-list-head"><h3 class="time-h">Entries</h3><span class="hint" id="time-list-hint"></span></div>
+          <p class="time-loading" id="time-loading" role="status" hidden>Loading time entries...</p>
+          <div class="time-load-error" id="time-load-error" role="alert" hidden>
+            <strong>Could not load time entries.</strong>
+            <span id="time-load-error-text"></span>
+            <button type="button" id="time-retry">Retry</button>
+          </div>
+          <p class="time-empty" id="time-empty" hidden>No time logged yet.</p>
+          <ul id="time-list" class="time-list" aria-label="Time entries, newest first"></ul>
+        </section>
+
+        <section id="ticket-test-cases" role="tabpanel" aria-labelledby="tab-test-cases" hidden></section>
+
+        <!-- Attachments: allowed types and limits come from
+             GET /api/attachment-types. Add and Delete are hidden when
+             read-only; a new work item must be saved first (then this is a
+             plain section below the description, not a tab panel). -->
+        <section id="attachments" class="attachments" role="tabpanel" aria-labelledby="tab-attachments" hidden>
+          <h3 id="attachments-heading" hidden>Attachments</h3>
+          <p class="attachments-note" id="attachments-note" hidden>Save the work item first.</p>
+          <div id="attachment-controls" class="attachment-controls">
+            <button type="button" id="attachment-add" class="navy">Add files</button>
+            <input type="file" id="attachment-input" multiple hidden aria-label="Files to attach">
+            <span class="hint">or drop files here</span>
+          </div>
+          <p class="error attachment-error" id="attachment-error" role="alert"></p>
+          <p class="attachments-empty" id="attachments-empty" hidden>No attachments.</p>
+          <ul id="attachment-list" class="attachment-list"></ul>
+        </section>
+      </div>
+
+      <div class="detail-foot">
+        <p class="error" id="detail-error" role="alert"></p>
+        <span class="spacer"></span>
+        <button type="button" id="detail-delete" class="danger">Delete</button>
+        <button type="button" id="detail-close">Close</button>
+        <button type="submit" value="save" id="detail-save" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="js/redirect.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/session.js"></script>
+  <script src="js/projectScope.js"></script>
+  <script src="js/time.js"></script>
+  <script src="js/scope.js"></script>
+  <script src="js/historyFormat.js"></script>
+  <script src="js/completedDate.js"></script>
+  <script src="js/richText.js"></script>
+  <script src="js/filters.js"></script>
+  <script src="js/sprints.js"></script>
+  <script src="js/timelineMath.js"></script>
+  <script src="js/timeline.js"></script>
+  <script src="js/testCases.js"></script>
+  <script src="js/board.js"></script>
+</body>
+</html>

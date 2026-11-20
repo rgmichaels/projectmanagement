@@ -165,3 +165,43 @@ Contract: `docs/design/export/README.md`. CSS: the NEW block of `docs/design/exp
 - `.export-msg` (`.on-board` variant): holds a `.notice` (role="status", headers-only) or `.banner-warn` (role="alert", "Export failed.") with a Dismiss link, under the Board filter bar or under a panel header.
 
 **Do.** Name the target in `aria-label` ("Export Sprint 4"); keep Export visible for Viewers and archived projects; set names and server text as text. **Don't.** Don't use `disabled` while busy (focus is lost); don't rely on a hover-only tooltip for meaning; don't show Export as a primary button.
+
+## 12. Timeline (gantt-chart, single recommended design)
+
+Contract: `docs/design/gantt-chart/README.md`. CSS: the "NEW: Timeline" block of `docs/design/gantt-chart/src/timeline.css` (append to `public/css/app.css`). No new tokens; reuses the epic chip purple (`#eae6ff` / `#403294`), `--danger` for the Today line, `.subnav`, `.badge`, `.banner`, `.banner-warn`, `.panel`, `.n` count pill.
+
+**New components.**
+- Zoom control (`.seg` of `button[aria-pressed]`): joined buttons, active = teal fill, white text.
+- Chart (`.tl` scroll container, `.tl-head` sticky axis with `.ax` cells, `.tl-row` rows with sticky `.tl-label` and `.tl-track`, `.tl-grid` lines and weekend shading, `.tl-today` line and `.tl-flag`).
+- Bars (`button.bar` with `.s-todo`, `.s-prog`, `.s-done` (muted, check mark), `.epic`, `.rollup` (striped, dashed), `.is-short` outside label; sprint bars `.sp-planned`, `.sp-active`, `.sp-completed`). Edit affordances: `.h.l`, `.h.r` handles, `.is-dragging`, `.bar-origin`, `.is-reverting`, `.tl-tip`, `.tl-dropcol`, `.tl.is-drop-target`, `.tl.is-readonly`.
+- Unscheduled panel (`.unsched`, `.un-row` with `.grip`, `.un-empty`, `.epic-tag`).
+- Dialog date fields: two `input[type=date]` in the existing `.props` grid.
+
+**Do.** Pair every status colour with a word, check mark or pattern (Done = check, rollup = dashes, Today = label); set titles as text; show dates in the tooltip while dragging. **Don't.** Don't put white text on pale fills or type colours; don't make sprint bars or rollup bars draggable; don't add handles for read-only users.
+
+## 13. Daily report (daily-report, single recommended design)
+
+Contract: `docs/design/daily-report/README.md`. CSS: the "NEW: Daily report" block of `docs/design/daily-report/src/report.css` (append to `public/css/app.css`). No new tokens; reuses `.panel`, `.subnav`, `.badge.archived`, `.banner-warn`, `.n`, `.status-pill`, `.priority`, `.epic-chip`, `.hint`, `.empty`, `button.navy`.
+
+**New components.**
+- Controls panel (`form.panel.report-controls`): labels stacked above Person select and Date input, "Today" button beside Date, navy "Copy for email" right-aligned, `p.copy-status` line (`.ok` teal bold with a check mark, `role="status"`; `.fail` danger bold, `role="alert"`).
+- Report panel (`article.panel.report`, 860px max): `p.report-title` (18px bold teal, not a heading), `section` with a top rule and `h2`, `.h-note` muted 12px note in the heading, `h3` navy sub-headings with a `.n` count.
+- Rows (`ul.rows > li`): `.r-key` mono bold link, `.r-title` (wraps anywhere), `.r-meta` (pill, priority, remaining, assignee), `.r-sum` activity line on its own row.
+- `.total-line` (pale teal strip, bold), `.empty-line` (dashed teal-mid box, plain text), `.sprint-line` (white, 4px teal left edge, bold).
+- Copied email styles are inline only and independent of app.css (see the README).
+
+**Do.** Write every empty section as a plain sentence; keep keys as links on screen and bold text in the email; insert all user text as text. **Don't.** Don't disable controls for Viewers or archived projects; don't add class names or a style block to the copied HTML; don't make the report title a heading.
+
+## 14. Completed date (completed-date, single recommended design)
+
+Contract: `docs/design/completed-date/README.md`. CSS: `docs/design/completed-date/src/completed.css` (append to `public/css/app.css`). No new tokens; text is `--muted`, fields reuse `--teal-soft` and the existing status pill.
+
+**New components.**
+- `.card-done` (Board card): a full-width last row of `.card-meta` (`order: 1`) holding the resolution label and `.completed`. Terminal-status cards only.
+- `.completed` (12px muted, `white-space: nowrap`): `✓ Completed Nov 20`; `title` has the full local date, time and completer.
+- `.completed-field` with `input.ro` (dialog): read-only text input styled like a disabled field, after Resolution, shown only for a saved terminal item.
+- `.pill-date` (Backlog): ` · Nov 20` suffix inside `.status-pill.is-done`, regular weight.
+
+**Date format.** `Nov 20`; `Nov 20, 2025` when not the current year; viewer's local time. Tooltip always has the year.
+
+**Do.** Set dates and names as text; omit the row when there is no date; keep the tooltip detail non-essential. **Don't.** Don't add colour to the date; don't append it to the first meta row; don't make it a click target.

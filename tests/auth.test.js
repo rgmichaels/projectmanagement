@@ -209,6 +209,8 @@ test('every protected route family returns 401 without a session and changes not
     ['GET', '/api/users'],
     ['GET', '/api/statuses'],
     ['GET', '/api/terminal-status'],
+    ['GET', '/api/started-status'],
+    ['GET', `/api/projects/${p.id}/report?user=1&from=2026-11-19T05:00:00.000Z&to=2026-11-20T05:00:00.000Z&day=2026-11-19`],
     ['GET', '/api/resolutions'],
     ['GET', '/api/types'],
     ['GET', '/api/priorities'],
@@ -371,9 +373,14 @@ test('an old database gains unique usernames and reporter_id, data intact (AC 23
   const issuesAfter = db.prepare('SELECT * FROM issues').all();
   // The sprints migration (docs/specs/sprints-and-backlog.md AC 4) also adds
   // sprint_id and sprint_rank, and the time-tracking migration
-  // (docs/specs/time-tracking.md AC 34) estimate_minutes; every other column
-  // is unchanged.
-  assert.deepEqual(issuesAfter.map(({ reporter_id, sprint_id, sprint_rank, estimate_minutes, ...rest }) => rest), issuesBefore);
+  // (docs/specs/time-tracking.md AC 34) estimate_minutes, and the dates
+  // migration (docs/specs/gantt-chart.md AC 1) start_date and due_date, and
+  // the completed-date migration (docs/specs/completed-date-on-cards.md AC 10)
+  // completed_at and completed_by (null: the item is not complete); every
+  // other column is unchanged.
+  assert.deepEqual(issuesAfter.map(({ reporter_id, sprint_id, sprint_rank, estimate_minutes, start_date, due_date, completed_at, completed_by, ...rest }) => rest), issuesBefore);
+  assert.ok(issuesAfter.every((i) => i.completed_at === null && i.completed_by === null), 'not complete, no completed date');
+  assert.ok(issuesAfter.every((i) => i.start_date === null && i.due_date === null), 'no dates backfilled');
   assert.ok(issuesAfter.every((i) => i.reporter_id === null));
   assert.ok(issuesAfter.every((i) => i.estimate_minutes === null), 'not estimated');
   assert.deepEqual(db.prepare('SELECT * FROM comments').all(), commentsBefore);
