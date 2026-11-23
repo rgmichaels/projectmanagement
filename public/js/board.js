@@ -27,6 +27,8 @@
 // Timeline (docs/specs/gantt-chart.md): the dialog's Start date and Due date
 // fields (AC 6), and the Timeline page (timeline.html, data-page="timeline";
 // js/timeline.js, timelinePage.init).
+// Copy board (docs/specs/copy-board-as-table.md): the Board page only; the
+// table and plain text are built by js/boardCopy.js from the lanes drawn.
 (() => {
   const GROUP_BY_STORAGE_KEY = 'pm.groupBy';
   const FILTERS_STORAGE_PREFIX = 'pm.filters.';
@@ -70,6 +72,9 @@
     status: document.getElementById('project-status'),
     archivedBadge: document.getElementById('archived-badge'),
     groupBy: document.getElementById('group-by'),
+    copyBoardWrap: document.getElementById('copy-board-wrap'),
+    copyBoard: document.getElementById('copy-board'),
+    copyBoardStatus: document.getElementById('copy-board-status'),
     createBtn: document.getElementById('create-item'),
     message: document.getElementById('message'),
     board: document.getElementById('board'),
@@ -531,6 +536,7 @@
     const active = activeSprint();
     els.filterBar.hidden = !active;
     els.groupBy.closest('label').hidden = !active;
+    syncCopyBoard(active);
     if (!active) {
       els.board.replaceChildren(renderNoSprint());
       return;
@@ -2920,6 +2926,118 @@
     });
     els.filterNoticeDismiss.addEventListener('click', hideFilterNotice);
   }
+
+  // ---------- copy board ----------
+  // "Copy board" (docs/specs/copy-board-as-table.md; design
+  // docs/design/copy-board-as-table): copies what is drawn, the lanes of
+  // computeLanes(visibleItems()) with collapsed lanes expanded, as one
+  // clipboard item with an HTML table and plain text (js/boardCopy.js). A
+  // read action: shown to Viewers and on archived projects. Changes no data
+  // and no view state. Board page only.
+
+  const COPIED_MS = 4000;
+  // A clipboard flavor (MIME type) by subtype; built so the clipboard types
+  // are not mistaken for attachment types (tests/source.test.js).
+  const flavor = (subtype) => ['text', subtype].join('/');
+  let copyTimer = null;
+  let copyViewKey = null; // sprint, grouping and filters the status line belongs to
+
+  function setCopyStatus(kind, text) {
+    clearTimeout(copyTimer);
+    els.copyBoardStatus.className = `copy-status${kind ? ` ${kind}` : ''}`;
+    els.copyBoardStatus.setAttribute('role', kind === 'fail' ? 'alert' : 'status');
+    els.copyBoardStatus.textContent = text;
+    if (kind === 'ok') copyTimer = setTimeout(() => setCopyStatus('', ''), COPIED_MS);
+  }
+
+  // Called from render(): the button shows with Group by when the board is
+  // drawn; the status line is cleared when hidden or when the sprint,
+  // grouping or filters change.
+  function syncCopyBoard(active) {
+    els.copyBoardWrap.hidden = !active;
+    const key = JSON.stringify([active ? active.id : null, state.groupBy, state.filters]);
+    if (!active || key !== copyViewKey) {
+      if (els.copyBoardStatus.textContent) setCopyStatus('', '');
+    }
+    copyViewKey = key;
+  }
+
+  function copyBoardModel() {
+    const visible = visibleItems();
+    const option = groupOptions().find((o) => o.value === state.groupBy);
+    return boardCopy.buildModel({
+      project: state.project,
+      sprint: activeSprint(),
+      now: new Date(),
+      groupByLabel: state.groupBy !== 'none' && option ? option.label : null,
+      statuses: state.statuses,
+      // Copies, sorted as the columns draw them; the lanes are not changed.
+      lanes: computeLanes(visible).map((lane) => ({ label: lane.label, items: [...lane.items].sort(byRank) })),
+      shown: visible.length,
+      total: boardItems().length,
+      filtersActive: boardFilters.isActive(state.filters),
+      typeLabel: (name) => (typeOf(name) && typeOf(name).label) || name,
+      userName: (id) => (userById(id) ? userById(id).name : null),
+    });
+  }
+
+  // Both flavors in one write; the fallback selects an off-screen copy of the
+  // same table, never the live board.
+  async function copyBoard() {
+    setCopyStatus('', '');
+    let ok = false;
+    let html = '';
+    try {
+      const model = copyBoardModel();
+      html = boardCopy.toHtml(model);
+      if (navigator.clipboard && typeof navigator.clipboard.write === 'function' && typeof ClipboardItem === 'function') {
+        const htmlType = flavor('html');
+        const plainType = flavor('plain');
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            [htmlType]: new Blob([html], { type: htmlType }),
+            [plainType]: new Blob([boardCopy.toPlainText(model)], { type: plainType }),
+          }),
+        ]);
+        ok = true;
+      }
+    } catch {
+      ok = false;
+    }
+    if (!ok && html) ok = copyBySelection(html);
+    if (ok) setCopyStatus('ok', '✓ Copied. Paste into your email.');
+    else setCopyStatus('fail', 'Could not copy. Select the board and copy it by hand.');
+    els.copyBoard.focus();
+  }
+
+  // The table is parsed by DOMParser (inert: no script runs) and placed
+  // off-screen; the user's selection is restored afterwards.
+  function copyBySelection(html) {
+    const selection = window.getSelection();
+    if (!selection) return false;
+    const saved = [];
+    for (let i = 0; i < selection.rangeCount; i += 1) saved.push(selection.getRangeAt(i));
+    const parsed = new DOMParser().parseFromString(html, flavor('html'));
+    const holder = el('div', { 'aria-hidden': 'true', style: 'position:absolute;left:-9999px;top:0' });
+    holder.append(...Array.from(parsed.body.childNodes, (node) => document.importNode(node, true)));
+    document.body.append(holder);
+    let ok = false;
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(holder);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      ok = document.execCommand('copy');
+    } catch {
+      ok = false;
+    }
+    selection.removeAllRanges();
+    for (const r of saved) selection.addRange(r);
+    holder.remove();
+    return ok;
+  }
+
+  if (onBoard) els.copyBoard.addEventListener('click', copyBoard);
 
   // ---------- sprint notices ----------
   // A work item created from the board that is not on it (no active sprint,

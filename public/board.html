@@ -33,6 +33,12 @@
       <span class="badge" id="project-status"></span>
       <span class="badge archived" id="archived-badge" hidden>Archived (read-only)</span>
       <label class="group-by">Group by <select id="group-by"></select></label>
+      <!-- Copy board (docs/specs/copy-board-as-table.md): a read action,
+           shown with Group by whenever the board is drawn. -->
+      <div class="copy-board" id="copy-board-wrap">
+        <button type="button" id="copy-board" class="navy">Copy board</button>
+        <p id="copy-board-status" class="copy-status" role="status"></p>
+      </div>
       <button type="button" id="create-item" class="primary" hidden>Create work item</button>
       <!-- Search and filters: client-side, remembered per project. Options
            come from the lists the board loads; none are named here. -->
@@ -299,6 +305,8 @@
   <script src="js/filters.js"></script>
   <script src="js/sprints.js"></script>
   <script src="js/testCases.js"></script>
+  <script src="js/reportMath.js"></script>
+  <script src="js/boardCopy.js"></script>
   <script src="js/board.js"></script>
 </body>
 </html>

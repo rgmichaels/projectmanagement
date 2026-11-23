@@ -205,3 +205,13 @@ Contract: `docs/design/completed-date/README.md`. CSS: `docs/design/completed-da
 **Date format.** `Nov 20`; `Nov 20, 2025` when not the current year; viewer's local time. Tooltip always has the year.
 
 **Do.** Set dates and names as text; omit the row when there is no date; keep the tooltip detail non-essential. **Don't.** Don't add colour to the date; don't append it to the first meta row; don't make it a click target.
+
+## 15. Copy board (copy-board-as-table, single recommended design)
+
+Contract: `docs/design/copy-board-as-table/README.md`. CSS: the NEW block in `docs/design/copy-board-as-table/toolbar.html` (append to `public/css/app.css`). No new tokens; the pasted email uses only existing hex values inline.
+
+**New components.**
+- Copy board group (`div.copy-board`): inline-flex wrapper in the Board toolbar after Group by, holding `button.navy#copy-board` and `p.copy-status` (existing `.ok` and `.fail`, `role="status"` or `"alert"`); `.copy-board .copy-status` is auto width, not full width. Button hover is teal fill (this button only). Hidden with Group by when there is no active sprint.
+- Email table (inline styles only, never app.css): header row `#e5eded` / `#0b5d66`, lane row `#154973` / white, cells `#f8fafa`, cards white with `#d0d0ce` border, meta line `#62666a` 12px.
+
+**Do.** Keep the button enabled for Viewers and archived projects; escape all user text in the email; use `&nbsp;` in empty cells. **Don't.** Don't add classes, a style block, links, images or type colours to the copied HTML; don't disable the button while copying.

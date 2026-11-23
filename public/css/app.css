@@ -660,9 +660,9 @@ dialog#detail .sprint-where { grid-column: 1 / -1; margin: 0; }
 .lane-head-row { display: flex; align-items: center; gap: 8px; }
 .lane-head-row .lane-header { width: auto; flex: 1 1 auto; min-width: 0; }
 .lane-head-row .lane-epic-open { flex: none; }
-/* Board with no active sprint: filters and Group by hidden, Create stays right. */
+/* Board with no active sprint: filters, Group by and Copy board hidden, Create stays right. */
 .filter-bar[hidden] { display: none; }
-.board-page .toolbar .group-by[hidden] + #create-item { margin-left: auto; }
+.board-page .toolbar .group-by[hidden] + .copy-board[hidden] + #create-item { margin-left: auto; }
 
 /* ---------- Backlog bulk move (docs/specs/backlog-bulk-move.md,
    docs/design/backlog-bulk-move option B, STYLE.md part 5) ----------
@@ -1120,3 +1120,13 @@ dialog#detail input.ro { background: var(--teal-soft); color: var(--ink); cursor
 .status-pill .pill-date { font-weight: 400; }
 /* The design mockup sets this label's margin inline; the global label rule adds 10px. */
 dialog#detail .completed-field label { margin: 0; }
+
+/* Copy board (docs/specs/copy-board-as-table.md; design docs/design/copy-board-as-table,
+   STYLE.md section 15). The copied email carries its own inline styles and
+   never uses this file. Inside the wrapper the status line sits beside the
+   button, so the Report's full-width flex-basis is undone. */
+.copy-board { display:inline-flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.copy-board[hidden] { display:none; }
+.copy-board .copy-status { flex-basis:auto; min-height:0; }
+.copy-board button.navy:hover { background:var(--teal); border-color:var(--teal); }
+@media (max-width:600px) { .copy-board { flex-basis:100%; } }

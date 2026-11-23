@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Copy board: toolbar states</title>
+<style>
+/* Mockup copy of the existing base (public/css/app.css). */
+:root{--teal:#0b5d66;--teal-mid:#65999e;--teal-soft:#e5eded;--page:#f8fafa;--navy:#154973;--linkblue:#004dd1;--ink:#000;--muted:#62666a;--line:#d0d0ce;--line2:#e4e4e4;--danger:#c0300b;--surface:#fff;
+font-family:"Proxima Nova","Helvetica Neue",-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:14px;color:var(--ink);background:var(--page)}
+*{box-sizing:border-box}body{margin:0}
+h1{font-size:20px;margin:0;color:var(--teal);font-weight:700}
+:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+button,select,input{font:inherit}
+button{border:1px solid var(--navy);color:var(--navy);background:#fff;border-radius:4px;padding:6px 12px;font-weight:700;cursor:pointer}
+button.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+button.navy{background:var(--navy);border-color:var(--navy);color:#fff}
+button[disabled]{opacity:.6;cursor:default}
+select,input{padding:6px 8px;border:1px solid var(--navy);border-radius:4px;background:#fff}
+label{display:flex;flex-direction:column;gap:4px;margin-bottom:10px;font-size:12px;font-weight:700}
+label.group-by{flex-direction:row;align-items:center;gap:6px;margin:0;font-size:13px}
+[hidden]{display:none!important}
+.toolbar{display:flex;align-items:center;gap:16px;margin-bottom:12px;flex-wrap:wrap}
+.board-page .toolbar .group-by{margin-left:auto}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;background:var(--teal-soft);border:1px solid var(--teal-mid);font-size:11px;font-weight:700;text-transform:uppercase;white-space:nowrap}
+.filter-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;flex-basis:100%;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+.filter-count{color:var(--muted);font-size:13px}
+.hint{color:var(--muted);font-size:12px}
+.copy-status{margin:0;min-height:1.3em;font-size:13px}
+.copy-status.ok{color:var(--teal);font-weight:700}
+.copy-status.fail{color:var(--danger);font-weight:700}
+
+/* ===== NEW: Copy board (append to public/css/app.css) ===== */
+.copy-board{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap}
+.copy-board .copy-status{min-height:0}
+.copy-board button.navy:hover{background:var(--teal);border-color:var(--teal)}
+.copy-board button.navy[aria-busy="true"]{opacity:.75;cursor:default}
+@media (max-width:600px){.copy-board{flex-basis:100%}}
+/* ===== end NEW ===== */
+
+/* mockup chrome only */
+main{max-width:1100px;margin:0 auto;padding:20px}
+.state{margin:0 0 26px}
+.state>h2{font-size:14px;margin:0 0 4px;color:var(--navy)}
+.state>p.why{margin:0 0 8px;color:var(--muted);font-size:12px;max-width:820px}
+.frame{background:var(--page);border:1px dashed var(--teal-mid);border-radius:6px;padding:14px}
+.narrow{max-width:360px}
+.force-hover{background:var(--teal)!important;border-color:var(--teal)!important}
+.force-focus{outline:2px solid var(--teal);outline-offset:2px}
+.sr{position:absolute;left:-9999px}
+pre{background:#fff;border:1px solid var(--line);padding:10px;border-radius:4px;font:12px ui-monospace,Consolas,monospace;white-space:pre-wrap;max-width:820px}
+</style></head><body><main class="board-page">
+<h1 style="margin-bottom:6px">Copy board: toolbar states</h1>
+<p class="hint" style="margin:0 0 18px;max-width:820px">Each frame is the Board toolbar (project title, badge, Group by, Copy board, Create work item, filter bar). The button reuses the Daily Report "Copy for email" style (<code>button.navy</code>) and its confirmation line (<code>.copy-status</code>). Forced hover and focus classes are mockup-only; real ones are :hover and :focus-visible.</p>
+
+<section class="state"><h2>1. Default (active sprint, signed in with write rights)</h2>
+<p class="why">Copy board sits immediately after Group by and before Create work item. Group by keeps its right-aligning auto margin, so the cluster Group by, Copy board, Create work item stays together at the right.</p>
+<div class="frame"><section class="toolbar">
+<h1>EFS Automation</h1><span class="badge">In Progress</span>
+<label class="group-by">Group by <select aria-label="Group by"><option>None</option><option selected>Assignee</option></select></label>
+<div class="copy-board"><button type="button" id="copy-board" class="navy">Copy board</button><p id="copy-board-status" class="copy-status" role="status"></p></div>
+<button type="button" class="primary">Create work item</button>
+<div class="filter-bar"><label>Search <input type="search" placeholder="Key, title or description"></label><label>Type <select><option>All</option></select></label><button type="button" disabled>Clear</button><span class="filter-count">Showing 11 of 11</span></div>
+</section></div></section>
+
+<section class="state"><h2>2. Hover and keyboard focus</h2>
+<p class="why">Hover: fill changes from navy to teal (same pair the app already uses). Focus: the app-wide 2px teal ring with 2px offset; no custom ring. Tab order: Group by, Copy board, Create work item.</p>
+<div class="frame"><section class="toolbar"><h1>EFS Automation</h1>
+<label class="group-by" style="margin-left:auto">Group by <select><option>Assignee</option></select></label>
+<div class="copy-board"><button type="button" class="navy force-hover">Copy board (hover)</button></div>
+<div class="copy-board"><button type="button" class="navy force-focus">Copy board (focus)</button></div>
+</section></div></section>
+
+<section class="state"><h2>3. Copied (about 4 seconds, then cleared; focus stays on the button)</h2>
+<p class="why">The line is a <code>p.copy-status.ok[role="status"]</code> to the right of the button: a check mark, teal bold text "Copied. Paste into your email." Same text, colour and clearing time as the Report page. It is in the live region before it is filled, so screen readers announce it.</p>
+<div class="frame"><section class="toolbar"><h1>EFS Automation</h1>
+<label class="group-by"  style="margin-left:auto">Group by <select><option>Assignee</option></select></label>
+<div class="copy-board"><button type="button" class="navy">Copy board</button><p class="copy-status ok" role="status">&#10003; Copied. Paste into your email.</p></div>
+<button type="button" class="primary">Create work item</button></section></div></section>
+
+<section class="state"><h2>4. Error (clipboard API and the selection fallback both failed)</h2>
+<p class="why">Danger bold text "Could not copy. Select the board and copy it by hand." as <code>p.copy-status.fail[role="alert"]</code>. It stays until the next copy attempt or until the filters, grouping or sprint change. Focus returns to the button. The button is never disabled.</p>
+<div class="frame"><section class="toolbar"><h1>EFS Automation</h1>
+<label class="group-by" style="margin-left:auto">Group by <select><option>Assignee</option></select></label>
+<div class="copy-board"><button type="button" class="navy">Copy board</button><p class="copy-status fail" role="alert">Could not copy. Select the board and copy it by hand.</p></div>
+<button type="button" class="primary">Create work item</button></section></div></section>
+
+<section class="state"><h2>5. Fallback in progress (clipboard API missing or rejected)</h2>
+<p class="why">Invisible to the user: the code builds the same table off-screen (<code>position:absolute; left:-9999px; aria-hidden="true"</code>), selects it, calls <code>execCommand('copy')</code>, removes the selection and the node, and shows the normal Copied line (state 3) on success or the error (state 4). No extra UI. The live board never changes.</p>
+<pre>&lt;div aria-hidden="true" style="position:absolute;left:-9999px;top:0"&gt;  ...the same table HTML...  &lt;/div&gt;</pre></section>
+
+<section class="state"><h2>6. Viewer or archived project (read-only): button still shown</h2>
+<p class="why">Copy is a read action. Create work item is hidden, Copy board is not disabled. Archived keeps the existing "Archived (read-only)" badge.</p>
+<div class="frame"><section class="toolbar"><h1>EFS Automation</h1><span class="badge">Completed</span><span class="badge" style="background:#fff0b3;border-color:#c9a400">Archived (read-only)</span>
+<label class="group-by" style="margin-left:auto">Group by <select><option>None</option></select></label>
+<div class="copy-board"><button type="button" class="navy">Copy board</button><p class="copy-status" role="status"></p></div>
+<button type="button" class="primary" hidden>Create work item</button></section></div></section>
+
+<section class="state"><h2>7. No active sprint: button hidden</h2>
+<p class="why">The board is not drawn, so Group by, the filter bar and Copy board are all hidden (<code>hidden</code> attribute on the <code>.copy-board</code> wrapper, set in the same place as <code>els.groupBy.closest('label').hidden = !active</code>). Any old status text is cleared when hidden.</p>
+<div class="frame"><section class="toolbar"><h1>EFS Automation</h1><span class="badge">Planning</span>
+<label class="group-by" hidden>Group by <select></select></label>
+<div class="copy-board" hidden><button type="button" class="navy">Copy board</button><p class="copy-status" role="status"></p></div>
+<button type="button" class="primary">Create work item</button></section>
+<p class="hint">No active sprint. Start a sprint on the Backlog page to see the board.</p></div></section>
+
+<section class="state"><h2>8. Narrow screen (360px)</h2>
+<p class="why">The wrapper drops to its own full-width line; the confirmation text wraps under the button. No horizontal scroll.</p>
+<div class="frame narrow"><section class="toolbar"><h1>EFS Automation</h1>
+<label class="group-by" style="margin-left:0">Group by <select><option>Assignee</option></select></label>
+<div class="copy-board"><button type="button" class="navy">Copy board</button><p class="copy-status ok" role="status">&#10003; Copied. Paste into your email.</p></div>
+<button type="button" class="primary">Create work item</button></section></div></section>
+
+<section class="state"><h2>9. Hostile or long text</h2>
+<p class="why">The button and its two messages are fixed strings; no user text appears in them. User text (titles, names) only appears in the pasted table, see email-preview.html section D.</p></section>
+</main></body></html>
