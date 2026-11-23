@@ -91,7 +91,7 @@ const boardCopy = (() => {
     line: `${FONT}font-size:13px;color:#62666a;margin:0 0 2px 0;`,
     table: `${FONT}width:100%;table-layout:fixed;border-collapse:collapse;border:1px solid #8d9499;margin:10px 0 0 0;`,
     th: (w) => `${FONT}width:${w}%;background-color:#e5eded;color:#0b5d66;font-size:13px;font-weight:bold;text-align:left;padding:6px 8px;border:1px solid #8d9499;`,
-    lane: `${FONT}background-color:#154973;color:#ffffff;font-size:13px;font-weight:bold;padding:6px 8px;border:1px solid #154973;`,
+    lane: `${FONT}background-color:#d6e4f0;color:#0b2a45;font-size:13px;font-weight:bold;padding:6px 8px;border:1px solid #8d9499;`,
     td: `${FONT}background-color:#f8fafa;padding:6px;border:1px solid #8d9499;vertical-align:top;word-wrap:break-word;overflow-wrap:break-word;`,
     stack: 'width:100%;table-layout:fixed;border-collapse:separate;border:0;',
     card: `${FONT}background-color:#ffffff;border:1px solid #8d9499;padding:5px 6px;font-size:13px;color:#000000;word-wrap:break-word;overflow-wrap:break-word;`,
@@ -128,7 +128,7 @@ const boardCopy = (() => {
     for (const lane of model.lanes) {
       if (lane.label !== null && lane.label !== undefined) {
         out.push(
-          `<tr><td colspan="${n}" bgcolor="#154973" style="${STYLE.lane}">${escapeHtml(lane.label)} <span style="${STYLE.normal}">- ${workItems(lane.count)}</span></td></tr>`
+          `<tr><td colspan="${n}" bgcolor="#d6e4f0" style="${STYLE.lane}">${escapeHtml(lane.label)} <span style="${STYLE.normal}">- ${workItems(lane.count)}</span></td></tr>`
         );
       }
       out.push('<tr>');

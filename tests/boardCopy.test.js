@@ -113,7 +113,7 @@ test('grouped: a full-width heading row per lane, in screen order, then its stat
   assert.equal(heads.length, 3);
   for (const h of heads) {
     assert.match(h, new RegExp(`colspan="${N}"`));
-    assert.match(h, /bgcolor="#154973"/);
+    assert.match(h, /bgcolor="#d6e4f0"/);
   }
   assert.match(heads[0], />Bo Baker <span style="font-weight:normal;">- 3 work items<\/span>/);
   assert.match(heads[1], />Ann Able <span style="font-weight:normal;">- 0 work items<\/span>/);
